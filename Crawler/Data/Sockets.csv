@@ -1,0 +1,4 @@
+﻿Name,Size,Width,Length,Height,ArmorMax,HullMax,PowerUsed,Mass,SocketType
+Leg,Small,0,0,0,15,25,30,0,Traction
+Airlock,Small,0,0,0,0,0,0,0,Segment
+Turret,Small,0,0,0,0,0,0,0,Turret

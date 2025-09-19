@@ -1,0 +1,31 @@
+﻿namespace Crawler;
+//===========================================================
+public enum ComponentSizes
+{
+    Tiny,
+    Small,
+    Medium,
+    Large,
+    Huge,
+}
+
+public enum SocketType
+{
+    Traction, // Segment -> Leg
+    Turret, // Segment -> Turret
+    Door, // Segment -> Door
+    Airlock, // Segment <-> Segment
+    Segment, // Crawler -> Segment
+}
+
+public enum Side
+{
+    Head,
+    Tail,
+    Left,
+    Right,
+    Top,
+    Bottom,
+
+    Entire,
+}

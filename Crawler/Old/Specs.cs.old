@@ -1,0 +1,91 @@
+﻿namespace Crawler;
+
+public interface ISpecRecord {
+    string UniqueKey { get; }
+}
+public interface IGroupRecord {
+    string GroupKey { get; }
+}
+public class ComponentSpec: ISpecRecord {
+    // Config
+    //---------------------------------------------------
+    public required string Name { get; set; }
+    public ComponentSizes Size { get; set; } = ComponentSizes.Small;
+
+    public int Width { get; set; } // m
+    public int Length { get; set; } // m
+    public int Height { get; set; } // m
+    public int ArmorMax { get; set; } // abstract
+    public int HullMax { get; set; } // abstract
+    public int PowerUsed { get; set; } // kW
+    public int Mass { get; set; } // kG
+
+    // SpecRecord
+    public virtual string UniqueKey => $"{Name} ({Size})";
+    public override string ToString() => UniqueKey;
+}
+public class SocketSpec: ComponentSpec {
+    public SocketType SocketType { get; set; }
+}
+public class SegmentSpec: ComponentSpec {
+    public List<FitmentSpec> Fitments { get; set; } = new();
+}
+public class CrawlerSpec: ComponentSpec {
+    public List<SegmentSpec> Segments { get; set; } = new();
+}
+public class FitmentSpec: IGroupRecord {
+    public string GroupKey => Segment;
+    public string Segment { get; set; } = string.Empty;
+    public SocketSpec? Socket { get; set; } = null;
+    public Side Side { get; set; } = Side.Left;
+    public int Count { get; set; } = 1;
+    public SocketableSpec? Socketable { get; set; }
+}
+
+// Traction
+public enum TractionType {
+    Leg,
+    Wheel,
+    Tread,
+    Hover,
+}
+public enum TerrainType {
+    Plains,
+    Hills,
+    Mountain,
+    Broken,
+    Gulley,
+    River,
+    Lava,
+}
+
+public class SocketableSpec: ComponentSpec {
+    public SocketType SocketType { get; set; }
+}
+
+public class TractionSpec: SocketableSpec {
+    public TractionType TractionType { get; set; } = TractionType.Leg;
+    public float LoadMax { get; set; }
+    public float SpeedMax { get; set; } // m/s
+    public float Efficiency { get; set; } = 0.4f;
+    public TractionSpec? Base { get; set; } = null;
+
+    public Dictionary<TerrainType, TractionTerrainSpec> Terrains { get; set; } = new();
+
+    public float GetSpeedMax(TerrainType terrainType) => SpeedMax * SpeedFactor(terrainType);
+    public float GetLoadMax(TerrainType terrainType) => LoadMax * LoadFactor(terrainType);
+    public float GetPullMax(TerrainType terrainType) => PowerUsed * Efficiency * PowerFactor(terrainType);
+
+    public float LoadFactor(TerrainType terrainType) => Terrains.TryGetValue(terrainType, out var spec) ? spec.LoadFactor : Base != null ? Base.LoadFactor(terrainType) : 1;
+    public float SpeedFactor(TerrainType terrainType) => Terrains.TryGetValue(terrainType, out var spec) ? spec.SpeedFactor : Base != null ? Base.SpeedFactor(terrainType) : 1;
+    public float PowerFactor(TerrainType terrainType) => Terrains.TryGetValue(terrainType, out var spec) ? spec.PowerFactor : Base != null ? Base.PowerFactor(terrainType) : 1;
+}
+public class TractionTerrainSpec: IGroupRecord {
+    public string GroupKey => TractionId;
+
+    public string TractionId { get; set; } = string.Empty;
+    public TerrainType TerrainType { get; set; } = TerrainType.Plains;
+    public float LoadFactor { get; set; } = 1;
+    public float SpeedFactor { get; set; } = 1;
+    public float PowerFactor { get; set; } = 1;
+}

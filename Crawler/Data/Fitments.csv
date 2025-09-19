@@ -1,0 +1,5 @@
+﻿Segment,Socket,Side,Count,Socketable
+Body (Small),Leg (Small),Right,1,Steel Leg
+Body (Small),Leg (Small),Left,1,Steel Leg
+Cockpit (Small),Turret (Small),Head,1,Reinforced Turret
+Cockpit (Small),Turret (Small),Left,1,Automatic Turret

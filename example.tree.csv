@@ -1,0 +1,113 @@
+﻿{
+    "schemas": [
+        {
+            "$id": "TractionSpec",
+            "type": "object",
+            "properties": {
+                "Name": {
+                    "type": "string"
+                },
+                "Size": {
+                    "$ref": "#/$defs/Size"
+                },
+                "Width": {
+                    "type": "integer"
+                },
+                "Length": {
+                    "type": "integer"
+                },
+                "Height": {
+                    "type": "integer"
+                },
+                "ArmorMax": {
+                    "type": "integer"
+                },
+                "HullMax": {
+                    "type": "integer"
+                },
+                "PowerUsed": {
+                    "type": "integer"
+                },
+                "Mass": {
+                    "type": "integer"
+                },
+                "Type": {
+                    "$ref": "#/$defs/SocketType"
+                },
+                "LoadMax": {
+                    "type": "integer"
+                },
+                "Efficiency": {
+                    "type": "number"
+                },
+                "SpeedMax": {
+                    "type": "integer"
+                },
+                "Base": {
+                    "type": "string",
+                    "description": "Reference to base TractionSpec"
+                },
+                "Terrains": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/TractionTerrainSpec"
+                    }
+                }
+            },
+            "required": ["Name", "Size", "Width", "Length", "Height", "ArmorMax", "HullMax", "PowerUsed", "Mass", "Type", "LoadMax", "Efficiency", "SpeedMax"]
+        },
+        {
+            "$id": "TractionTerrainSpec",
+            "type": "object",
+            "properties": {
+                "TerrainType": {
+                    "$ref": "#/$defs/TerrainType"
+                },
+                "LoadFactor": {
+                    "type": "integer"
+                },
+                "SpeedFactor": {
+                    "type": "integer"
+                },
+                "PowerFactor": {
+                    "type": "integer"
+                },
+                "Effects": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Effect"
+                    }
+                }
+            },
+            "required": ["TerrainType", "LoadFactor", "SpeedFactor", "PowerFactor"]
+        },
+        {
+            "$id": "Effect",
+            "type": "object",
+            "properties": {
+                "Type": {
+                    "type": "string",
+                    "enum": ["Sound", "Sprite", "Damage"]
+                },
+                "Id": {
+                    "type": "string"
+                }
+            },
+            "required": ["Type", "Id"]
+        }
+    ],
+    "$defs": {
+        "Size": {
+            "type": "string",
+            "enum": ["Small", "Medium", "Large"]
+        },
+        "SocketType": {
+            "type": "string",
+            "enum": ["Leg", "Wheel", "Track", "Hover"]
+        },
+        "TerrainType": {
+            "type": "string",
+            "enum": ["Plains", "Hills", "Mountain", "Broken", "Gulley", "River", "Lava"]
+        }
+    }
+}

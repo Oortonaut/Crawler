@@ -1,0 +1,5 @@
+﻿Name,Size,SocketType,TractionType,Width,Length,Height,ArmorMax,HullMax,PowerUsed,Mass,LoadMax,Efficiency,SpeedMax,Base
+Steel Leg,Small,Traction,Leg,1,2,1,1,3,50,100,1200,.40,45,""
+Wheel,Small,Traction,Wheel,1,1,1,2,2,50,100,1500,.5,65,""
+Treads,Small,Traction,Tread,2,1,1,2,2,50,100,2000,.3,35,""
+Hover,Small,Traction,Hover,1,1,2,3,1,50,100,800,.25,50,""

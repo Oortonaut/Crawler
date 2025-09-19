@@ -1,0 +1,179 @@
+﻿using System.Collections;
+using CsvHelper;
+using CsvHelper.Configuration;
+using CsvHelper.TypeConversion;
+using System.Globalization;
+using System.Reflection;
+using System.Text.RegularExpressions;
+
+namespace Crawler;
+
+public static partial class CrawlerEx {
+    public static Dictionary<Key, List<Value>> ToDictionary<Key, Value>(this IEnumerable<IGrouping<Key, Value>> grouping)
+        where Value : IGroupRecord
+        where Key : notnull {
+        return grouping.ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+}
+public class Database {
+    public Dictionary<string, SocketSpec> Sockets;
+    public Dictionary<string, SegmentSpec> Segments;
+    public Dictionary<string, List<FitmentSpec>> Fitments;
+    public Dictionary<string, CrawlerSpec> Crawlers;
+    public Dictionary<string, TractionSpec> Tractions;
+    public Dictionary<string, List<TractionTerrainSpec>> TractionTerrains;
+
+    public Database() {
+        Tractions = Load<TractionSpec>("Data/Tractions.csv");
+        TractionTerrains = LoadGrouped<TractionTerrainSpec>("Data/TractionTerrains.csv");
+
+        Sockets = Load<SocketSpec>("Data/Sockets.csv");
+        Segments = Load<SegmentSpec>("Data/Segments.csv");
+        Fitments = LoadGrouped<FitmentSpec>("Data/Fitments.csv");
+        Crawlers = Load<CrawlerSpec>("Data/Crawlers.csv");
+        //Tractions = LoadTree<TractionSpec>("Data/example.tree.csv");
+
+        foreach (var (fitmentId, spec) in Segments) {
+            if (Fitments.TryGetValue(fitmentId.Trim(), out var fitmentsForSegment)) {
+                spec.Fitments = fitmentsForSegment;
+            } else {
+                Console.WriteLine($"Segment fitments {fitmentId} not found");
+            }
+        }
+
+        foreach (var (tractionId, tractionTerrains) in TractionTerrains) {
+            if (Tractions.TryGetValue(tractionId.Trim(), out var traction)) {
+                traction.Terrains = tractionTerrains.Select(t => (t.TerrainType, t)).ToDictionary();
+            } else {
+                Console.WriteLine($"Traction {tractionId} not found");
+            }
+        }
+    }
+
+    private Dictionary<string, Spec> Load<Spec>(string filePath) where Spec : ISpecRecord {
+        using var reader = new StreamReader(filePath);
+        using var csv = NewReader(reader);
+
+        try {
+            var records = csv.GetRecords<Spec>();
+            var specs = records.Select(s => (s.UniqueKey.Trim(), s));
+            return specs.ToDictionary();
+        } catch (CsvHelperException ex) {
+            Console.WriteLine($"Error reading specs from {filePath}: {ex.Message}");
+        }
+
+        return new();
+    }
+
+    // Load specs grouped by their GroupKey property
+    private Dictionary<string, List<Spec>> LoadGrouped<Spec>(string filePath) where Spec : IGroupRecord {
+        using var reader = new StreamReader(filePath);
+        using var csv = NewReader(reader);
+
+        try {
+            var records = csv.GetRecords<Spec>().ToList();
+            var grouped = records
+                .GroupBy(s => s.GroupKey.Trim());
+            return grouped.ToDictionary(g => g.Key, g => g.ToList());
+        } catch (CsvHelperException ex) {
+            Console.WriteLine($"Error reading grouped specs from {filePath}: {ex.Message}");
+        }
+
+        return new();
+    }
+
+    CsvReader NewReader(StreamReader reader) {
+        var config = new CsvConfiguration(CultureInfo.InvariantCulture) {
+            HasHeaderRecord = true,
+            MissingFieldFound = null,
+            HeaderValidated = null,
+        };
+        var csv = new CsvReader(reader, config);
+        // Register custom type converters for enums
+        csv.Context.TypeConverterCache.AddConverter<ComponentSizes>(new EnumConverter(typeof(ComponentSizes)));
+        csv.Context.TypeConverterCache.AddConverter<SocketType>(new EnumConverter(typeof(SocketType)));
+        csv.Context.TypeConverterCache.AddConverter<Side>(new EnumConverter(typeof(Side)));
+        csv.Context.TypeConverterCache.AddConverter<TerrainType>(new EnumConverter(typeof(TerrainType)));
+        csv.Context.TypeConverterCache.AddConverter<TractionType>(new EnumConverter(typeof(TractionType)));
+
+        if (Sockets != null) {
+            csv.Context.TypeConverterCache.AddConverter<SocketSpec>(new SpecConverter<SocketSpec>("Sockets.csv", Sockets));
+            csv.Context.TypeConverterCache.AddConverter<List<SocketSpec>>(new SpecListConverter<SocketSpec>("Sockets.csv", Sockets));
+        }
+
+        if (Segments != null) {
+            csv.Context.TypeConverterCache.AddConverter<SegmentSpec>(new SpecConverter<SegmentSpec>("Segments.csv", Segments));
+            csv.Context.TypeConverterCache.AddConverter<List<SegmentSpec>>(new SpecListConverter<SegmentSpec>("Segments.csv", Segments));
+        }
+
+        if (Tractions != null) {
+            csv.Context.TypeConverterCache.AddConverter<TractionSpec>(new SpecConverter<TractionSpec>("Tractions.csv", Tractions));
+            csv.Context.TypeConverterCache.AddConverter<List<TractionSpec>>(new SpecListConverter<TractionSpec>("Tractions.csv", Tractions));
+        }
+
+        return csv;
+    }
+}
+
+// Custom type converter for the Mounts column
+public class SpecListConverter<Spec>: DefaultTypeConverter where Spec : ISpecRecord {
+    private readonly Dictionary<string, Spec> _specs;
+    private readonly string _tableName;
+
+    public SpecListConverter(string tableName, Dictionary<string, Spec> specs) {
+        _specs = specs;
+        _tableName = tableName;
+    }
+
+    public override object ConvertFromString(string? text, IReaderRow row, MemberMapData memberMapData) {
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<Spec>();
+
+        var mountNames = text.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        var mounts = new List<Spec>();
+
+        foreach (var mountName in mountNames) {
+            var trimmedName = mountName.Trim();
+            if (_specs.TryGetValue(trimmedName, out var mount)) {
+                mounts.Add(mount);
+            } else {
+                Console.WriteLine($"{typeof(Spec)} {trimmedName} not found in {_tableName}");
+            }
+        }
+
+        return mounts;
+    }
+    public override string ConvertToString(object? value, IWriterRow row, MemberMapData memberMapData) {
+        return string.Join(";", value?.ToString() ?? "");
+    }
+}
+
+// Custom type converter for individual Spec objects
+public class SpecConverter<Spec>: DefaultTypeConverter where Spec : ISpecRecord {
+    private readonly Dictionary<string, Spec> _specs;
+    private readonly string _tableName;
+
+    public SpecConverter(string tableName, Dictionary<string, Spec> specs) {
+        _tableName = tableName;
+        _specs = specs;
+    }
+
+    public override object? ConvertFromString(string? ident, IReaderRow row, MemberMapData memberMapData) {
+        if (string.IsNullOrWhiteSpace(ident))
+            return null;
+
+        if (_specs.TryGetValue(ident.Trim(), out var spec)) {
+            return spec;
+        }
+        Console.WriteLine($"Spec {ident} not found in {_tableName}");
+        return null;
+    }
+
+    public override string ConvertToString(object? value, IWriterRow row, MemberMapData memberMapData) {
+        if (value is ISpecRecord spec) {
+            return spec.UniqueKey;
+        }
+        return string.Empty;
+    }
+}
