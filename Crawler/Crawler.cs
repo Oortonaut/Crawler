@@ -1,572 +1,774 @@
-﻿namespace Crawler;
+﻿using System.Collections;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
-public static partial class CrawlerEx {
-    public static int Length<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>().Length;
-    public static ENUM ChooseRandom<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>()[Random.Shared.Next(0, Length<ENUM>() - 1)];
-    public static double Roll(this int Count, double sides) {
-        double result = 0;
-        for (int i = 0; i < Count; i++) {
-            result += Random.Shared.NextDouble() * sides;
-        }
-        return result;
-    }
-    public static double RollLow(this int Count, int Take, double sides) {
-        // Roll Count dice and Take the lowest. Converges to log-normal distributions.
-        double[] rolls = new double[Count];
-        for (int i = 0; i < Count; i++) {
-            rolls[i] = Random.Shared.NextDouble() * sides;
-        }
-        Array.Sort(rolls);
-        return rolls.Take(Take).Sum();
-    }
+namespace Crawler;
+
+public class ActorToActor {
+    public bool WasHostile => DamageCreated > 0;
+    public bool WasDamaged => DamageTaken > 0; // Track if we've taken any damage from them
+    public bool Hostile = false; // Are we hostile
+    public bool Surrendered = false;
+    public int DamageCreated = 0;
+    public int DamageInflicted = 0;
+    public int DamageTaken = 0;
 }
-public enum SegmentType: byte {
-    Guns,
-    Lasers, //
-    Missiles, // slow, strong alpha
 
-    Reactor, // Provides power to move and fire weapons
-    Battery, // Single use reactor
-    Charger, // Increases fuel efficiency
-
-    Legs,
-    Wheels,
-    Treads,
-
-    Armor, // soaks up to amount; damaged when over, several HP
-    Shield, // soaks up to amount but doesn't recharge until end of combat
-    Ablative, // low armor, high HP
-}
-public enum SegmentClass: byte {
-    // Core segments provide power and movement
-    Core = 0,
-    Power = Core,
-    Traction,
-    Offense,
-    Defense,
-
-    // Aux segments provide bonuses and improvements to core segments
-    Aux = 128,
-    AuxPower = Aux,
-    AuxTraction,
-    AuxOffense,
-    AuxDefense,
-
-}
-public record Segment(string Name, SegmentType Type, int Amount, int Rate, int Weight, int Power, int Cost, int HP, int Dmg = 0, int State = 0) {
-    public override string ToString() => $"{Type} {Name} AMT:{Amount,2} RATE:{Rate,2} TONS:{Weight,2} MW:{Power,2} COST:{Cost,3} HP:{HP,2} DMG:{Dmg,2}";
-
-    public SegmentClass SegmentClass => Type switch {
-        SegmentType.Reactor => SegmentClass.Power,
-        SegmentType.Battery => SegmentClass.AuxPower,
-        SegmentType.Charger => SegmentClass.AuxPower,
-        SegmentType.Legs => SegmentClass.Traction,
-        SegmentType.Wheels => SegmentClass.Traction,
-        SegmentType.Treads => SegmentClass.Traction,
-        SegmentType.Guns => SegmentClass.Offense,
-        SegmentType.Lasers => SegmentClass.Offense,
-        SegmentType.Missiles => SegmentClass.Offense,
-        SegmentType.Armor => SegmentClass.Defense,
-        SegmentType.Shield => SegmentClass.Defense,
-        SegmentType.Ablative => SegmentClass.Defense,
-        _ => SegmentClass.Core
-    };
-    public bool IsDestroyed => Dmg >= HP; // 0% HP = 1 2 3 4 5 6
-    public bool IsActive => Dmg < (HP + 1) / 2; // 50% HP = 1 1 2 2 3 3 etc.
-    public bool IsDisabled => !IsActive && !IsDestroyed;
-
-    public int HPLeft => HP - Dmg;
-    public int StateLeft => Amount - State;
-
-    public string StateString => IsActive ? "(Active)" : IsDestroyed ? "(Destroyed)" : "(Disabled)";
-    public Segment Recharged(int Count) => IsActive
-        ? Type switch {
-            SegmentType.Shield => AddState(Rate * Count),
-            SegmentType.Reactor => AddState(Rate * Count),
-            SegmentType.Battery => AddState(Rate * Count),
-            SegmentType.Charger => AddState(Rate * Count),
-            _ => this,
-        }
-        : this;
-    public Segment AddDamage(int dmg) => this with {
-        Dmg = Math.Clamp(Dmg + dmg, 0, HP)
-    };
-    public Segment AddState(int state) => this with {
-        State = Math.Clamp(State + state, 0, Amount)
-    };
-
-    public string Report {
-        get {
-            string result = Style.Em.Format(Name.Substring(2).PadRight(20));
-            result += GetStyle().Format($"\t\tAR:{Amount,2}/{Rate,2} WT:{Weight,2} MW:{Power,2} COST:{Cost,3} HP:{HP,2} DMG:{Dmg,2} STT:{State,2}");
-            return result;
-        }
-    }
-    Style GetStyle() {
-        Style result = Style.None;
-        if (IsDestroyed) {
-            result = Style.SegmentDestroyed;
-        } else if (IsDisabled) {
-            result = Style.SegmentDisabled;
-        } else {
-            result = Style.SegmentActive;
-        }
-        return result;
-    }
-    public StyledString Colored {
-        get {
-            int hpLeft = HPLeft;
-            int stateLeft = StateLeft;
-            char code = SegmentClass switch {
-                SegmentClass.Power => 'P',
-                SegmentClass.Traction => 'T',
-                SegmentClass.Offense => 'O',
-                SegmentClass.Defense => 'X',
-                SegmentClass.AuxPower => 'p',
-                SegmentClass.AuxTraction => 't',
-                SegmentClass.AuxOffense => 'o',
-                SegmentClass.AuxDefense => 'x',
-                _ => '?',
-            };
-            string result = $"{code}{Name[0]}{levelCode(hpLeft),1}{levelCode(stateLeft),1}";
-            Style style = GetStyle();
-            return new(style, result);
-        }
-    }
-    string levels = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    char levelCode(int x) => x < 0 || x >= levels.Length ? '-' : levels[x];
-
-    public static List<Segment> Prototypes = [
-        // For guns, amount is the damage per shot, rate is number of shots per combat round
-        new Segment("g:Basic Guns", SegmentType.Guns, 2, 1, 3, 1, 100, 3),
-        new Segment("G:Heavy Guns", SegmentType.Guns, 3, 1, 3, 1, 150, 3),
-        new Segment("l:Basic Lasers", SegmentType.Lasers, 2, 1, 2, 2, 120, 3),
-        new Segment("L:Heavy Lasers", SegmentType.Lasers, 2, 2, 2, 2, 170, 3),
-        new Segment("m:Basic Missiles", SegmentType.Missiles, 2, 1, 4, 1, 110, 3),
-        new Segment("M:Heavy Missiles", SegmentType.Missiles, 3, 1, 4, 1, 160, 3),
-
-        // For power segments, amount is battery capacity, rate is refill per combat round
-        new Segment("r:Small Reactor", SegmentType.Reactor, 4, 4, 5, 0, 120, 7),
-        new Segment("R:Large Reactor", SegmentType.Reactor, 6, 6, 2, 0, 180, 8),
-        new Segment("b:Small Battery", SegmentType.Battery, 10, 2, 1, 0, 150, 2),
-        new Segment("B:Large Battery", SegmentType.Battery, 15, 3, 1, 0, 250, 2),
-        new Segment("c:Charger", SegmentType.Charger, 0, 3, 1, 0, 80, 4),
-        new Segment("C:Supercharger", SegmentType.Charger, 0, 4, 1, 0, 120, 4),
-
-        // For movement sections, amount is terrain handling, rate is move speed
-        new Segment("-:Legs", SegmentType.Legs, 4, 30, -2, 1, 110, 3),
-        new Segment("=:Heavy Legs", SegmentType.Legs, 4, 30, -3, 1, 140, 3),
-        new Segment("+:Fast Legs", SegmentType.Legs, 4, 40, -2, 1, 140, 3),
-
-        new Segment("O:Wheels", SegmentType.Wheels, 2, 40, -3, 1, 90, 2),
-        new Segment("@:Balloon", SegmentType.Wheels, 3, 30, -2, 1, 120, 2),
-        new Segment("Q:High Speed", SegmentType.Wheels, 2, 50, -3, 2, 130, 2),
-
-        new Segment("%:Treads", SegmentType.Treads, 3, 30, -4, 1, 110, 4),
-        new Segment("$:Flex Treads", SegmentType.Treads, 3, 30, -3, 1, 140, 4),
-        new Segment("#:Heavy Treads", SegmentType.Treads, 3, 25, -5, 1, 150, 5),
-
-        // For armor sections, amount is the damage soaked, rate is the number of hits t2e piece can take before destruction.
-        new Segment("p:Light Plating", SegmentType.Armor, 1, 2, 1, 0, 120, 5),
-        new Segment("P:Heavy Plating", SegmentType.Armor, 2, 2, 1, 0, 200, 8),
-        new Segment("D:Duraplate", SegmentType.Ablative, 1, 4, 2, 0, 210, 10),
-        new Segment("s:Light Shields", SegmentType.Shield, 5, 1, 2, 0, 210, 2),
-        new Segment("I:Quick Shields", SegmentType.Shield, 3, 2, 2, 0, 210, 2),
-        new Segment("S:Heavy Shields", SegmentType.Shield, 8, 1, 2, 0, 210, 2),
-    ];
-
-    public static Dictionary<char, Segment> Lookup = Prototypes.ToDictionary(s => s.Name[0]);
-    public static List<Segment> Create(string segmentCodestring) => segmentCodestring.Select(s => Lookup[s] with {
-    }).ToList();
-    public static char RandomPreset() => Prototypes[Random.Shared.Next(0, Prototypes.Count - 1)].Name[0];
-    public static string AllSegmentCodes() => string.Join("", Prototypes.Select(s => s.Name[0]));
-
-    public static string AllWeaponSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Offense or SegmentClass.AuxOffense).Select(s => s.Name[0]));
-    public static string AllPowerSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Power or SegmentClass.AuxPower).Select(s => s.Name[0]));
-    public static string AllTractionSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Traction or SegmentClass.AuxTraction).Select(s => s.Name[0]));
-    public static string AllDefenseSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Defense or SegmentClass.AuxDefense).Select(s => s.Name[0]));
-    public static string CoreWeaponSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Offense).Select(s => s.Name[0]));
-    public static string CorePowerSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Power).Select(s => s.Name[0]));
-    public static string CoreTractionSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Traction).Select(s => s.Name[0]));
-    public static string CoreDefenseSegmentCodes() => string.Join("", Prototypes.Where(p => p.SegmentClass is SegmentClass.Defense).Select(s => s.Name[0]));
-}
-public enum Faction {
-    Player, // eg a Player crawler
-    Bandit, // a Bandit crawler
-    Hero,
-    Trade,
-    Mercenary,
-    Civilian,
-}
 public class Crawler: IActor {
-    public static Crawler NewRandom(Location here, double LocWealthScale, double CommoditiesFraction, double[] segmentClassWeights) {
+    public static Crawler NewRandom(Location here, float LocWealthScale, float CommoditiesFraction, EArray<SegmentKind, float> segmentClassWeights, Faction faction = Faction.Player) {
         var newInv = new Inventory();
-        double Budget = here.Wealth * LocWealthScale;
-        newInv.AddRandomInventory(here, Budget, CommoditiesFraction, true, segmentClassWeights);
+        float Budget = here.Wealth * LocWealthScale;
+        float CrewSplit = CommoditiesFraction * 0.5f;
+        float GoodsSplit = CommoditiesFraction * 0.5f;
+        newInv.AddRandomInventory(here, Budget, CrewSplit, GoodsSplit, true, segmentClassWeights, faction);
         return new Crawler(here, newInv);
     }
     public Crawler(Location location, Inventory inventory) {
         Inv = inventory;
         Location = location;
+        Name = Names.HumanName();
+        _markup = Math.Max(CrawlerEx.NextGaussian(Tuning.Trade.rate, Tuning.Trade.sd), 1);
     }
-    public Crawler(Location location, string segmentCodes = "gr%") {
-        Location = location;
-        List<Segment> segments = new();
-        try {
-            segments = Segment.Create(segmentCodes);
-        } catch (Exception e) {
-            Console.WriteLine($"Error parsing segment codes: {e.Message}");
-        }
-        Inv = new Inventory([1000, 50, 100, 16, 20], segments);
-    }
-    public string Name { get; set; } = "Neophyte";
-    public string Brief(int detail) {
-        var C = Colored().Split('\n');
-        if (FailState is not null) {
-            C[0] += " " + Style.SegmentDestroyed.Format(FailState);
-        }
-        if (IsDepowered) {
-            C[0] += " (Depowered)";
-        }
-        if (IsStranded) {
-            C[0] += " (Stranded)";
-        }
-        detail = 2;
-        if (detail >= 1) {
-            var CurrentTerrain = Location.Terrain;
-            int terrainRate = TotalPullOn(CurrentTerrain);
-            int fuelEfficiency = 100 - ( int ) (Math.Sqrt(TotalRecharge) * 10);
+    public string Name { get; set; }
+    public string Brief(IActor viewer) {
+        var C = CrawlerDisplay(viewer).Split('\n');
 
-            C[1] += $" MW {TotalPower,3}/{TotalReactor,3}+{TotalBattery,3}";
-            C[1] += $" MV {TotalWeight,3}@{terrainRate,3}/{TotalCarry,3}";
-        }
-        if (detail >= 2) {
-            C[2] += " " + Style.None.Format(Inv.Brief());
-        }
-        if (detail <= 0) {
+        C[1] += $" Power: {TotalCharge:F1} + {TotalGeneration:F1}/t  Drain: Off:{OffenseDrain:F1}  Def:{DefenseDrain:F1}  Move:{MovementDrain:F1}";
+        C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h";
+        if (this == viewer) {
+            float RationsPerDay = CrewInv * Tuning.Crawler.RationsPerCrewDay;
+            C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}";
+            C[4] += $" Crew: {CrewInv:F0}  Rations: {RationsInv:F1}, {RationsPerDay:F1}/d  Morale: {MoraleInv}";
+            C[5] += $" Fuel: {FuelPerHr:F1}/d, {MovementFuelUsePerKm*100:F2}/100km";
+        } else {
             C = C.Take(3).ToArray();
         }
         return string.Join("\n", C);
     }
+    public EActorFlags Flags { get; set; } = EActorFlags.Mobile;
     public Location Location { get; set; }
 
-    long Hour = 300000000;
-    long Day => Hour / 25;
-    long HOD => Hour % 25;
-    long Week => Day / 10;
-    long DOW => Day % 10;
+    static Crawler() {
+        //Faction.Bandit.To(Faction.Player).SetMenuFunc(BanditMenu);
+        //Faction.Bandit.To(Faction.Player).DefaultCrawlerRelation = banditToPlayer;
 
-    double CycleFrac(long duration, long offset = 0) => ((Hour - offset) % duration) / ( double ) duration;
-    double CycleWave(long duration, long offset = 0) => Math.Sin(Math.PI * 2 * CycleFrac(duration, offset));
-
-    double ShortWave => CycleWave(3180);
-    double LongWave => CycleWave(10813);
-
-    // + factions are good or defensive; neutral with other good factions, oppose evel
-    // - factions are evil or aggro, oppose all factions except their own
-    public Faction Faction { get; set; } = 0;
-    // Called on YOUR Crawler
-    public IEnumerable<MenuItem> MenuItems(IActor other) {
-        List<MenuItem> result = new();
-        switch (other.Faction) {
-        case Faction.Bandit:
-            result.Add(new ActionMenuItem("BF", $"Flee the bandit crawler {other.Name}", _ => Flee(other)));
-            result.Add(new ActionMenuItem("BA", $"Attack the bandit crawler {other.Name}", _ => Attack(other)));
-            break;
-        case Faction.Hero: break;
-        case Faction.Player: break;
-        case Faction.Trade:
-            result.Add(new ActionMenuItem("TR", $"Trade with {other.Name}", _ => Trade(other)));
-            break;
-        case Faction.Mercenary: break;
-        case Faction.Civilian: break;
+    }
+    public float FuelPerHr => StandbyDrain / FuelEfficiency;
+    public float MovementFuelUsePerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
+    public float WagesPerHr => CrewInv * Tuning.Crawler.WagesPerCrewDay / 24;
+    public float RationsPerHr => CrewInv * Tuning.Crawler.RationsPerCrewDay / 24;
+    public (float Fuel, float Time) FuelTimeTo(Location location) {
+        float dist = Location.Distance(location);
+        float startSpeed = Speed;
+        float endSpeed = SpeedOn(location.Terrain);
+        float terrainRate = Math.Min(startSpeed, endSpeed);
+        if (terrainRate <= 0) {
+            return (-1, -1);
         }
-        return result;
+        float time = dist / terrainRate;
+        float fuel = MovementFuelUsePerKm * dist + FuelPerHr * time;
+        return (fuel, time);
     }
-    int Flee(IActor other) {
-        Console.WriteLine($"Fleeing {other.Name}");
-        return 1;
+
+    public Faction Faction { get; set; }
+    public int EvilPoints { get; set; } = 0;
+    public List<IProposal> StoredProposals { get; private set; } = new();
+    public virtual IEnumerable<IProposal> Proposals() => StoredProposals;
+    //IEnumerable<MenuItem> BanditActions(Crawler other, int attackIndex) {
+    //    var banditToPlayer = GetRelationTo(other);
+    //    if (!IsDestroyed) {
+    //        yield return new ActionMenuItem($"A{attackIndex}", $"Attack {Name}", _ => other.Attack(this));
+    //        if (IsVulnerable && !banditToPlayer.Surrendered) {
+    //
+    //            //yield return new TradeMenuItem(AcceptSurrenderOffer.MakeSurrenderTo(other, this), attackIndex);
+    //        }
+    //    }
+    //}
+
+    public bool Pinned() {
+        bool CantEscape(Crawler crawler) => crawler.To(this).Hostile && Speed < crawler.Speed;
+        return Location.Encounter.Actors.Any(a => a is Crawler crawler && CantEscape(crawler));
     }
-    int Trade(IActor other) {
-        var (tradeResult, args) = CrawlerEx.Menu($"{other.Name} Trade Menu", Menu_OffersFrom(other).ToArray());
-        if (tradeResult.IsSeparator || tradeResult.IsCancel) {
-            return 0;
-            // cancelled, no cost
-        }
-        if (tradeResult is ActionMenuItem tradeAction) {
-            return tradeAction.TryRun(args);
-        };
-        return 0;
-    }
-    public IEnumerable<TradeOffer> TradeOffers(IActor other) => Offers;
-    IEnumerable<MenuItem> Menu_OffersFrom(IActor Seller) {
-        List<MenuItem> result = new();
-        result.Add(MenuItem.Sep);
-        result.Add(new ActionMenuItem("X", "Cancel", null));
-        int Index = 0;
-        foreach (var offer in Seller.TradeOffers(this)) {
-            if (Index % 3 == 0) {
-                result.Add(MenuItem.Sep);
+
+    public void Tick() {
+        UpdateSegments();
+        if (Game.Instance.TimeSeconds % 3600 == 0) {
+            Recharge(1);
+            if (RationsInv <= 0) {
+                Message("You are out of rations and your crew is starving.");
+                CrewInv *= 0.99f;
+                RationsInv = 0;
             }
-            ++Index;
-
-            var lambda = (string args) => {
-                int count = int.Parse(args);
-                if (count <= 1) {
-                    count = 1;
-                }
-                int transferred = 0;
-                while (transferred < count) {
-                    if (offer.CanPerform(Inv, Seller.Inv)) {
-                        offer.Perform(Inv, Seller.Inv);
-                        ++transferred;
-                    } else {
-                        break;
-                    }
-                }
-                return transferred > 0 ? 1 : 0;
-            };
-            bool canPerform = offer.CanPerform(Inv, Seller.Inv);
-            result.Add(new ActionMenuItem($"T{Index}", offer.ToString(), canPerform ? lambda : null));
+            if (IsDepowered) {
+                Message("Your oxygen is running low.");
+                MoraleInv -= 1.0f;
+            }
         }
-        return result;
-
+        if (CrewInv == 0) {
+            // TODO: List killers
+            if (RationsInv == 0) {
+                End(EEndState.Starved, "All the crew have starved.");
+            } else {
+                End(EEndState.Killed, "The crew have been killed.");
+            }
+        }
+        if (MoraleInv == 0) {
+            End(EEndState.Revolt, "The crew has revolted.");
+        }
+        if (!UndestroyedSegments.Any()) {
+            End(EEndState.Destroyed, "Your crawler has been utterly destroyed.");
+        }
+        UpdateSegments();
     }
     public void Tick(IEnumerable<IActor> Actors) {
-        ++Hour;
-        Recharge(1);
-        Rations -= CrawlerEx.StochasticInt(Crew * 0.03);
-        if (Rations <= 0) {
-            Crew = CrawlerEx.StochasticInt(Crew * 0.97);
-            Rations = 0;
-        }
-        if (IsDepowered) {
-            Morale -= CrawlerEx.StochasticInt(-0.05);
-        }
         if (Faction is Faction.Bandit) {
             TickBandit(Actors);
         }
+        UpdateSegments();
     }
     protected void TickBandit(IEnumerable<IActor> Actors) {
         if (IsDepowered) {
-            Console.WriteLine($"{Name} is radio silent.");
+            Message($"{Name} is radio silent.");
             return;
         }
         foreach (var actor in Actors) {
+            var relation = To(actor);
             if (actor.Faction == Faction.Player) {
-                Attack(actor);
+                if (relation.Hostile) {
+                    this.Attack(actor);
+                }
                 break;
             }
         }
     }
 
-    public Inventory Inv { get; set; } = Inventory.Empty;
-    public List<TradeOffer> Offers { get; set; } = new();
+    public void Message(string message) {
+        // TODO: Message history for other actors
+        if (this == Game.Instance.Player) {
+            CrawlerEx.Message(message);
+        }
+    }
+    public bool Knows(Location loc) => _locations.ContainsKey(loc);
 
-    public int TotalPower => ActiveSegments.Sum(s => s.Power);
-    public int TotalWeight => Segments.Sum(s => s.Weight > 0 ? s.Weight : 0);
-    public int TotalCarry => ActiveSegments.Sum(s => s.Weight < 0 ? -s.Weight : 0);
-    public int TotalPullOn(TerrainType t) => ActiveSegments.Sum(s => s.SegmentClass is SegmentClass.Traction && s.Amount >= ( int ) t ? s.Rate : 0);
-    public int TotalPull => TotalPullOn(Location.Terrain);
-    public int TotalReactor => ActiveSegments.Sum(s => s.Type is SegmentType.Reactor ? s.Amount : 0);
-    public int TotalRecharge => ActiveSegments.Sum(s => s.Type is SegmentType.Charger ? s.Amount : 0);
-    public int TotalBattery => ActiveSegments.Sum(s => s.Type is SegmentType.Battery ? s.Amount : 0);
+    Inventory _inventory = new Inventory();
+    public Inventory Inv {
+        get => _inventory;
+        set {
+            _inventory = value;
+            UpdateSegments();
+        }
+    }
+    public Inventory TradeInv { get; } = new Inventory();
+    public void UpdateSegments() {
+        _allSegments = Inv.Segments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
 
-    public string SegmentString => string.Join("", Segments.Select(s => s.Name[0]));
+        _activeSegments.Clear();
+        _disabledSegments.Clear();
+        _destroyedSegments.Clear();
+        _segmentsByClass.Initialize(() => new List<Segment>());
+        _activeSegmentsByClass.Initialize(() => new List<Segment>());
+
+        foreach (var segment in _allSegments) {
+            _segmentsByClass[segment.SegmentKind].Add(segment);
+            switch (segment.State) {
+                case Segment.Working.Active:
+                    _activeSegmentsByClass[segment.SegmentKind].Add(segment);
+                    _activeSegments.Add(segment);
+                    _undestroyedSegments.Add(segment);
+                    break;
+                case Segment.Working.Disabled:
+                    _disabledSegments.Add(segment);
+                    _undestroyedSegments.Add(segment);
+                    break;
+                case Segment.Working.Destroyed:
+                    _destroyedSegments.Add(segment);
+                    break;
+                case Segment.Working.Deactivated:
+                    _undestroyedSegments.Add(segment);
+                    break;
+                case Segment.Working.Packaged:
+                    _undestroyedSegments.Add(segment);
+                    break;
+            }
+        }
+    }
+    List<Segment> _allSegments = [];
+    List<Segment> _activeSegments = [];
+    List<Segment> _disabledSegments = [];
+    List<Segment> _destroyedSegments = [];
+    List<Segment> _undestroyedSegments = [];
+    EArray<SegmentKind, List<Segment>> _segmentsByClass = new();
+    EArray<SegmentKind, List<Segment>> _activeSegmentsByClass = new();
+    public List<Segment> SegmentsFor(SegmentKind segmentKind) => _segmentsByClass[segmentKind];
+    public List<Segment> ActiveSegmentsFor(SegmentKind segmentKind) => _activeSegmentsByClass[segmentKind];
+    public List<Segment> Segments => _allSegments;
+    public List<Segment> ActiveSegments => _activeSegments;
+    public List<Segment> DisabledSegments => _disabledSegments;
+    public List<Segment> DestroyedSegments => _destroyedSegments;
+    public List<Segment> UndestroyedSegments => _undestroyedSegments;
+    public IEnumerable<TractionSegment> TractionSegments => _activeSegmentsByClass[SegmentKind.Traction].Cast<TractionSegment>();
+    public IEnumerable<OffenseSegment> OffenseSegments => _activeSegmentsByClass[SegmentKind.Offense].Cast<OffenseSegment>();
+    public IEnumerable<OffenseSegment> WeaponSegments => _activeSegmentsByClass[SegmentKind.Offense].OfType<WeaponSegment>();
+    public IEnumerable<DefenseSegment> DefenseSegments => _activeSegmentsByClass[SegmentKind.Defense].Cast<DefenseSegment>();
+    public IEnumerable<DefenseSegment> CoreDefenseSegments => _activeSegmentsByClass[SegmentKind.Defense].Cast<DefenseSegment>();
+    public IEnumerable<PowerSegment> PowerSegments => _activeSegmentsByClass[SegmentKind.Power].Cast<PowerSegment>();
+
+    public float Speed => SpeedOn(Location.Terrain);
+    public float Lift => LiftOn(Location.Terrain);
+    public float MovementDrain => MovementDrainOn(Location.Terrain);
+    public float OffenseDrain => OffenseSegments.Sum(s => s.Drain);
+    public float DefenseDrain => DefenseSegments.Sum(s => s.Drain);
+    public float TotalDrain => ActiveSegments.Sum(s => s.Drain);
+    public float StandbyDrain => TotalDrain * Tuning.Crawler.StandbyFraction;
+
+    public float SpeedOn(TerrainType t) {
+        return EvaluateMove(t).Speed;
+    }
+    public float LiftOn(TerrainType t) => TractionSegments.Sum(ts => ts.LiftOn(t));
+    public float MovementDrainOn(TerrainType t) {
+        return EvaluateMove(t).Drain;
+    }
+    public record struct Move(float Speed, float Drain, string? Error);
+    public Move EvaluateMove(TerrainType t) {
+        float bestSpeed = 0;
+        float drain = 0;
+        string bestMsg = "";
+        float generation = TotalGeneration;
+        float weight = Mass;
+        var segments = TractionSegments.ToArray();
+        for (TerrainType i = TerrainType.Flat; i <= t; ++i) {
+            float speed = segments.Sum(ts => ts.SpeedOn(i));
+            float drainSum = segments.Sum(ts => ts.DrainOn(i));
+            float generationLimit = Math.Min(1, generation / drainSum);
+            float liftFraction = weight / segments.Sum(ts => ts.LiftOn(t));
+            List<string> notes = new();
+            if (generationLimit < 1) {
+                notes.Add("low gen");
+            }
+            speed *= generationLimit;
+            if (liftFraction > 1) {
+                liftFraction = ( float ) Math.Pow(liftFraction, 0.6f);
+                notes.Add("too heavy");
+                drain *= liftFraction;
+                speed /= liftFraction;
+            }
+            if (speed > bestSpeed) {
+                bestSpeed = speed;
+                drain = drainSum;
+                bestMsg = notes.Any() ? "("+string.Join(", ", notes)+")" : "";
+            }
+        }
+        return new Move(bestSpeed, drain, bestMsg == "" ? null : bestMsg);
+    }
+
+    public float Mass => Inv.Mass;
+    public float TotalCharge => PowerSegments.Any() ? PowerSegments.Select(s => s switch {
+            ReactorSegment rs => rs.Charge,
+            _ => 0,
+        })
+        .Sum() : 0;
+    public float TotalGeneration =>
+        PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generation) +
+        PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generation);
+
+    public float FuelEfficiency => 0.4f;
     public string Report() {
-        var CurrentTerrain = Location.Terrain;
-        int terrainRate = TotalPull;
-        int fuelEfficiency = 100 - ( int ) (Math.Sqrt(TotalRecharge) * 10);
+        // Header with crawler name and location
+        string result = Style.Name.Format($"[{Name}]");
+        result += $" Evil: {EvilPoints}\n";
 
-        string result = Style.Name.Format(Name) + $" on {CurrentTerrain} terrain.  {Scrap,7}¢\n";
-        result += $" MW  :{TotalPower,3}/{TotalReactor,3} BAT:{TotalBattery}\n";
-        result += $"TONS:{TotalWeight,3}/{TotalCarry,3}\n";
-        result += $"PULL:{terrainRate,3}   FUEL:{Fuel,3} EFF:{fuelEfficiency,3}\n";
-        result += $"CREW:{Crew,3}  FOOD:{Rations,3}  MOOD:{Morale,3}\n";
-        result += string.Join("\n", Segments.Select(s => s.Report));
-        result += $"\nINV:{Inv}";
+        // Add inventory summary
+        result += "\nInventory:\n";
+        var commodityTable = new Table(
+            ("Commodity", -16),
+            ("Amount", 10),
+            ("Mass", 8),
+            ("Volume", 8),
+            ("Local Value", 12)
+        );
+
+        foreach (var (commodity, amount) in Inv.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
+            var baseValue = amount * Tuning.Economy.BaseCommodityValues[commodity];
+            var markup = Tuning.Economy.LocalMarkup(commodity, Location);
+            var localValue = baseValue * markup;
+            commodityTable.AddRow(
+                commodity.ToString(),
+                commodity == Commodity.Scrap ? $"{amount:F1}¢¢" :
+                commodity is Commodity.Crew or Commodity.Soldiers or Commodity.Passengers ? $"{( int ) amount}" :
+                $"{amount:F1}",
+                $"{commodity.Mass():F3}",
+                $"{commodity.Volume():F3}",
+                $"{localValue:F1}¢¢"
+            );
+        }
+        result += commodityTable.ToString() + "\n";
+
+        // Group segments by kind
+        var segmentsByKind = Segments
+            .GroupBy(s => s.SegmentKind)
+            .OrderBy(g => g.Key)
+            .ToList();
+
+        foreach (var group in segmentsByKind) {
+
+            switch (group.Key) {
+                case SegmentKind.Power:
+                    var powerTable = new Table(
+                        ("Name", -16),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Drain", 6),
+                        ("Cap", 6),
+                        ("Gen", 6)
+                    );
+                    foreach (var segment in group) {
+                        string cap = "", gen = "";
+                        if (segment is ReactorSegment rs) {
+                            cap = $"{rs.Capacity:F1}";
+                            gen = $"{rs.Generation:F1}";
+                        } else if (segment is ChargerSegment cs) {
+                            gen = $"{cs.Generation:F1}";
+                        }
+                        powerTable.AddRow(
+                            segment.Name,
+                            segment.StatusLine(Location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Drain:F1}",
+                            cap,
+                            gen
+                        );
+                    }
+                    result += powerTable.ToString();
+                    break;
+
+                case SegmentKind.Traction:
+                    var tractionTable = new Table(
+                        ("Name", -16),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Drain", 6),
+                        ("Lift", 6),
+                        ("Speed", 6),
+                        ("Terrain", -10)
+                    );
+                    foreach (var segment in group.Cast<TractionSegment>()) {
+                        tractionTable.AddRow(
+                            segment.Name,
+                            segment.StatusLine(Location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Drain:F1}",
+                            $"{segment.Lift:F1}",
+                            $"{segment.Speed:F1}",
+                            segment.TerrainLimit.ToString()
+                        );
+                    }
+                    result += tractionTable.ToString();
+                    break;
+
+                case SegmentKind.Offense:
+                    var offenseTable = new Table(
+                        ("Name", -16),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Drain", 6),
+                        ("Dmg", 6),
+                        ("Rate", 6),
+                        ("Shots", 6),
+                        ("Aim", 6)
+                    );
+                    foreach (var segment in group) {
+                        string dmg = "", rate = "", shots = "", aim = "";
+                        if (segment is WeaponSegment ws) {
+                            dmg = $"{ws.Damage:F1}";
+                            rate = $"{ws.Rate:F1}";
+                            shots = $"{ws.Shots:F1}";
+                            aim = $"{ws.Aim:F1}";
+                        }
+                        offenseTable.AddRow(
+                            segment.Name,
+                            segment.StatusLine(Location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Drain:F1}",
+                            dmg,
+                            rate,
+                            shots,
+                            aim
+                        );
+                    }
+                    result += offenseTable.ToString();
+                    break;
+
+                case SegmentKind.Defense:
+                    var defenseTable = new Table(
+                        ("Name", -16),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Drain", 6),
+                        ("Cost", 6),
+                        ("Reduction", -12),
+                        ("Charge", -12)
+                    );
+                    foreach (var segment in group) {
+                        string reduction = "";
+                        string charge = "";
+                        if (segment is ArmorSegment ars) {
+                            reduction = $"{ars.Reduction}";
+                        } else if (segment is PlatingSegment ps) {
+                            reduction = $"{ps.Mitigation:P0}";
+                        } else if (segment is ShieldSegment ss) {
+                            reduction = $"{ss.ShieldLeft}";
+                            charge = $"+{ss.Charge}/t";
+                        }
+                        defenseTable.AddRow(
+                            segment.Name,
+                            segment.StatusLine(Location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Drain:F1}",
+                            $"{segment.Cost:F1}",
+                            reduction,
+                            charge
+                        );
+                    }
+                    result += defenseTable.ToString();
+                    break;
+            }
+        }
+
         return result;
     }
-    public string Colored() {
+    public string StateString() {
+        var Adjs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(EndMessage)) {
+            Adjs.Add(Style.SegmentDestroyed.Format(EndMessage));
+        }
+        if (IsDepowered) {
+            Adjs.Add("Depowered");
+        }
+        if (IsImmobile && (Flags & EActorFlags.Mobile) != 0) {
+            Adjs.Add("Immobile");
+        }
+        if (IsDisarmed) {
+            Adjs.Add("Disarmed");
+        }
+        if (IsDefenseless) {
+            Adjs.Add("Defenseless");
+        }
+        if (Adjs.Any()) {
+            return " (" + string.Join(", ", Adjs) + ")";
+        } else {
+            return "";
+        }
+    }
+    public string StateString(IActor viewer) {
+        var Adjs = new List<string>();
+        var relation = To(viewer);
+        if (relation.Hostile) {
+            Adjs.Add("Hostile");
+        }
+        if (relation.Surrendered) {
+            Adjs.Add("Surrendered");
+        }
+        var result = StateString();
+        if (Adjs.Any()) {
+            result += $" (" + string.Join(", ", Adjs) + ")";
+        }
+        return result;
+    }
+    public string CrawlerDisplay(IActor viewer) {
         IEnumerable<StyledString> coloredSegments = [
-            new StyledString(Style.SegmentNone, " | "),
-            new StyledString(Style.SegmentNone, "/ \\"),
-            .. Segments.Select(s => s.Colored),
-            new StyledString(Style.SegmentNone, "   "),
-            new StyledString(Style.SegmentNone, "|<|"),
+            new StyledString(Style.SegmentNone, "|||||"),
+            .. Segments.Select(s => s.Colored(Location)),
+            new StyledString(Style.SegmentNone, "|||||"),
         ];
         string result = coloredSegments.TransposeJoinStyled();
-        result = Style.Name.Format(Name) + "\n" + result;
+        var Adjs = StateString(viewer);
+        result = Style.Name.Format(Name) + $": {Faction}{Adjs}\n{result}";
         return result;
     }
 
-    public List<Segment> Segments => Inv.Segments.ToList();
-    public List<Segment> ActiveSegments => Segments.Where(s => s.IsActive).ToList();
-    public List<Segment> UndestroyedSegments => Segments.Where(s => !s.IsDestroyed).ToList();
-    public int Scrap {
+    public float ScrapInv {
         get => Inv[Commodity.Scrap];
         set => Inv[Commodity.Scrap] = value;
     }
-    public int Fuel {
+    public float FuelInv {
         get => Inv[Commodity.Fuel];
         set => Inv[Commodity.Fuel] = value;
     }
-    public int Rations {
-        get => Inv[Commodity.Ration];
-        set => Inv[Commodity.Ration] = value;
+    public float RationsInv {
+        get => Inv[Commodity.Rations];
+        set => Inv[Commodity.Rations] = value;
     }
-    public int Crew {
+    public float CrewInv {
         get => Inv[Commodity.Crew];
         set => Inv[Commodity.Crew] = value;
     }
-    public int Morale {
+    public float MoraleInv {
         get => Inv[Commodity.Morale];
         set => Inv[Commodity.Morale] = value;
     }
-    //public string? FailState => IsDepowered ? "Depowered" : IsStranded ? "Stranded" : null;
-    public string? FailState => Crew <= 0 ? (Rations <= 0 ? "Starved" : "Killed") : Morale <= 0 ? "Revolt" : null;
-    public bool IsDepowered => TotalReactor <= 0 && TotalBattery <= 0;
-    public bool IsStranded => TotalCarry <= 0 || TotalPull <= 0;
+    public void End(EEndState state, string message = "") {
+        EndMessage = $"{state}: {message}";
+        EndState = state;
+        Message($"Game Over: {message} ({state})");
+    }
+    public string EndMessage { get; set; } = string.Empty;
+    public EEndState? EndState { get; set; }
+    public bool IsDepowered => !PowerSegments.Any() || FuelInv <= 0;
+    public bool IsImmobile => EvaluateMove(Location.Terrain).Speed == 0;
+    public bool IsDisarmed => !OffenseSegments.Any() || IsDepowered;
+    public bool IsDefenseless => !DefenseSegments.Any();
 
+    public bool IsDestroyed => EndState is not null;
+    public bool IsVulnerable => IsDefenseless || IsImmobile || IsDisarmed || IsDepowered;
+
+    public string About => ToString() + StateString();
     public override string ToString() => $"{Name} ({Faction})";
-    int Attack(IActor Other) {
-        if (IsDepowered) {
-            Console.WriteLine($" {Name} Can't attack {Other.Name}: No power");
-            return 0;
-        }
-        Console.WriteLine($" {Name} Attacking {Other.Name}");
-        Console.WriteLine(Brief(Faction == Faction.Player ? 1 : 0));
+
+    public List<HitRecord> CreateFire() {
         List<HitRecord> fire = new();
-        foreach (Segment segment in Segments) {
-            double amount = segment.Amount;
-            double rate = segment.Rate;
-            int aim = 0;
-            double critChance = 0.2;
-            switch (segment.Type) {
-            case SegmentType.Guns:
-                if (Random.Shared.NextDouble() < critChance) {
-                    rate = rate * 2;
-                }
-                break;
-            case SegmentType.Lasers:
-                if (Random.Shared.NextDouble() < critChance) {
-                    amount = amount * 2;
-                }
-                break;
-            case SegmentType.Missiles:
-                if (Random.Shared.NextDouble() < critChance) {
-                    aim += 1;
-                }
-                break;
-            default:
-                continue;
-            }
-            for (int i = 0; i < rate; ++i) {
-                int damage = amount.StochasticInt();
-                fire.Add(new(damage, aim));
+        float availablePower = TotalCharge;
+        var offense = OffenseSegments.GroupBy(s => s is WeaponSegment).ToDictionary(s => s.Key, s => s.ToList());
+        var weapons = offense.GetValueOrDefault(true) ?? new();
+        var selectedWeapons = new List<OffenseSegment>();
+        var nonWeapons = offense.GetValueOrDefault(false) ?? new();
+        var selectedNonWeapons = new List<OffenseSegment>();
+        weapons.Shuffle();
+        foreach (var segment in weapons) {
+            if (availablePower >= segment.Drain) {
+                selectedWeapons.Add(segment);
+                availablePower -= segment.Drain;
             }
         }
-        if (fire.Any()) {
-            Other.ReceiveFire(this, fire);
+        foreach (var segment in nonWeapons) {
+            if (availablePower >= segment.Drain) {
+                selectedNonWeapons.Add(segment);
+                availablePower -= segment.Drain;
+            }
         }
-        Console.WriteLine(Other.Brief(Other.Faction == Faction.Player ? 1 : 0));
-        return 1;
+        var used = TotalCharge - availablePower;
+        DrawPower(used);
+
+        foreach (WeaponSegment segment in selectedWeapons.OfType<WeaponSegment>()) {
+            fire.AddRange(segment.GenerateFire(0));
+        }
+        return fire;
     }
     public void Recharge(int Count) {
-        var RechargedSegments = Inv.Segments.Select(s => s.Recharged(Count)).ToList();
-        Inv.Segments.Clear();
-        Inv.Segments.AddRange(RechargedSegments);
+        for (int i = 0; i < Count; ++i) {
+            Segments.Do(s => s.Tick());
+            float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate());
+            overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate());
+            FeedPower(overflowPower);
+            ScrapInv -= WagesPerHr;
+            RationsInv -= RationsPerHr;
+            FuelInv -= FuelPerHr;
+        }
+    }
+    // Returns excess (wasted) power
+    float FeedPower(float delta) {
+        if (delta <= 0) {
+            return 0;
+        }
+
+        var reactorSegments = PowerSegments.OfType<ReactorSegment>();
+        // Distributes the power to segments based on their charge available
+        var segmentCapAvail = reactorSegments.Select(s => s.Capacity - s.Charge);
+        var totalCapAvail = segmentCapAvail.Sum();
+        delta = Math.Clamp(delta, 0, totalCapAvail);
+        float result = 0;
+        if (delta > totalCapAvail) {
+            result = delta - totalCapAvail;
+            delta = totalCapAvail;
+        }
+        if (delta <= 0) {
+            return result;
+        }
+        // Distributes the power to segments based on their charge available
+        // ( this is the same as the above, but with a different order of operations)
+        reactorSegments.Zip(segmentCapAvail, (rs, capacity) => rs.Charge += delta * (capacity / totalCapAvail)).Do();
+        return 0;
+    }
+    float DrawPower(float delta) {
+        if (delta <= 0) {
+            return 0;
+        }
+
+        var reactorSegments = PowerSegments.OfType<ReactorSegment>();
+        // Distributes the power to segments based on their charge available
+        var segmentCharge = reactorSegments.Select(s => s.Charge);
+        var totalCharge = segmentCharge.Sum();
+        delta = Math.Clamp(delta, 0, totalCharge);
+        float result = 0;
+        if (delta > totalCharge) {
+            result = delta - totalCharge;
+            delta = totalCharge;
+        }
+        if (delta <= 0) {
+            return result;
+        }
+        // Distributes the power to segments based on their charge available
+        // ( this is the same as the above, but with a different order of operations)
+        reactorSegments.Zip(segmentCharge, (rs, charge) => rs.Charge -= delta * (charge / totalCharge)).Do();
+        return 0;
     }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
-        if (!Inv.Segments.Any()) {
+        if (!Inv.Segments.Any() || !fire.Any()) {
             return;
         }
+        
+        bool wasDestroyed = IsDestroyed;
+        int totalDamageDealt = 0;
+
+        var relation = To(from);
+        var wasAlreadyDamaged = relation.WasDamaged;
+
+        relation.Hostile = true;
+
+        string msg = "";
         foreach (var hit in fire) {
-            int damage = hit.Damage;
-            int soaked = 0;
-            var armorSegments = Segments.Index().Where(si => si.Item.SegmentClass is SegmentClass.Defense).Select(si => si.Index).ToArray();
-            var nonArmorSegments = ActiveSegments.Index().Where(si => si.Item.SegmentClass is not SegmentClass.Defense).Select(si => si.Index).ToArray();
-            string armorSegmentName = string.Empty;
+            int damage = hit.Damage.StochasticInt();
+            int originalDamage = damage;
             var hitType = hit.Hit;
+            var phase0Segments = CoreDefenseSegments.OfType<ShieldSegment>().Where(s => s.ShieldLeft > 0).ToList();
+            var phase1Segments = CoreDefenseSegments.Except(phase0Segments).ToList();
+            var phase2Segments = Segments.Except(CoreDefenseSegments).ToList();
             if (hitType is HitType.Misses) {
                 damage = 0;
             }
-            string msg = $"{from.Name} {hitType} {Name}";
+            msg += $"{hit.Weapon.Name} {hitType}";
             if (damage > 0) {
-                msg += $" for {damage}";
-            }
-            if (hitType is HitType.Hits && armorSegments.Any()) {
-                var armorSegmentIndex = Random.Shared.Next(armorSegments.Length);
-                var segmentIndex = armorSegments[armorSegmentIndex];
-                var armorSegment = Inv.Segments[segmentIndex];
-                armorSegmentName = armorSegment.Name;
-                switch (armorSegment.Type) {
-                case SegmentType.Armor:
-                    // Damage reduction, half if disabled, none if destroyed
-                    if (armorSegment.IsActive) {
-                        soaked = armorSegment.Amount;
-                        //damage = Math.Max(0, damage - armorSegment.Amount);
-                    } else if (armorSegment.IsDisabled) {
-                        soaked = armorSegment.Amount / 2;
-                    }
-                    break;
-                case SegmentType.Shield:
-                    // Limited damage reduction
-                    if (armorSegment.IsActive) {
-                        var shieldLeft = armorSegment.StateLeft;
-                        soaked = Math.Min(damage, shieldLeft);
-                        armorSegment = armorSegment.AddState(-soaked);
-                    }
-                    break;
-                case SegmentType.Ablative:
-                    // Half damage and lots of hit points
-                    if (armorSegment.IsActive) {
-                        soaked = (damage + armorSegment.Amount) / 2;
-                    } else if (armorSegment.IsDisabled) {
-                        soaked = (damage + armorSegment.Amount) / 3;
-                    }
-                    break;
-                default:
-                    break;
+                var shieldSegment = phase0Segments.ChooseRandom();
+                if (shieldSegment != null) {
+                    var (remaining, armorMsg) = shieldSegment.AddDmg(hitType, damage);
+                    damage = remaining;
+                    msg += armorMsg;
                 }
-                soaked = Math.Clamp(soaked, 0, damage);
-                // Armor damage is always applied before non-armor damage ( so we can't take more than we')
-                var armorDamage = damage;
-                armorDamage = Math.Max(0, armorDamage - soaked);
-                armorDamage = Math.Min(armorDamage, armorSegment.HPLeft);
-                armorSegment = armorSegment.AddDamage(armorDamage);
-                Inv.Segments[segmentIndex] = armorSegment;
-                var startDamage = damage;
-                damage -= soaked + armorDamage;
-                if (soaked > 0) {
-                    msg += $", -{soaked} from {armorSegmentName}";
-                }
-                if (armorDamage > 0) {
-                    msg += $", {armorDamage} to {armorSegmentName} {armorSegment.StateString}";
-                }
-            } // else penetrating
-            if (damage > 0) {
-                var hitSegmentIndex = Random.Shared.Next(nonArmorSegments.Length);
-                var hitIndex = nonArmorSegments[hitSegmentIndex];
-                var hitSegment = Inv.Segments[hitIndex];
-                var segmentDamage = Math.Min(damage, hitSegment.HPLeft);
-                hitSegment = hitSegment.AddDamage(segmentDamage);
-                damage -= segmentDamage;
-                hitSegment = hitSegment.AddDamage(damage);
-                Inv.Segments[hitIndex] = hitSegment;
-                msg += $", {segmentDamage} to {hitSegment.Name} {hitSegment.StateString}";
             }
             if (damage > 0) {
-                LoseCrew(damage);
-                msg += $", {damage} to crew";
-                damage = 0;
+                var armorSegment = phase1Segments.ChooseRandom();
+                if (armorSegment != null) {
+                    var (remaining, armorMsg) = armorSegment.AddDmg(hitType, damage);
+                    damage = remaining;
+                    msg += armorMsg;
+                }
             }
-            Console.WriteLine(msg);
+            if (damage > 0) {
+                var hitSegment = phase2Segments.ChooseRandom();
+                if (hitSegment != null) {
+                    var (rem, hitMsg) = hitSegment.AddDmg(hitType, damage);
+                    msg += hitMsg;
+                    damage = rem;
+                }
+            }
+            if (damage > 0) {
+                // TODO: Also maybe lose commodities here
+                var (rem, crewMsg) = LoseCrew(damage);
+                msg += crewMsg;
+                damage = rem;
+            }
 
+            // Track total damage actually dealt (original minus what's left over)
+            int actualDamageDealt = originalDamage - damage;
+            totalDamageDealt += actualDamageDealt;
+
+            msg += ".\n";
         }
+
+        // Update damage tracking in relation
+        relation.DamageTaken += totalDamageDealt;
+
+        // Apply first damage morale penalty only if this is the first time taking damage from this attacker
+        if (!wasAlreadyDamaged && totalDamageDealt > 0) {
+            float dMorale = Tuning.Crawler.MoraleTakeAttack;
+            Inv[Commodity.Morale] += dMorale;
+            msg += $"{dMorale} morale for taking fire.\n";
+        }
+
+        // Check if this crawler was destroyed and give attacker morale bonus
+        if (!wasDestroyed && IsDestroyed) {
+            if (relation.Hostile) {
+                float dMorale = Tuning.Crawler.MoraleHostileDestroyed;
+                from.Inv[Commodity.Morale] += dMorale;
+                Message($"{dMorale} morale for destroying {Name}");
+            } else {
+                float dHostileMorale = Tuning.Crawler.MoraleHostileDestroyed;
+                float dMorale = Tuning.Crawler.MoraleFriendlyDestroyed;
+                from.Inv[Commodity.Morale] += dMorale;
+                if (from is Crawler fromCrawler) {
+                    float evilage = fromCrawler.EvilPoints / Tuning.EvilLimit;
+                    evilage = Math.Clamp(evilage, 0.0f, 1.0f);
+                    dMorale = CrawlerEx.Lerp(dMorale, dHostileMorale, evilage);
+                }
+                Message($"{dMorale} morale for destroying friendly {Name}");
+            }
+        }
+        Message(msg.TrimEnd());
+        UpdateSegments();
     }
 
-    void LoseCrew(int damage) {
-        Inv[Commodity.Crew] -= damage;
+    (int, string) LoseCrew(int damage) {
+        var start = (int)CrewInv;
+        CrewInv -= damage;
+        var taken = start - (int)CrewInv;
+        var startMorale = MoraleInv;
+        MoraleInv -= Tuning.Crawler.MoraleAdjCrewLoss * taken;
+        var moraleLoss = startMorale - MoraleInv;
+        var remaining = damage - taken;
+        return (remaining, $" killing {CrewInv} crew and {moraleLoss} morale");
     }
+
+    Dictionary<IActor, ActorToActor> _relations = new();
+    Dictionary<Location, ActorLocation> _locations = new();
+
+    public bool Knows(IActor other) => _relations.ContainsKey(other);
+    public ActorToActor To(IActor other) {
+        return _relations.GetOrAddNewValue(other, () => NewRelation(other));
+    }
+    ActorToActor NewRelation(IActor to) {
+        var result = new ActorToActor();
+        bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.Encounter.Faction is Faction.Trade;
+        if (Faction is Faction.Bandit && to.Faction is Faction.Player && !isTradeSettlement) {
+            // Bandits check player evilness before turning hostile
+            if (to is Crawler playerCrawler) {
+                float evilness = playerCrawler.EvilPoints;
+                if (evilness >= Tuning.Trade.banditHostilityThreshold) {
+                    // Higher evilness = higher chance of hostility
+                    float hostilityChance = Tuning.Trade.banditHostilityChance * (evilness / Tuning.Trade.banditHostilityThreshold);
+                    hostilityChance = Math.Clamp(hostilityChance, 0.0f, 1.0f);
+
+                    if (Random.Shared.NextDouble() < hostilityChance) {
+                        result.Hostile = true;
+                    }
+                } else {
+                    // Low evilness - bandits might trade instead of fighting
+                    result.Hostile = false;
+                }
+            } else {
+                // Default behavior for non-crawler players
+                result.Hostile = true;
+            }
+        }
+        return result;
+    }
+    public ActorLocation To(Location location) {
+        return _locations.GetOrAddNewValue(location);
+    }
+
+    // Accessor methods for save/load
+    public Dictionary<IActor, ActorToActor> GetRelations() => _relations;
+    public bool RelatedTo(IActor other) => _relations.ContainsKey(other);
+    public int Embark(Location location) {
+        throw new NotImplementedException();
+    }
+    public int Domes { get; init; } = 0;
+    float _markup = 1.0f;
+    public float Markup => _markup * (Faction is Faction.Bandit ? Tuning.Trade.banditRate : Tuning.Trade.rate);
 }

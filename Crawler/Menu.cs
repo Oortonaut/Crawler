@@ -2,60 +2,94 @@
 
 public record MenuItem(string Option, string Item) {
     public bool IsSeparator => Option == "" && Item == "";
+    public virtual bool IsShow => true;
     public virtual bool IsEnabled => Option.Length > 0;
     public override string ToString() => $"{Option}) {Item}";
     public static MenuItem Sep => new("", "");
-
-    public bool IsCancel => Option == "X";
-
-}
-
-public record ActionMenuItem(string Option, string Item, Func<string, int>? Run): MenuItem(Option, Item) {
-    public int TryRun(string arguments) {
-        if (Run != null) {
-            return Run(arguments);
+    public virtual string Format() {
+        if (Option == "") {
+            if (Item.StartsWith('\e')) {
+                return Item;
+            } else {
+                return Style.MenuTitle.Format(Item);
+            }
         }
-        return 0;
+        if (!IsEnabled) {
+            return "[" + Style.MenuDisabled.Format(Option) + $"]{Item}";
+        } else {
+            return "[" + Style.MenuOption.Format(Option) + $"]{Item}";
+        }
     }
 }
 
+public enum ShowArg: byte {
+    Hide,
+    Show,
+}
+
+public enum EnableArg: byte {
+    Disabled,
+    Enabled,
+}
+public static partial class EnumEx {
+    public static EnableArg Enable(this bool b) => b ? EnableArg.Enabled : EnableArg.Disabled;
+    public static ShowArg Show(this bool b) => b ? ShowArg.Show : ShowArg.Hide;
+}
+
+public record ActionMenuItem(string Option, string Item, Func<string, int> Run, EnableArg Enabled = EnableArg.Enabled, ShowArg Show = ShowArg.Show): MenuItem(Option, Item) {
+    public ActionMenuItem(string Option, string Item, Func<int> Run, EnableArg Enabled, ShowArg Show): this(Option, Item, _ => Run(), Enabled, Show) { }
+    public override bool IsEnabled => Enabled is EnableArg.Enabled;
+    public override bool IsShow => Show is ShowArg.Show;
+}
+
 public static partial class CrawlerEx {
-    public static (MenuItem, string)            Menu(string Title, params MenuItem[] items) {
-        Console.Write(Style.MenuTitle.Format($"[{Title}]") + " ");
+    public static (MenuItem, int) MenuRun(string Title, params MenuItem[] items) {
+        return MenuRun(Title, "", items);
+    }
+    public static (MenuItem, int) MenuRun(string Title, string Dflt, params MenuItem[] items) {
+        var (item, args) = Menu(Title, Dflt, items);
+        int turns = 0;
+        if (item is ActionMenuItem action && action.IsEnabled) {
+            turns = action.Run(args);
+        }
+        return (item, turns);
+    }
+    public static (MenuItem, string) Menu(string Title, params MenuItem[] items) {
+        return Menu(Title, "", items);
+    }
+    public static (MenuItem, string) Menu(string Title, string Dflt, params MenuItem[] items) {
+        Console.Write(Style.MenuTitle.Format($"< {Title} >"));
         Console.Write(Style.MenuNormal.StyleString());
-        bool wasSep = true;
+        bool start = false;
         int optionCount = items.Count(x => x.IsEnabled);
 
         while (true) {
-            int i = 0;
             foreach (var item in items) {
-                if (item.IsSeparator) {
-                    if (!wasSep) {
-                        Console.WriteLine();
-                        wasSep = true;
-                    }
-                    i = 0;
+                if (!item.IsShow) continue;
+                if (item.Option == "") {
+                    start = true;
+                }
+                if (item.Item == "") {
+                    start = true;
                 } else {
-                    if (i++ > 0) {
-                        Console.Write("; ");
-                    }
-                    Style OptionStyle = Style.MenuOption;
-                    if (!item.IsEnabled) {
-                        OptionStyle = Style.MenuDisabled;
-                    }
-                    Console.Write(OptionStyle.Format(item.Option) + $"-{item.Item}");
-                    wasSep = false;
+                    Console.Write(start ? '\n' : ' ');
+                    var itemFormat = item.Format();
+                    Console.Write(itemFormat);
+                    start = itemFormat.EndsWith('\n');
                 }
             }
-            string input = "";
+            string input;
             if (optionCount == 0) {
                 Console.WriteLine("No options available.");
-                return (MenuItem.Sep, "");
+                return (MenuItem.Sep, Dflt);
             }
-            do {
-                Console.Write(Style.MenuInput.StyleString() + "? ");
-                input = (Console.ReadLine() ?? "").ToUpper().Trim();
-            } while (input == "");
+            try {
+                do {
+                    input = CrawlerEx.Input("? ", Dflt);
+                } while (input == "");
+            } catch (EndOfStreamException eos) {
+                return (MenuItem.Sep, eos.Message);
+            }
             Console.Write(Style.MenuNormal.StyleString());
             var firstSpace = input.IndexOf(' ');
             string arguments = "";
@@ -71,5 +105,4 @@ public static partial class CrawlerEx {
             Console.WriteLine(Style.SegmentDestroyed.Format($"Unrecognized input '{input}'"));
         }
     }
-
 }

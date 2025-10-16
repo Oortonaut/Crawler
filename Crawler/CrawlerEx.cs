@@ -1,4 +1,6 @@
-﻿namespace Crawler;
+﻿using System.Numerics;
+
+namespace Crawler;
 using System.Drawing;
 
 public enum Style {
@@ -9,6 +11,8 @@ public enum Style {
     // Status states messages
     SegmentNone,
     SegmentActive, // white on dark green
+    SegmentPackaged,
+    SegmentDeactivated, // white on brown
     SegmentDisabled, // white on brown
     SegmentDestroyed, // white on dark red
     // Menu
@@ -17,6 +21,11 @@ public enum Style {
     MenuDisabled,
     MenuOption,
     MenuInput,
+    // Navigation
+    MenuUnvisited,
+    MenuSomeVisited,
+    MenuVisited,
+    MenuEmpty,
 }
 
 public record StyledChar(Style Style, char Char) {
@@ -27,6 +36,16 @@ public record StyledChar(Style Style, char Char) {
 public record StyledString(Style Style, string Text) {
     public string Styled => Style.Format(Text);
     public override string ToString() => Styled;
+}
+
+public struct IntDispenser() {
+    float _remaining = 0;
+    public int Get(int acc) {
+        _remaining += acc;
+        float result = (float) Math.Floor(_remaining);
+        _remaining -= result;
+        return (int)result;
+    }
 }
 
 public static partial class CrawlerEx {
@@ -42,23 +61,19 @@ public static partial class CrawlerEx {
         int bgB = GetColorIndex(bg) + 10;
         return $"\e[{fgB};{bgB}m";
     }
-    static int GetColorIndex(this Color color) {
-        int gamma(byte x) {
-            double exp = 1.6;
-            double pow = Math.Pow(x / 255.0, exp) * 255.0;
-            return (int)pow;
-        }
-        int r = Math.Clamp((gamma(color.R) - 8) / 40, 0, 5);
-        int g = Math.Clamp((gamma(color.G) - 8) / 40, 0, 5);
-        int b = Math.Clamp((gamma(color.B) - 8) / 40, 0, 5);
+    public static int GetColorIndex(this Color color) {
+        int r = color.R * 6 / 256;
+        int g = color.G * 6 / 256;
+        int b = color.B * 6 / 256;
         if (r == g && g == b) {
-            int gray = Math.Clamp((( int ) color.R - 8) / 10, 0, 23);
+            int gray = color.R * 24 / 256;
             return gray + 216 + 16;
         }
         return 16 + r * 36 + g * 6 + b;
     }
     public static string On(this Color fg, Color bg) {
-        return $"\e[38;5;{fg.GetColorIndex()}m\e[48;5;{bg.GetColorIndex()}m";
+        return $"\e[38;2;{fg.R};{fg.G};{fg.B}m\e[48;2;{bg.R};{bg.G};{bg.B}m";
+//        return $"\e[38;5;{fg.GetColorIndex()}m\e[48;5;{bg.GetColorIndex()}m";
     }
     public static Dictionary<Style, string> Styles = new();
     public const string ClearScreenToEnd = "\e[0J";
@@ -69,12 +84,18 @@ public static partial class CrawlerEx {
     public const string ClearLineToEnd = "\e[K";
     public const string ClearLineToStart = "\e[1K";
     public static string CursorPosition(int x, int y) => $"\e[{y};{x}H";
+    public static string CursorX(int x) => $"\e[{x}G";
+    public static string Margin(int l) => $"\e[{l}s";
+    public static string Margin(int l, int r) => $"\e[{l};{r}s";
+    public const string EnableMargin = "\e[?69h";
+    public const string DisableMargin = "\e[?69l";
     public const string CursorUp = "\e[1A";
     public const string CursorDown = "\e[1B";
     public const string CursorFwd = "\e[1C";
     public const string CursorBwd = "\e[1D";
-    public const string CursorSave = "\e[s";
-    public const string CursorRestore = "\e[u";
+    public const string CursorReport = "\e[6n";
+    public const string CursorSave =  "\e7";
+    public const string CursorRestore =  "\e8";
     public const string CursorHide = "\e[?25l";
     public const string CursorShow = "\e[?25h";
 
@@ -91,11 +112,11 @@ public static partial class CrawlerEx {
     public const string StyleUnderline = "\e[4m";
     public const string StyleBlink = "\e[5m";
     // Works: Bold: 1, Dim: 2, Italic: 3, Underline: 4
-    // windows terminal: inverse: 7, hide: 8, strikethrough: 9, double underline: 21
+    // windows terminal: inverse: 7, hide: 8, strikethrough: 9, float underline: 21
     public const string Inverse = "\e[7m";
     public const string Hide = "\e[8m";
     public const string Strikethrough = "\e[9m";
-    public const string DoubleUnderline = "\e[21m";
+    public const string floatUnderline = "\e[21m";
     public const string StyleNormalIntensity = "\e[22m";
     public const string StyleNotBold = "\e[22m";
     public const string StyleNotFaint = "\e[22m";
@@ -105,15 +126,21 @@ public static partial class CrawlerEx {
     public const string StyleNotInverse = "\e[27m";
     public const string StyleNotHide = "\e[28m";
     public const string StyleNotStrikethrough = "\e[29m";
-    public const string StyleNotDoubleUnderline = "\e[22m";
+    public const string StyleNotfloatUnderline = "\e[22m";
 
     public static string StyleNone = "\e[m";
+    public static Point WindowSize => new Point(Console.WindowWidth, Console.WindowHeight);
+    public static Point BufferSize => new Point(Console.BufferWidth, Console.BufferHeight);
     static CrawlerEx() {
-        Color bg = Color.DarkSlateGray;
+        InitStyles();
+    }
+    static void InitStyles() {
+        Color bg = Color.DarkSlateGray.Scale(0.25f);
         Color fg = Color.LightGray;
 
         StyleNone = fg.On(bg);
         Styles[Style.Name] = Color.Yellow.On(bg);
+        Styles[Style.Em] = Color.SandyBrown.On(bg);
 
         Color menuBg = bg;
         Color menuFg = fg;
@@ -123,14 +150,23 @@ public static partial class CrawlerEx {
         Styles[Style.MenuTitle] = Color.LightGray.On(Color.OrangeRed);
         Styles[Style.MenuOption] = Color.Yellow.On(menuBg);
         Styles[Style.MenuInput] = Color.LightGray.On(menuBg);
+        Styles[Style.MenuUnvisited] = Color.Aquamarine.On(menuBg);
+        Styles[Style.MenuSomeVisited] = Color.CornflowerBlue.On(menuBg);
+        Styles[Style.MenuVisited] = Color.Sienna.On(menuBg);
+        Styles[Style.MenuEmpty] = Color.DarkRed.On(menuBg);
 
 
         Color segmentBg = Color.LightGray;
-        Color segmentFg = Color.Black;
+        Color segmentBgInactive = segmentBg.Dark();
+        Color segmentBgPackaged = Color.LightCyan;
+        Color segmentFg = Color.Green.Dark();
         Styles[Style.SegmentNone] = segmentFg.On(segmentBg);
-        Styles[Style.SegmentActive] = Color.DarkGreen.On(segmentBg);
-        Styles[Style.SegmentDisabled] = Color.Orange.Dark().On(segmentBg);
+        Styles[Style.SegmentActive] = segmentFg.On(segmentBg);
+        Styles[Style.SegmentPackaged] = segmentFg.On(segmentBgPackaged);
+        Styles[Style.SegmentDeactivated] = segmentFg.On(segmentBgInactive);
+        Styles[Style.SegmentDisabled] = Color.SandyBrown.Dark().On(segmentBg);
         Styles[Style.SegmentDestroyed] = Color.Red.On(segmentBg);
+
     }
     public static string Format(this Style style, string text = "") {
         if (Styles.TryGetValue(style, out var result)) {
@@ -161,12 +197,12 @@ public static partial class CrawlerEx {
         return v ^ v >> 28;
     }
     public static int HashCombine(int a, int b) {
-        ulong A = (ulong)a * Prime1 + 0x3b478935e928d361UL;
-        ulong B = (ulong)b * Prime2 + 0x8b95bfb1d39ee82cUL;
-        ulong Q = A ^ B;
+        ulong A = ((ulong)a ^ 0x8b95bfb1d39ee82cUL) * Prime1;
+        ulong B = (ulong)b;
+        ulong Q = A + B;
         Q = rrxmrrxmsx(Q);
 
-        return (int)(Q >> 8);
+        return (int)Q;
 
     }
     public static int SequenceHashCode<T>(this IEnumerable<T> seq) {
@@ -181,30 +217,43 @@ public static partial class CrawlerEx {
     public static uint Rotate(uint x, int k) => (x >> k) | (x << (32 - k));
     public static ulong Rotate(ulong x, int k) => (x >> k) | (x << (64 - k));
 
+    public static T? ChooseAt<T>(this IEnumerable<T> seq, float at) {
+        return ChooseAt(seq.ToList().AsReadOnly(), at);
+    }
+    public static T? ChooseAt<T>(this IReadOnlyList<T> seq, float at) {
+        return seq.Any() ? seq[( int ) (at * seq.Count)] : default;
+    }
+    public static T? ChooseAt<T>(this IReadOnlyCollection<T> seq, float at) {
+        int index = (int)(at * seq.Count);
+        return seq.Skip(index).FirstOrDefault();
+    }
+    public static T? ChooseRandom<T>(this IReadOnlyList<T> seq) {
+        return ChooseAt(seq, Random.Shared.NextSingle());
+    }
+    public static T? ChooseRandom<T>(this IReadOnlyCollection<T> seq) {
+        return ChooseAt(seq, Random.Shared.NextSingle());
+    }
     public static T? ChooseRandom<T>(this IEnumerable<T> seq) {
-        int N = 0;
-        T? result = default;
-        foreach (var i in seq) {
-            ++N;
-            // if (Random.Shared.NextDouble() <= 1.0 / N)
-            if (Random.Shared.NextDouble() * N <= 1.0) {
-                result = i;
-            }
-        }
-        return result;
+        return ChooseAt(seq, Random.Shared.NextSingle());
     }
 
-    public static T? ChooseWeightedRandom<T>(this IEnumerable<(T, double)> seq) {
-        double N = 0;
-        T? result = default;
-        foreach (var (i, weight) in seq) {
-            N += weight;
-            // if (Random.Shared.NextDouble() <= 1.0 / N)
-            if (Random.Shared.NextDouble() * N <= weight) {
-                result = i;
-            }
+    public static T? ChooseWeightedAt<T>(this IEnumerable<(T Item, float Weight)> inSeq, float at) {
+        var seq = inSeq.ToArray();
+        var weights = new List<float>();
+        float totalWeight = 0;
+        foreach (var (item, weight) in seq) {
+            totalWeight += weight;
+            weights.Add(totalWeight);
         }
-        return result;
+        if (totalWeight == 0) return default;
+        int selected = weights.BinarySearch(at * totalWeight);
+        if (selected < 0) {
+            selected = ~selected;
+        }
+        return seq[selected].Item;
+    }
+    public static T? ChooseWeightedRandom<T>(this IEnumerable<(T Item, float Weight)> seq) {
+        return ChooseWeightedAt(seq, Random.Shared.NextSingle());
     }
 
     public static IReadOnlyList<T> ChooseRandomK<T>(this IEnumerable<T> seq, int k) {
@@ -235,37 +284,59 @@ public static partial class CrawlerEx {
         return reservoir.AsReadOnly();
     }
 
-    public static string CommodityText(this Commodity comm, int count) =>
-        count == 0 ? string.Empty :
-        comm == Commodity.Scrap ? $"{count,7} ¢¢" :
-        $"{count,5} " + comm.ToString().Substring(0, 2);
+    public static string CommodityTextFull(this Commodity comm, float count) =>
+        comm == Commodity.Scrap ? $"{count:F1}¢¢" :
+        comm is Commodity.Crew  ? $"{( int ) count} {comm}" :
+        $"{count:F1} {comm}";
+    public static string CommodityText(this Commodity comm, float count) =>
+        count == 0 ? string.Empty : comm.CommodityTextFull(count);
 
-    private static double _nextGaussian = 0.0;
+    static float _nextGaussian = 0;
     private static bool _hasNextGaussian = false;
 
-    public static double NextGaussian(double mean = 0.0, double stdDev = 1.0) {
+    public static float NextGaussian() {
         if (_hasNextGaussian) {
             _hasNextGaussian = false;
-            return _nextGaussian * stdDev + mean;
+            return _nextGaussian;
         } else {
-            double u1 = Random.Shared.NextDouble();
-            double u2 = Random.Shared.NextDouble();
+            float u1 = Random.Shared.NextSingle();
+            float u2 = Random.Shared.NextSingle();
 
-            double z = Math.Sqrt(-2.0 * Math.Log(u1));
+            float z = ( float ) Math.Sqrt(-2.0 * Math.Log(u1));
             var (Sin, Cos) = Math.SinCos(Math.Tau * u2);
-            double z0 = z * Cos;
-            _nextGaussian = z * Sin;
+            float z0 = z * ( float ) Cos;
+            _nextGaussian = z * ( float ) Sin;
             _hasNextGaussian = true;
 
-            return z0 * stdDev + mean;
+            return z0;
         }
     }
-    public static IEnumerable<double> Normalize(this IEnumerable<double> e) {
+    public static float NextGaussian(float mean = 0, float stdDev = 1) {
+        return NextGaussian() * stdDev + mean;
+    }
+    public static IEnumerable<float> Normalize(this IEnumerable<float> e) {
         var sum = e.Sum();
-        var recip = 1.0 / sum;
+        var recip = 1.0f / sum;
         return e.Select(item => item * recip);
     }
+    // No interpolation from 0 to 1
+    public static float Interpolate(this float[] a, float idx) {
+        int i = (int)idx;
+        if (i >= a.Length) {
+            return a[a.Length - 1];
+        }
+        if (i < 1) {
+            return a[0];
+        }
+        float a0 = a[i];
+        float a1 = a[i + 1];
+        float t = Frac(idx);
+        return a0 * (1 - t) + a1 * t;
+    }
 
+    public static string StringJoin(this IEnumerable<string> e, string sep = "") {
+        return string.Join(sep, e);
+    }
     public static string JoinStyled(this IEnumerable<StyledString> e, string sep = "") {
         return string.Join(sep, e.Select(s => s.Styled));
     }
@@ -296,6 +367,8 @@ public static partial class CrawlerEx {
         }
         return result;
     }
+    // Used for streaming styled text. Emits the style string if the next style is
+    // different from the current one, and updates the current style.
     public static string Advance(this Style Current, Style Next) {
         if (Current != Next) {
             Current = Next;
@@ -304,6 +377,10 @@ public static partial class CrawlerEx {
             return "";
         }
     }
+    // Helpers for styled strings
+    public static string Advance(this Style Current, Style Next, string text) => Current.Advance(Next) + text;
+    public static string Advance(this Style Current, StyledString Next) => Current.Advance(Next.Style) + Next.Text;
+    public static string Advance(this Style Current, StyledChar Next) => Current.Advance(Next.Style) + Next.Char;
     public static Color Dark(this Color c) => Color.FromArgb(c.A, c.R / 2, c.G / 2, c.B / 2);
     public static void Do<T>(this IEnumerable<T> e) {
         foreach (var item in e) { }
@@ -318,11 +395,12 @@ public static partial class CrawlerEx {
             action(item, arg);
         }
     }
+
     public static double Frac(double value) => value - Math.Floor(value);
-    public static float Frac(float value) => value - (int)Math.Floor(value);
-    public static int StochasticInt(this double expectedValue) {
+    public static float Frac(float value) => value - (float)Math.Floor(value);
+    public static int StochasticInt(this float expectedValue) {
         var result = ( int ) Math.Floor(expectedValue);
-        if (Random.Shared.NextDouble() < Frac(expectedValue)) {
+        if (Random.Shared.NextSingle() < Frac(expectedValue)) {
             ++result;
         }
         return result;
@@ -336,11 +414,72 @@ public static partial class CrawlerEx {
             }
         }
     }
-    public static double Factorial(int N) => N == 0 ? 1 : Enumerable.Range(1, N).Aggregate(1, (a, b) => a * b);
-    public static double PoissonPMF(int K, double lambda) => Math.Pow(lambda, K) * Math.Exp(-lambda) / Factorial(K);
-    public static double HaltonSequence(uint b, uint index) {
-        double f = 1.0;
-        double r = 0.0;
+    public static IEnumerable<T> WhereCast<T>(this IEnumerable<object> e) {
+        foreach (var item in e) {
+            if (item is T t) {
+                yield return t;
+            }
+        }
+    }
+    public static void Fill<T>(this T[,] array, T value) {
+        int H = array.GetLength(0);
+        int W = array.GetLength(1);
+        for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) {
+                array[y, x] = value;
+            }
+        }
+    }
+    public static float Factorial(int N) => N == 0 ? 1 : Enumerable.Range(1, N).Aggregate(1, (a, b) => a * b);
+    public static float PoissonPMF(int K, float lambda) => (float)(Math.Pow(lambda, K) * Math.Exp(-lambda) / Factorial(K));
+    public static int SamplePoisson(float lambda) {
+        if (!(lambda >= 0.0)) throw new ArgumentOutOfRangeException(nameof(lambda));
+        // Threshold where we switch from exact inversion to normal approx.
+        const float NormalThreshold = 30.0f;
+
+        if (lambda < NormalThreshold) {
+            // Exact inverse-transform using iterative PMF (stable, no factorials).
+            float u = Random.Shared.NextSingle();
+            float p = (float)Math.Exp(-lambda); // p(0)
+            int limit = (int)(lambda * 20 + 100);
+            float cumulative = p;
+            int k = 0;
+            while (k < limit) {
+                if (u < cumulative) {
+                    break;
+                }
+                ++k;
+                p *= lambda / k; // p(k) = p(k-1) * lambda / k
+                cumulative += p;
+            }
+            return k;
+        } else {
+            float kRaw = lambda + (float)Math.Sqrt(lambda) * NextGaussian();
+            int k = (int)Math.Round(kRaw);
+            return Math.Max(0, k);
+        }
+    }
+
+    /// <summary>
+    /// Samples from an exponential distribution with the given mean (lambda).
+    /// Used for modeling inter-arrival times or remaining lifetimes in a Poisson process.
+    /// </summary>
+    /// <param name="mean">The mean (expected value) of the distribution</param>
+    /// <returns>A random sample from the exponential distribution</returns>
+    public static float SampleExponential(float mean) {
+        if (mean <= 0) {
+            throw new ArgumentException("Mean must be positive", nameof(mean));
+        }
+
+        // Use inverse transform sampling: -mean * ln(1 - U) where U ~ Uniform(0,1)
+        // We use (1 - NextSingle()) to avoid ln(0)
+        double u = 1.0 - Random.Shared.NextDouble();
+        return ( float ) (-mean * Math.Log(u));
+    }
+
+    public static float HaltonSequence(uint b, uint index) {
+        float f = 1;
+        float r = 0;
         uint i = index;
         while (i > 0) {
             f = f / b;
@@ -350,4 +489,172 @@ public static partial class CrawlerEx {
         return r;
     }
 
+    public static bool IsNumericType(this Type type) {
+        switch (Type.GetTypeCode(type)) {
+        case TypeCode.Byte:
+        case TypeCode.SByte:
+        case TypeCode.UInt16:
+        case TypeCode.Int16:
+        case TypeCode.UInt32:
+        case TypeCode.Int32:
+        case TypeCode.UInt64:
+        case TypeCode.Int64:
+        case TypeCode.Single:
+        case TypeCode.Double:
+        case TypeCode.Decimal:
+            return true;
+        default:
+            return false;
+        }
+    }
+    public static void Shuffle<T>(this IList<T> list) {
+        int n = list.Count;
+        while (n > 1) {
+            n--;
+            int k = Random.Shared.Next(n + 1);
+            T value = list[k];
+            list[k] = list[n];
+            list[n] = value;
+        }
+    }
+    public static string HomePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Crawler");
+    public static string SavesPath = Path.Combine(HomePath, "Saves");
+    // For roaming settings
+    public static string SharedPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Crawler");
+    public static string SettingsPath = Path.Combine(SharedPath, "Settings");
+    // For machine settings and caches
+    public static string MachinePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Crawler");
+    public static string LogPath = Path.Combine(MachinePath, "Logs");
+
+    public static string DataPath = FindDataPath();
+    static string FindDataPath() {
+        string cwd = Directory.GetCurrentDirectory();
+        while (cwd != "") {
+            if (Directory.Exists(Path.Combine(cwd, "Data"))) {
+                break;
+            } else if (Directory.EnumerateFiles(cwd, "*.csproj", SearchOption.AllDirectories).Any()) {
+                break;
+            } else {
+                var parent = Directory.GetParent(cwd);
+                cwd = parent?.FullName ?? "";
+            }
+        }
+        return Path.Combine(cwd, "Data");
+    }
+
+    public static StreamReader Read(this string dir, string file) {
+        var filePath = Path.Combine(dir, file);
+        return new StreamReader(filePath);
+    }
+    public static IEnumerable<string> ReadAllLines(this StreamReader reader) {
+        while (!reader.EndOfStream) {
+            yield return reader.ReadLine()!;
+        }
+    }
+    public static float Lerp(float a, float b, float t) => a + (b - a) * t;
+    public static float Delerp(float x, float low, float high) => ( x - low ) / ( high - low);
+    public static double Lerp(double a, double b, double t) => a + (b - a) * t;
+    public static double Delerp(double x, double low, double high) => ( x - low ) / ( high - low);
+    public static string Input(string prompt = "", string dflt = "") {
+        if (prompt != "") {
+            Console.Write(prompt);
+        }
+        Console.Write(CrawlerEx.CursorSave);
+        Console.Write(Style.MenuInput.Format(dflt));
+        Console.Write(CrawlerEx.CursorRestore);
+        var line = Console.ReadLine();
+        if (line == null) {
+            throw new EndOfStreamException("User pressed break");
+        }
+        return string.IsNullOrWhiteSpace(line) ? dflt : line;
+    }
+    public static IEnumerable<IInteraction> InteractionsWith(this IActor agent, IActor subject) {
+        if (agent == subject) {
+            yield break;
+        }
+        foreach (var proposal in agent.Proposals()) {
+            foreach (var interaction in proposal.TestGetInteractions(agent, subject)) {
+                yield return interaction;
+            }
+        }
+        foreach (var proposal in subject.Proposals()) {
+            foreach (var interaction in proposal.TestGetInteractions(subject, agent)) {
+                yield return interaction;
+            }
+        }
+        foreach (var proposal in Game.Instance.StoredProposals) {
+            foreach (var interaction in proposal.TestGetInteractions(agent, subject)) {
+                yield return interaction;
+            }
+            foreach (var interaction in proposal.TestGetInteractions(subject, agent)) {
+                yield return interaction;
+            }
+        }
+    }
+    public static bool Failed(this IActor actor) => actor.EndMessage != null;
+    public static int Length<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>().Length;
+    public static ENUM ChooseRandom<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>()[Random.Shared.Next(0, Length<ENUM>() - 1)];
+    static List<string> _messages = new();
+    public static Action<string>? OnMessage = message => _messages.Add(message);
+    public static void Message(string message) {
+        OnMessage?.Invoke(message);
+    }
+    public static void ClearMessages() {
+        _messages.Clear();
+    }
+    public static void ShowMessages() {
+        foreach (var message in _messages) {
+            Console.WriteLine(message);
+        }
+    }
+    public static IEnumerable<string> ZipColumns(this IList<string> left, IList<string> right) {
+        var leftWidth = left.Max(x => x.Length);
+        var rightWidth = right.Max(x => x.Length);
+        int count = Math.Max(left.Count, right.Count);
+        for (int i = 0; i < count; i++) {
+            string leftString = i < left.Count ? left[i] : string.Empty;
+            string rightString = i < right.Count ? right[i] : string.Empty;
+            leftString = leftString.PadRight(leftWidth);
+            //rightString = rightString.PadRight(rightWidth);
+            yield return $"{leftString} {rightString}";
+        }
+    }
+    public static bool HasAny(this IActor agent, EActorFlags flags) => (agent.Flags & flags) != 0;
+    public static bool Has(this IActor agent, EActorFlags flags) => (agent.Flags & flags) == flags;
+    public static bool Hasnt(this IActor agent, EActorFlags flags) => (agent.Flags & flags) == 0;
+    public static bool SurrenderedTo(this IActor agent, IActor other) => agent.To(other).Surrendered;
+    public static int Attack(this Crawler attacker, IActor defender) {
+        var fire = attacker.CreateFire();
+        if (fire.Any()) {
+            attacker.Message($"{attacker.Name} attacks {defender.Name}:");
+            attacker.To(defender).Hostile = true;
+
+            if (defender.SurrenderedTo(attacker)) {
+                ++attacker.EvilPoints;
+            }
+
+            defender.ReceiveFire(attacker, fire);
+            return 60;
+        } else {
+            attacker.Message($"No fire on {defender.Name} ({attacker.StateString(defender)}");
+            return 0;
+        }
+    }
+    public static TValue GetOrAddNewValue<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key) where TValue: new() {
+        return dict.GetOrAddNewValue(key, () => new TValue());
+    }
+    public static TValue GetOrAddNewValue<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TValue> gen) {
+        if (!dict.TryGetValue(key, out var value)) {
+            value = gen();
+            dict[key] = value;
+        }
+        return value;
+    }
+    public static bool Visited(this IActor actor, Location location) => actor.Knows(location) && actor.To(location).Visited;
+    public static int Visits(this IActor actor, Sector sector) => sector.Locations.Count(l => actor.Visited(l));
+    public static Color Scale(this Color c, float s) => Color.FromArgb(
+        c.A,
+        ( byte ) Math.Clamp(c.R * s, 0, 255),
+        ( byte ) Math.Clamp(c.G* s, 0, 255),
+        ( byte ) Math.Clamp(c.B * s, 0, 255));
 }
