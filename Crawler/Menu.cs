@@ -82,7 +82,8 @@ public static partial class CrawlerEx {
             }
             string input;
             if (optionCount == 0) {
-                Console.WriteLine("No options available.");
+                Console.WriteLine("No options available. Press enter to continue.");
+                Console.ReadLine();
                 return (MenuItem.Sep, Dflt);
             }
             try {
