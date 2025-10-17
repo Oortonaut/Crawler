@@ -26,12 +26,12 @@ public class Encounter {
     public string Name { get; set; } = "Encounter";
     public string Description { get; set; } = "";
     public override string ToString() => $"{Name} at {Location} '{Description}'";
-    public string Look(IActor viewer) {
-        string result = Style.Name.Format(Name) + "\n";
+    public string ViewFrom(IActor viewer) {
+        string result = Style.Name.Format(Name);
         if (Description != "") {
-            result += Description + "\n";
+            result += ": " + Description;
         }
-        result += viewer.Brief(viewer);
+        result += "\n" + viewer.Brief(viewer);
         // result += string.Join("\n", Actors.Select(a => {
         //     return a.Brief(viewer);
         // }));
@@ -53,12 +53,14 @@ public class Encounter {
             if (interactions.Count == 0) {
                 result.Add(new MenuItem(shortcut, actor.Brief(agent) + "\n"));
             } else {
-                var show = interactions.Count >= 3 ? ShowArg.Hide : ShowArg.Show;
+                var show = interactions.Count > 3 ? ShowArg.Hide : ShowArg.Show;
+                result.AddRange(InteractionMenuItems(interactions, "", shortcut, show));
+                result.Add(MenuItem.Sep);
                 result.Add(new ActionMenuItem(shortcut,
-                    actor.Brief(agent) + "\n",
+                    actor.Brief(agent),
                     args => InteractionMenu(interactions, args, shortcut),
                     enabled ? EnableArg.Enabled : EnableArg.Disabled));
-                result.AddRange(InteractionMenuItems(interactions, "", shortcut, show));
+                result.Add(MenuItem.Sep);
             }
             // if (actor is Crawler actorCrawler) {
             //     result.AddRange(actorCrawler.ActionsFor(agent, index));
@@ -245,8 +247,8 @@ public class Encounter {
         string verb;
         string name;
 
-        // Format amount appropriately (integer for crew/people commodities, 1 decimal otherwise)
-        string amtStr = (resource == Commodity.Crew || resource == Commodity.Passengers || resource == Commodity.Soldiers)
+        // Format amount appropriately (integer for integral commodities, 1 decimal otherwise)
+        string amtStr = resource.IsIntegral()
             ? $"{(int)amt}"
             : $"{amt:F1}";
 
@@ -276,7 +278,7 @@ public class Encounter {
             Commodity.Gems => ("Gem Cache", "You find a hidden stash of precious gems.", $"Take {amtStr} Gems"),
             Commodity.Toys => ("Toy Cache", "You find a cache of entertainment items and games.", $"Take {amtStr} Toys"),
             Commodity.Machines => ("Machinery Cache", "You find industrial machinery and tools.", $"Take {amtStr} Machines"),
-            Commodity.Computers => ("Computer Cache", "You find intact computer systems.", $"Take {amtStr} Computers"),
+            Commodity.AiCores => ("Computer Cache", "You find intact AI cores.", $"Take {amtStr} AI cores"),
             Commodity.Media => ("Media Cache", "You find data storage devices full of entertainment.", $"Take {amtStr} Media"),
             Commodity.Liquor => ("Liquor Cache", "You find sealed bottles of alcohol.", $"Take {amtStr} Liquor"),
             Commodity.Stims => ("Stim Cache", "You find a hidden stash of stimulants.", $"Take {amtStr} Stims"),
@@ -314,7 +316,7 @@ public class Encounter {
 
         // Build description based on reward and penalty types
         string FormatCommodity(Commodity comm, float amt, bool isLoss = false) {
-            string amtStr = (comm == Commodity.Crew || comm == Commodity.Passengers || comm == Commodity.Soldiers)
+            string amtStr = comm.IsIntegral()
                 ? $"{(int)amt}"
                 : $"{amt:F1}";
 
@@ -346,7 +348,7 @@ public class Encounter {
                 Commodity.Gems => $"{prefix}{amtStr} gems",
                 Commodity.Toys => $"{prefix}{amtStr} toys",
                 Commodity.Machines => $"{prefix}{amtStr} machines",
-                Commodity.Computers => $"{prefix}{amtStr} computers",
+                Commodity.AiCores => $"{prefix}{amtStr} computers",
                 Commodity.Media => $"{prefix}{amtStr} media",
                 Commodity.Liquor => $"{prefix}{amtStr} liquor",
                 Commodity.Stims => $"{prefix}{amtStr} stims",

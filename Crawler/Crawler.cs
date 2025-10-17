@@ -288,9 +288,7 @@ public class Crawler: IActor {
         );
 
         foreach (var (commodity, amount) in Inv.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
-            var baseValue = amount * Tuning.Economy.BaseCommodityValues[commodity];
-            var markup = Tuning.Economy.LocalMarkup(commodity, Location);
-            var localValue = baseValue * markup;
+            var value = amount * commodity.Value(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
                 commodity == Commodity.Scrap ? $"{amount:F1}¢¢" :
@@ -298,7 +296,7 @@ public class Crawler: IActor {
                 $"{amount:F1}",
                 $"{commodity.Mass():F3}",
                 $"{commodity.Volume():F3}",
-                $"{localValue:F1}¢¢"
+                $"{value:F1}¢¢"
             );
         }
         result += commodityTable.ToString() + "\n";

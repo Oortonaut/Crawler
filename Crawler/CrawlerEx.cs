@@ -286,7 +286,7 @@ public static partial class CrawlerEx {
 
     public static string CommodityTextFull(this Commodity comm, float count) =>
         comm == Commodity.Scrap ? $"{count:F1}¢¢" :
-        comm is Commodity.Crew  ? $"{( int ) count} {comm}" :
+        comm.IsIntegral() ? $"{( int ) count} {comm}" :
         $"{count:F1} {comm}";
     public static string CommodityText(this Commodity comm, float count) =>
         count == 0 ? string.Empty : comm.CommodityTextFull(count);

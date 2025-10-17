@@ -222,11 +222,9 @@ public class Game {
 
     int Look() {
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
-        Console.WriteLine(DrawMap());
+        //Console.WriteLine(DrawMap());
         Console.WriteLine(CurrentLocation.Sector.Look() + " " + CurrentLocation.PosString);
-        if (Encounter != null) {
-            Console.WriteLine(Encounter.Look(Player));
-        }
+        Console.WriteLine(Encounter.ViewFrom(Player));
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
         return 0;
@@ -301,11 +299,13 @@ public class Game {
         Look();
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", [
+            .. GameMenuItems(),
+            .. PlayerMenuItems(),
             .. LocalMenuItems(),
             .. WorldMapMenuItems(),
-            .. PlayerMenuItems(),
             .. EncounterMenuItems(),
-            .. GameMenuItems(),
+            MenuItem.Sep,
+            new MenuItem("", "Choose"),
         ]);
         AP -= ap;
         return selected;
@@ -315,12 +315,12 @@ public class Game {
         Console.WriteLine(DrawSectorMap());
         Console.WriteLine(CurrentLocation.Sector.Look() + " " + CurrentLocation.PosString);
         if (Encounter != null) {
-            Console.WriteLine(Encounter.Look(Player));
+            Console.WriteLine(Encounter.ViewFrom(Player));
         }
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
 
-        var (selected, ap) = CrawlerEx.MenuRun("Local Menu", [
+        var (selected, ap) = CrawlerEx.MenuRun("Sector Map", [
             .. LocalMenuItems(ShowArg.Show),
         ]);
         return ap;
@@ -332,14 +332,14 @@ public class Game {
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
 
-        var (selected, ap) = CrawlerEx.MenuRun("World Map Menu", [
+        var (selected, ap) = CrawlerEx.MenuRun("World Map", [
             .. WorldMapMenuItems(ShowArg.Show),
         ]);
         return ap;
     }
     IEnumerable<MenuItem> GameMenuItems() => [
-        new ActionMenuItem("L", "Local Menu", _ => LocalMenu()),
-        new ActionMenuItem("W", "World Map Menu", _ => WorldMapMenu()),
+        new ActionMenuItem("M", "Sector Map", _ => LocalMenu()),
+        new ActionMenuItem("W", "World Map", _ => WorldMapMenu()),
         new ActionMenuItem("R", "Status Report", _ => Report()),
         new ActionMenuItem("K", "Skip Turn/Wait", args => Turn(args)),
         new ActionMenuItem("Q", "Save and Quit", _ => Save() + Quit()),
@@ -350,9 +350,11 @@ public class Game {
         }, EnableArg.Enabled, ShowArg.Hide),
     ];
     IEnumerable<MenuItem> PlayerMenuItems() {
-        yield return new ActionMenuItem("PP", "Power Menu", _ => PowerMenu());
-        yield return new ActionMenuItem("PK", "Packaging Menu", _ => PackagingMenu());
-        yield return new ActionMenuItem("PT", "Trade Inventory Menu", _ => TradeInventoryMenu());
+        yield return MenuItem.Sep;
+        yield return new MenuItem("", Style.MenuTitle.Format("Player Menu"));
+        yield return new ActionMenuItem("PP", "Power...", _ => PowerMenu());
+        yield return new ActionMenuItem("PK", "Packaging...", _ => PackagingMenu());
+        yield return new ActionMenuItem("PT", "Trade Inv...", _ => TradeInventoryMenu());
 
         // Hidden detail items for power control
         var segments = Player.Segments;

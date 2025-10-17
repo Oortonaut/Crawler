@@ -58,7 +58,9 @@ public static partial class CrawlerEx {
         return Menu(Title, "", items);
     }
     public static (MenuItem, string) Menu(string Title, string Dflt, params MenuItem[] items) {
-        Console.Write(Style.MenuTitle.Format($"< {Title} >"));
+        if (Title != "") {
+            Console.Write(Style.MenuTitle.Format($"{Title}"));
+        }
         Console.Write(Style.MenuNormal.StyleString());
         bool start = false;
         int optionCount = items.Count(x => x.IsEnabled);

@@ -29,6 +29,7 @@ public record Location(
     float zipf = Random.Shared.NextSingle();
     public float Population => Math.Clamp((12 * (float)Math.Pow(0.025f, zipf)), 0, 10);
     public float Wealth => wealth * Population;
+    public float TechLevel => 1 - ((Position.Y + 0.5f) / Map.Height);
 
     public Faction ChooseRandomFaction() {
         // Get base weights for this terrain type

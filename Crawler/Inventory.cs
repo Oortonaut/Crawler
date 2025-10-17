@@ -19,10 +19,12 @@ public enum Commodity {
     Biomass,
     Ore,
     Silicates,
+
     // refined
     Metal,
     Chemicals,
     Glass,
+
     // Parts
     Ceramics,
     Polymers,
@@ -36,7 +38,7 @@ public enum Commodity {
     Gems,
     Toys,
     Machines,
-    Computers,
+    AiCores,
     Media,
 
     // Vice & Contraband
@@ -52,96 +54,115 @@ public enum Commodity {
     Relics,
 }
 
+public enum GameTier {
+    Early,
+    Mid,
+    Late
+}
+[Flags]
 public enum CommodityFlags {
     None = 0,
-    Perishable = 1 << 0,      // Requires power/refrigeration
-    Restricted = 1 << 1,       // Illegal at trade settlements
-    Contraband = 1 << 2,       // Illegal everywhere except black market
-    Bulky = 1 << 3,            // High volume relative to value
-    Essential = 1 << 4,        // Essential goods (use old distribution method)
+    Perishable = 1 << 0, // Requires power/refrigeration
+    Restricted = 1 << 1, // Illegal at trade settlements
+    Contraband = 1 << 2, // Illegal everywhere except black market
+    Bulky = 1 << 3, // High volume relative to value
+    Essential = 1 << 4, // Essential goods (use old distribution method)
+    Integral = 1 << 5, // Display as integer (no decimal places)
+}
+public enum Scarcity {
+    Common,
+    Uncommon,
+    Rare,
 }
 
-public record struct CommodityData(float Volume, float Mass, CommodityFlags Flags);
-
+public record struct CommodityData(float BaseValue, float Volume, float Mass, CommodityFlags Flags, GameTier Tier);
 public static class CommodityEx {
-    // Volume in cubic meters per unit, Weight in tons per unit, Flags
+    // Volume in cubic meters per unit, Weight in tons per unit, Flags, Tier
     public static EArray<Commodity, CommodityData> Data = [
-        new CommodityData(0.001f, 0.005f, CommodityFlags.Essential),                                      // Scrap
-        new CommodityData(0.01f,  0.008f, CommodityFlags.Essential),                                      // Fuel
-        new CommodityData(1.0f,   0.08f,  CommodityFlags.Essential),                                      // Crew
-        new CommodityData(0.0f,   0.0f,   CommodityFlags.Essential),                                      // Morale
-        new CommodityData(1.0f,   0.08f,  CommodityFlags.Essential),                                      // Passengers
-        new CommodityData(1.2f,   0.10f,  CommodityFlags.Essential),                                      // Soldiers
+        new CommodityData(1, 0.001f, 0.005f, CommodityFlags.Essential, GameTier.Early), // Scrap
+        new CommodityData(125f, 1.0f, 0.8f, CommodityFlags.Essential, GameTier.Early), // Fuel
+        new CommodityData(4.0f, 1.0f, 0.08f, CommodityFlags.Essential | CommodityFlags.Integral, GameTier.Early), // Crew
+        new CommodityData(15f, 0.0f, 0.0f, CommodityFlags.Essential | CommodityFlags.Integral, GameTier.Early), // Morale
+        new CommodityData(3.5f, 1.0f, 0.08f, CommodityFlags.Integral, GameTier.Early), // Passengers
+        new CommodityData(5.0f, 1.2f, 0.10f, CommodityFlags.Integral, GameTier.Mid), // Soldiers
 
         // Life support
-        new CommodityData(0.05f,  0.001f, CommodityFlags.Essential),                                      // Air
-        new CommodityData(0.01f,  0.01f,  CommodityFlags.Essential | CommodityFlags.Bulky),               // Water
-        new CommodityData(0.005f, 0.003f, CommodityFlags.Essential | CommodityFlags.Perishable),          // Rations
+        new CommodityData(10f, 1.0f, 0.02f, CommodityFlags.Essential, GameTier.Early), // Air
+        new CommodityData(30f, 1.0f, 1.0f, CommodityFlags.Essential | CommodityFlags.Bulky, GameTier.Early), // Water
+        new CommodityData(300f, 1.0f, 0.6f, CommodityFlags.Essential | CommodityFlags.Perishable, GameTier.Early), // Rations
 
         // Raw materials
-        new CommodityData(0.02f,  0.005f, CommodityFlags.Perishable | CommodityFlags.Bulky),              // Biomass
-        new CommodityData(0.005f, 0.015f, CommodityFlags.Bulky),                                          // Ore
-        new CommodityData(0.006f, 0.012f, CommodityFlags.Bulky),                                          // Silicates
+        new CommodityData(40f, 1.0f, 0.25f, CommodityFlags.Perishable | CommodityFlags.Bulky, GameTier.Early), // Biomass
+        new CommodityData(120f, 1.0f, 3.0f, CommodityFlags.Bulky, GameTier.Early), // Ore
+        new CommodityData(83.33333f, 1.0f, 2.0f, CommodityFlags.Bulky, GameTier.Early), // Silicates
+        
         // refined
-        new CommodityData(0.004f, 0.010f, CommodityFlags.None),                                           // Metal
-        new CommodityData(0.008f, 0.006f, CommodityFlags.None),                                           // Chemicals
-        new CommodityData(0.012f, 0.008f, CommodityFlags.None),                                           // Glass
+        new CommodityData(300f, 1.0f, 2.5f, CommodityFlags.None, GameTier.Early), // Metal
+        new CommodityData(187.5f, 1.0f, 0.75f, CommodityFlags.None, GameTier.Mid), // Chemicals
+        new CommodityData(83.33333f, 1.0f, 0.6666667f, CommodityFlags.None, GameTier.Early), // Glass
+        
         // Parts
-        new CommodityData(0.008f, 0.006f, CommodityFlags.None),                                           // Ceramics
-        new CommodityData(0.012f, 0.004f, CommodityFlags.None),                                           // Polymers
-        new CommodityData(0.006f, 0.012f, CommodityFlags.None),                                           // Alloys
-        new CommodityData(0.003f, 0.002f, CommodityFlags.None),                                           // Electronics
-        new CommodityData(0.007f, 0.005f, CommodityFlags.Restricted),                                     // Explosives
+        new CommodityData(225f, 1.0f, 0.75f, CommodityFlags.None, GameTier.Mid), // Ceramics
+        new CommodityData(166.66667f, 1.0f, 0.33333334f, CommodityFlags.None, GameTier.Mid), // Polymers
+        new CommodityData(416.66666f, 1.0f, 2.0f, CommodityFlags.None, GameTier.Mid), // Alloys
+        new CommodityData(1333.3334f, 1.0f, 0.6666667f, CommodityFlags.None, GameTier.Late), // Electronics
+        new CommodityData(428.57144f, 1.0f, 0.71428573f, CommodityFlags.Restricted, GameTier.Mid), // Explosives
 
         // Consumer Goods
-        new CommodityData(0.002f, 0.001f, CommodityFlags.Perishable),                                     // Medicines
-        new CommodityData(0.015f, 0.003f, CommodityFlags.None),                                           // Textiles
-        new CommodityData(0.001f, 0.002f, CommodityFlags.None),                                           // Gems
-        new CommodityData(0.010f, 0.004f, CommodityFlags.None),                                           // Toys
-        new CommodityData(0.020f, 0.015f, CommodityFlags.None),                                           // Machines
-        new CommodityData(0.004f, 0.003f, CommodityFlags.None),                                           // Computers
-        new CommodityData(0.003f, 0.001f, CommodityFlags.None),                                           // Media
+        new CommodityData(4000f, 1.0f, 0.5f, CommodityFlags.Perishable, GameTier.Mid), // Medicines
+        new CommodityData(166.66667f, 1.0f, 0.2f, CommodityFlags.None, GameTier.Early), // Textiles
+        new CommodityData(20000f, 1.0f, 2.0f, CommodityFlags.None, GameTier.Late), // Gems
+        new CommodityData(150f, 1.0f, 0.4f, CommodityFlags.None, GameTier.Early), // Toys
+        new CommodityData(250f, 1.0f, 0.75f, CommodityFlags.None, GameTier.Mid), // Machines
+        new CommodityData(25.0f, 0.004f, 0.015f, CommodityFlags.Restricted | CommodityFlags.Integral, GameTier.Late), // AiCores
+        new CommodityData(666.6667f, 1.0f, 0.33333334f, CommodityFlags.None, GameTier.Mid), // Media
 
         // Vice & Contraband
-        new CommodityData(0.008f, 0.008f,  CommodityFlags.Restricted),                                    // Liquor
-        new CommodityData(0.001f, 0.0005f, CommodityFlags.Contraband),                                    // Stims
-        new CommodityData(0.001f, 0.0005f, CommodityFlags.Contraband),                                    // Downers
-        new CommodityData(0.0005f, 0.0003f, CommodityFlags.Contraband),                                   // Trips
-        new CommodityData(0.008f, 0.006f, CommodityFlags.Restricted),                                     // SmallArms
+        new CommodityData(375f, 1.0f, 1.0f, CommodityFlags.Contraband | CommodityFlags.Bulky, GameTier.Early), // Liquor
+        new CommodityData(12000f, 1.0f, 0.5f, CommodityFlags.Contraband, GameTier.Mid), // Stims
+        new CommodityData(10000f, 1.0f, 0.5f, CommodityFlags.Contraband, GameTier.Mid), // Downers
+        new CommodityData(36000f, 1.0f, 0.6f, CommodityFlags.Contraband, GameTier.Late), // Trips
+        new CommodityData(562.5f, 1.0f, 0.75f, CommodityFlags.Restricted, GameTier.Mid), // SmallArms
 
         // Religious items
-        new CommodityData(0.003f, 0.004f, CommodityFlags.None),                                           // Idols
-        new CommodityData(0.005f, 0.002f, CommodityFlags.None),                                           // Texts
-        new CommodityData(0.002f, 0.003f, CommodityFlags.None),                                           // Relics
+        new CommodityData(6.0f, 0.003f, 0.004f, CommodityFlags.Integral, GameTier.Early), // Idols
+        new CommodityData(4.0f, 0.005f, 0.002f, CommodityFlags.Integral, GameTier.Early), // Texts
+        new CommodityData(15.0f, 0.002f, 0.003f, CommodityFlags.Integral, GameTier.Late), // Relics
     ];
 
-    public static bool IsIllegalAtTrade(this Commodity commodity) {
-        var flags = Data[commodity].Flags;
-        return (flags & CommodityFlags.Restricted) != 0 || (flags & CommodityFlags.Contraband) != 0;
+    public static CommodityFlags Flags(this Commodity commodity) => Data[commodity].Flags;
+    public static bool IsIllegalAtTrade(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Restricted | CommodityFlags.Contraband);
+    public static bool IsPerishable(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Perishable);
+    public static bool IsBulky(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Bulky);
+    public static bool IsEssential(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Essential);
+    public static bool IsIntegral(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Integral);
+    public static float BaseValue(this Commodity commodity) => Data[commodity].BaseValue;
+    public static GameTier Tier(this Commodity commodity) => Data[commodity].Tier;
+    public static float Mass(this Commodity commodity) => Data[commodity].Mass;
+    public static float Volume(this Commodity commodity) => Data[commodity].Volume;
+    // Calculate availability weight for a commodity based on settlement characteristics
+    // population: 0-1 scale representing settlement size
+    // techLevel: 0-1 scale representing settlement technology/quality
+    public static float AvailabilityWeight(this Commodity commodity, float population, float techLevel) {
+        var tier = commodity.Tier();
+        
+        // Base weight curve: larger settlements stock more variety
+        float sizeWeight = 0.2f + 0.8f * population;
+        
+        // Tech level affects what tiers are available
+        float tierWeight = tier switch {
+            GameTier.Early => 1.0f - 0.3f * techLevel, // Early goods become less common in high-tech areas
+            GameTier.Mid => (float)Math.Pow(Math.Sin(techLevel * Math.PI), 0.5), // Peak availability at mid-tech
+            GameTier.Late => (float)Math.Pow(techLevel, 1.5), // Late goods require high tech
+            _ => 1.0f
+        };
+        
+        return sizeWeight * tierWeight;
     }
 
-    public static bool IsPerishable(this Commodity commodity) {
-        return (Data[commodity].Flags & CommodityFlags.Perishable) != 0;
-    }
-
-    public static bool IsBulky(this Commodity commodity) {
-        return (Data[commodity].Flags & CommodityFlags.Bulky) != 0;
-    }
-
-    public static bool IsEssential(this Commodity commodity) {
-        return (Data[commodity].Flags & CommodityFlags.Essential) != 0;
-    }
-
-    public static float Volume(this Commodity commodity) {
-        return Data[commodity].Volume;
-    }
-    public static float Mass(this Commodity commodity) {
-        return Data[commodity].Mass;
-    }
 }
-
 public class Inventory {
-    public Inventory() {}
+    public Inventory() { }
     public Inventory(EArray<Commodity, float> InItemCounts, IEnumerable<Segment> InSegments) {
         _commodities = InItemCounts.Clone();
         Segments = InSegments.ToList();
@@ -186,8 +207,7 @@ public class Inventory {
             result += string.Join(", ",
                 segmentCounts
                     .Select(nameCount =>
-                        nameCount.Value > 1 ? $"{nameCount.Value} {nameCount.Key.Name}" :
-                        $"{nameCount.Key.Name}")
+                        nameCount.Value > 1 ? $"{nameCount.Value} {nameCount.Key.Name}" : $"{nameCount.Key.Name}")
                     .Where(s => !string.IsNullOrEmpty(s)));
         }
         return result;
@@ -197,11 +217,11 @@ public class Inventory {
             return "nothing";
         }
         var result = _commodities
-            .Pairs().ToList()
-            .Select(kv => kv.Key.CommodityText(kv.Value))
-            .Where(s => !string.IsNullOrEmpty(s))
-            .StringJoin(", ")
-        ;
+                .Pairs().ToList()
+                .Select(kv => kv.Key.CommodityText(kv.Value))
+                .Where(s => !string.IsNullOrEmpty(s))
+                .StringJoin(", ")
+            ;
         return result;
     }
     public void Add(Inventory other) {
@@ -264,19 +284,22 @@ public class Inventory {
         AddSegmentInventory(Loc, Wealth * SegmentSplit, includeCore, segmentClassWeights);
     }
     public void AddCrewInventory(float Wealth) {
-        float startRations = (float)CrawlerEx.NextGaussian(50, 5);
-        float startMorale = (float)CrawlerEx.NextGaussian(10, 1);
-        float perCrewValue = Tuning.Economy.BaseCommodityValues[Commodity.Crew] +
-            startRations * Tuning.Economy.BaseCommodityValues[Commodity.Rations] +
-            startMorale * Tuning.Economy.BaseCommodityValues[Commodity.Morale];
-        int crewCount = (int)Math.Ceiling(Wealth / perCrewValue);
-        this[Commodity.Rations] +=  startRations * crewCount;
+        float startRations = ( float ) CrawlerEx.NextGaussian(50, 5);
+        float startMorale = ( float ) CrawlerEx.NextGaussian(10, 1);
+        float perCrewValue = Commodity.Crew.BaseValue() +
+                             startRations * Commodity.Rations.BaseValue() +
+                             startMorale * Commodity.Morale.BaseValue();
+        int crewCount = ( int ) Math.Ceiling(Wealth / perCrewValue);
+        this[Commodity.Rations] += startRations * crewCount;
         this[Commodity.Morale] += startMorale * crewCount;
         this[Commodity.Crew] += crewCount;
     }
     public void AddCommodityInventory(Location Loc, float Wealth, Faction faction = Faction.Player) {
         // Get faction-specific commodity weights from Tuning
         var FactionWeights = Tuning.Crawler.CommodityWeights[faction];
+
+        float population = Loc.Population;
+        float techLevel = Loc.TechLevel;
 
         // Separate essentials and goods
         var essentialIndices = _commodities.Keys.Where(c => c.IsEssential()).ToList();
@@ -286,7 +309,7 @@ public class Inventory {
         var essentialWeights = FactionWeights
             .Pairs()
             .Where(kv => kv.Key.IsEssential())
-            .Select(kv => kv.Value * (float)CrawlerEx.NextGaussian(1, 0.075f))
+            .Select(kv => kv.Value * ( float ) CrawlerEx.NextGaussian(1, 0.075f))
             .ToArray()
             .Normalize();
 
@@ -295,9 +318,15 @@ public class Inventory {
             .Zip(essentialSpend)
             .Do(keyWeight => this[keyWeight.First] += QuantityBought(keyWeight.Second, keyWeight.First, Loc));
 
-        // Handle goods with weighted choice based on sqrt of value
+        // Handle goods with weighted choice based on sqrt of value AND availability
         var goodsWeights = goodsIndices
-            .Select(c => (Item: c, Weight: FactionWeights[c] * CrawlerEx.NextGaussian(1, 0.075f)))
+            .Select(c => {
+                float factionWeight = FactionWeights[c];
+                float availWeight = c.AvailabilityWeight(population, techLevel);
+                float gaussian = (float)CrawlerEx.NextGaussian(1, 0.075f);
+                return (Item: c, Weight: factionWeight * availWeight * gaussian);
+            })
+            .Where(x => x.Weight > 0.01f) // Filter out effectively unavailable goods
             .ToList();
 
         // Choose N based on sqrt of value
@@ -339,7 +368,7 @@ public class Inventory {
             //.ToArray()
             //.ToList()
             .Zip(BaseWeights)
-            .Select(ab=> ab.First * ab.Second * (float)CrawlerEx.NextGaussian(1, 0.1f))
+            .Select(ab => ab.First * ab.Second * ( float ) CrawlerEx.NextGaussian(1, 0.1f))
             .ToEArray<SegmentKind, float>();
         var totalWeight = Weights.Sum();
         var weightedWealth = Weights
@@ -366,6 +395,7 @@ public class Inventory {
         }
         //////////////////////////////
         return;
+
         //////////////////////////////
         void _add(SegmentDef? def) {
             if (def != null) {

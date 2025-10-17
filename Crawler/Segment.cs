@@ -7,35 +7,6 @@ public enum SegmentKind {
     Defense,
 }
 
-// Power scaling for segments uses tiers or levels for each value which map onto the
-// actual value. The ExpPowerScaling uses a baseline of tier 1
-public record PowerScaling(float Min, Tier Tier, string badName, string goodName) {
-    float numSizes = 5;
-    float numUpgrades = 3;
-    public const int NA = -1000;
-    public float At(float size, float quality) {
-        double l = Math.Exp((size - 1) * Math.Log(Tier.Size) / numSizes);
-        double u = Math.Exp(quality * Math.Log(Tier.Quality) / numUpgrades);
-        double Y = Min * l * u;
-        return ( float ) Y;
-    }
-    public float this[Tier tier] => tier.Size <= NA / 2.0f ? 0 : At(tier.Size, tier.Quality);
-}
-
-public record struct Tier(float Size, float Quality) {
-    public Tier(float size) : this(size, 0) {}
-    public static Tier operator +(Tier tier, Tier bias) => new(tier.Size + bias.Size, tier.Quality + bias.Quality);
-    public static Tier operator -(Tier tier, Tier bias) => new(tier.Size - bias.Size, tier.Quality - bias.Quality);
-    public static Tier operator +(Tier tier, float qualityBias) => new(tier.Size, tier.Quality + qualityBias);
-    public static Tier operator -(Tier tier, float qualityBias) => new(tier.Size, tier.Quality - qualityBias);
-    public static Tier PlusLevel(Tier tier, float levelBias) => new(tier.Size + levelBias, tier.Quality);
-    public static Tier MinusLevel(Tier tier, float levelBias) => new(tier.Size - levelBias, tier.Quality);
-    public static Tier NA => new(PowerScaling.NA, 0);
-    public static implicit operator Tier(float size) => new(size);
-    public static implicit operator Tier((float size, float quality) a) => new(a.size, a.quality);
-    public override string ToString() => $"S{Size}Q{Quality}";
-}
-
 // Segment defs can be leveled by adding the difference from the reference tier to
 // all other tiered values.
 // So a reference tier 3 segment might be leveled up to tier 5 by adding 2 to all

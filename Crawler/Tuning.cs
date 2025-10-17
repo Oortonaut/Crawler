@@ -61,7 +61,7 @@ public static partial class Tuning {
                 0.2f, 0.5f, 1.0f,                     // Air, Water, Rations
                 0.3f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 0.4f, 0.4f, 0.6f, 0.7f, 0.4f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                0.6f, 0.4f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                0.6f, 0.4f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.2f, 0.1f, 0.1f, 0.05f, 0.3f,       // Liquor, Stims, Downers, Trips, SmallArms
                 0.2f, 0.2f, 0.1f                      // Idols, Texts, Relics
             ],
@@ -71,7 +71,7 @@ public static partial class Tuning {
                 0.1f, 0.3f, 0.7f,                     // Air, Water, Rations
                 0.2f, 0.4f, 0.2f, 0.5f, 0.4f, 0.2f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 0.3f, 0.3f, 0.6f, 0.5f, 0.8f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                0.3f, 0.3f, 0.5f, 0.2f, 0.4f, 0.3f, 0.2f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                0.3f, 0.3f, 0.5f, 0.2f, 0.4f, 0.3f, 0.2f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.5f, 0.6f, 0.4f, 0.3f, 0.9f,        // Liquor, Stims, Downers, Trips, SmallArms - vice & weapons
                 0.1f, 0.1f, 0.2f                      // Idols, Texts, Relics
             ],
@@ -81,7 +81,7 @@ public static partial class Tuning {
                 0.5f, 0.8f, 1.2f,                     // Air, Water, Rations - life support for trade
                 0.8f, 0.9f, 0.7f, 1.0f, 1.0f, 0.8f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 0.9f, 1.2f, 0.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.2f, 1.0f, 0.8f, 0.9f, 1.1f, 1.2f, 0.9f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.2f, 1.0f, 0.8f, 0.9f, 1.1f, 1.2f, 0.9f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.7f, 0.3f, 0.2f, 0.1f, 0.4f,        // Liquor, Stims, Downers, Trips, SmallArms
                 0.6f, 0.7f, 0.4f                      // Idols, Texts, Relics
             ],
@@ -121,56 +121,6 @@ public static partial class Tuning {
     }
 
     public static class Economy {
-        public static EArray<Commodity, float> BaseCommodityValues = [
-            1,      // Scrap
-            1.25f,  // Fuel
-            4.0f,   // Crew
-            15f,    // Morale
-            3.5f,   // Passengers
-            5.0f,   // Soldiers
-
-            // Life support
-            0.5f,   // Air
-            0.3f,   // Water
-            1.5f,   // Rations
-
-            // Raw materials
-            0.8f,   // Biomass
-            0.6f,   // Ore
-            0.5f,   // Silicates
-            // refined
-            1.2f,   // Metal
-            1.5f,   // Chemicals
-            1.0f,   // Glass
-            // Parts
-            1.8f,   // Ceramics
-            2.0f,   // Polymers
-            2.5f,   // Alloys
-            4.0f,   // Electronics
-            3.0f,   // Explosives
-
-            // Consumer Goods
-            8.0f,   // Medicines
-            2.5f,   // Textiles
-            20.0f,  // Gems - high value
-            1.5f,   // Toys
-            5.0f,   // Machines
-            6.0f,   // Computers
-            2.0f,   // Media
-
-            // Vice & Contraband
-            3.0f,   // Liquor
-            12.0f,  // Stims - high value
-            10.0f,  // Downers - high value
-            18.0f,  // Trips - very high value
-            4.5f,   // SmallArms
-
-            // Religious items
-            6.0f,   // Idols
-            4.0f,   // Texts
-            15.0f,  // Relics - high value
-        ];
-
         public static EArray<EncounterType, EArray<Commodity, float>> EncounterCommodityMarkup = [
             // None - all commodities at base price
             [
@@ -178,7 +128,7 @@ public static partial class Tuning {
                 1.0f, 1.0f, 1.0f,                     // Air, Water, Rations
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.0f, 1.0f, 1.0f                      // Idols, Texts, Relics
             ],
@@ -188,7 +138,7 @@ public static partial class Tuning {
                 1.1f, 1.0f, 1.1f,                     // Air, Water, Rations
                 1.0f, 1.0f, 1.0f, 1.1f, 1.1f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 1.1f, 1.0f, 1.2f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.1f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.9f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.1f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.9f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.9f, 1.0f, 1.0f, 1.0f, 1.1f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.0f, 0.9f, 1.1f                      // Idols, Texts, Relics
             ],
@@ -198,7 +148,7 @@ public static partial class Tuning {
                 0.8f, 0.7f, 0.8f,                     // Air, Water, Rations - cheap life support
                 0.9f, 1.0f, 1.0f, 1.0f, 0.9f, 0.9f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 0.9f, 0.9f, 1.0f, 0.9f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                0.8f, 0.8f, 0.9f, 0.8f, 0.9f, 0.9f, 0.8f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                0.8f, 0.8f, 0.9f, 0.8f, 0.9f, 0.9f, 0.8f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.3f, 1.3f, 1.3f, 1.2f,        // Liquor, Stims, Downers, Trips, SmallArms - vice taxed
                 0.9f, 0.8f, 1.0f                      // Idols, Texts, Relics
             ],
@@ -208,7 +158,7 @@ public static partial class Tuning {
                 1.2f, 1.0f, 1.4f,                     // Air, Water, Rations
                 0.6f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass - cheap raw
                 0.9f, 0.9f, 0.8f, 1.1f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.3f, 1.2f, 1.4f, 1.3f, 1.2f, 1.3f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.3f, 1.2f, 1.4f, 1.3f, 1.2f, 1.3f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.1f, 1.2f, 1.2f, 1.2f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.2f, 1.3f, 1.4f                      // Idols, Texts, Relics
             ],
@@ -218,7 +168,7 @@ public static partial class Tuning {
                 1.5f, 1.4f, 2.0f,                     // Air, Water, Rations - life support premium
                 1.3f, 1.2f, 1.2f, 1.3f, 1.4f, 1.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.6f, 1.4f, 1.5f, 1.4f, 1.5f, 1.5f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.6f, 1.4f, 1.5f, 1.4f, 1.5f, 1.5f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.2f, 1.4f, 1.5f, 1.6f, 1.3f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.3f, 1.2f, 1.5f                      // Idols, Texts, Relics
             ],
@@ -230,7 +180,7 @@ public static partial class Tuning {
                 1.0f, 1.0f, 1.0f,                     // Air, Water, Rations
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.0f, 1.0f, 1.0f                      // Idols, Texts, Relics
             ],
@@ -240,7 +190,7 @@ public static partial class Tuning {
                 1.1f, 1.1f, 1.1f,                     // Air, Water, Rations
                 1.1f, 1.0f, 1.0f, 1.1f, 1.1f, 1.1f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.1f, 1.1f, 1.1f, 1.1f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.1f, 1.0f, 1.0f, 1.0f, 1.1f, 1.1f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.1f, 1.0f, 1.0f, 1.0f, 1.1f, 1.1f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.0f, 1.0f, 1.0f, 1.1f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.0f, 1.0f, 1.0f                      // Idols, Texts, Relics
             ],
@@ -250,7 +200,7 @@ public static partial class Tuning {
                 1.3f, 1.3f, 1.2f,                     // Air, Water, Rations
                 1.2f, 1.1f, 1.1f, 1.2f, 1.2f, 1.2f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.2f, 1.2f, 1.2f, 1.2f, 1.3f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.3f, 1.2f, 1.1f, 1.1f, 1.2f, 1.2f, 1.1f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.3f, 1.2f, 1.1f, 1.1f, 1.2f, 1.2f, 1.1f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.1f, 1.1f, 1.1f, 1.1f, 1.2f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.1f, 1.1f, 1.2f                      // Idols, Texts, Relics
             ],
@@ -260,7 +210,7 @@ public static partial class Tuning {
                 1.6f, 1.5f, 1.4f,                     // Air, Water, Rations
                 1.3f, 1.2f, 1.2f, 1.3f, 1.4f, 1.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.5f, 1.4f, 1.2f, 1.3f, 1.4f, 1.4f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.5f, 1.4f, 1.2f, 1.3f, 1.4f, 1.4f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.2f, 1.3f, 1.3f, 1.3f, 1.4f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.2f, 1.2f, 1.3f                      // Idols, Texts, Relics
             ],
@@ -270,7 +220,7 @@ public static partial class Tuning {
                 2.0f, 1.8f, 1.6f,                     // Air, Water, Rations
                 1.5f, 1.4f, 1.4f, 1.5f, 1.6f, 1.5f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.5f, 1.5f, 1.5f, 1.6f, 1.8f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.8f, 1.6f, 1.4f, 1.5f, 1.6f, 1.7f, 1.5f, // Medicines, Textiles, Gems, Toys, Machines, Computers, Media
+                1.8f, 1.6f, 1.4f, 1.5f, 1.6f, 1.7f, 1.5f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.4f, 1.5f, 1.5f, 1.6f, 1.7f,        // Liquor, Stims, Downers, Trips, SmallArms
                 1.4f, 1.3f, 1.5f                      // Idols, Texts, Relics
             ],
@@ -312,6 +262,35 @@ public static partial class Tuning {
     public static float EvilLimit = 10.0f;
 
     public static float Value(this Commodity commodity, Location location) {
-        return Economy.BaseCommodityValues[commodity] * Economy.LocalMarkup(commodity, location);
+        return commodity.BaseValue() * Economy.LocalMarkup(commodity, location);
     }
+}
+
+// Power scaling for segments uses tiers or levels for each value which map onto the
+// actual value. The ExpPowerScaling uses a baseline of tier 1
+public record PowerScaling(float Min, Tier Tier, string badName, string goodName) {
+    float numSizes = 5;
+    float numUpgrades = 3;
+    public const int NA = -1000;
+    public float At(float size, float quality) {
+        double l = Math.Exp((size - 1) * Math.Log(Tier.Size) / numSizes);
+        double u = Math.Exp(quality * Math.Log(Tier.Quality) / numUpgrades);
+        double Y = Min * l * u;
+        return ( float ) Y;
+    }
+    public float this[Tier tier] => tier.Size <= NA / 2.0f ? 0 : At(tier.Size, tier.Quality);
+}
+
+public record struct Tier(float Size, float Quality) {
+    public Tier(float size): this(size, 0) { }
+    public static Tier operator +(Tier tier, Tier bias) => new(tier.Size + bias.Size, tier.Quality + bias.Quality);
+    public static Tier operator -(Tier tier, Tier bias) => new(tier.Size - bias.Size, tier.Quality - bias.Quality);
+    public static Tier operator +(Tier tier, float qualityBias) => new(tier.Size, tier.Quality + qualityBias);
+    public static Tier operator -(Tier tier, float qualityBias) => new(tier.Size, tier.Quality - qualityBias);
+    public static Tier PlusLevel(Tier tier, float levelBias) => new(tier.Size + levelBias, tier.Quality);
+    public static Tier MinusLevel(Tier tier, float levelBias) => new(tier.Size - levelBias, tier.Quality);
+    public static Tier NA => new(PowerScaling.NA, 0);
+    public static implicit operator Tier(float size) => new(size);
+    public static implicit operator Tier((float size, float quality) a) => new(a.size, a.quality);
+    public override string ToString() => $"S{Size}Q{Quality}";
 }
