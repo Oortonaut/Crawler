@@ -60,7 +60,7 @@ public enum GameTier {
     Late
 }
 [Flags]
-public enum CommodityFlags {
+public enum CommodityFlag {
     None = 0,
     Perishable = 1 << 0, // Requires power/refrigeration
     Restricted = 1 << 1, // Illegal at trade settlements
@@ -75,67 +75,67 @@ public enum Scarcity {
     Rare,
 }
 
-public record struct CommodityData(float BaseValue, float Volume, float Mass, CommodityFlags Flags, GameTier Tier);
+public record struct CommodityData(float BaseValue, float Volume, float Mass, CommodityFlag Flag, GameTier Tier);
 public static class CommodityEx {
     // Volume in cubic meters per unit, Weight in tons per unit, Flags, Tier
     public static EArray<Commodity, CommodityData> Data = [
-        new CommodityData(1, 0.001f, 0.005f, CommodityFlags.Essential, GameTier.Early), // Scrap
-        new CommodityData(125f, 1.0f, 0.8f, CommodityFlags.Essential, GameTier.Early), // Fuel
-        new CommodityData(4.0f, 1.0f, 0.08f, CommodityFlags.Essential | CommodityFlags.Integral, GameTier.Early), // Crew
-        new CommodityData(15f, 0.0f, 0.0f, CommodityFlags.Essential | CommodityFlags.Integral, GameTier.Early), // Morale
-        new CommodityData(3.5f, 1.0f, 0.08f, CommodityFlags.Integral, GameTier.Early), // Passengers
-        new CommodityData(5.0f, 1.2f, 0.10f, CommodityFlags.Integral, GameTier.Mid), // Soldiers
+        new CommodityData(1, 0.001f, 0.005f, CommodityFlag.Essential, GameTier.Early), // Scrap
+        new CommodityData(125f, 1.0f, 0.8f, CommodityFlag.Essential, GameTier.Early), // Fuel
+        new CommodityData(4.0f, 1.0f, 0.08f, CommodityFlag.Essential | CommodityFlag.Integral, GameTier.Early), // Crew
+        new CommodityData(15f, 0.0f, 0.0f, CommodityFlag.Essential | CommodityFlag.Integral, GameTier.Early), // Morale
+        new CommodityData(3.5f, 1.0f, 0.08f, CommodityFlag.Integral, GameTier.Early), // Passengers
+        new CommodityData(5.0f, 1.2f, 0.10f, CommodityFlag.Integral, GameTier.Mid), // Soldiers
 
         // Life support
-        new CommodityData(10f, 1.0f, 0.02f, CommodityFlags.Essential, GameTier.Early), // Air
-        new CommodityData(30f, 1.0f, 1.0f, CommodityFlags.Essential | CommodityFlags.Bulky, GameTier.Early), // Water
-        new CommodityData(300f, 1.0f, 0.6f, CommodityFlags.Essential | CommodityFlags.Perishable, GameTier.Early), // Rations
+        new CommodityData(10f, 1.0f, 0.02f, CommodityFlag.Essential, GameTier.Early), // Air
+        new CommodityData(30f, 1.0f, 1.0f, CommodityFlag.Essential | CommodityFlag.Bulky, GameTier.Early), // Water
+        new CommodityData(300f, 1.0f, 0.6f, CommodityFlag.Essential | CommodityFlag.Perishable, GameTier.Early), // Rations
 
         // Raw materials
-        new CommodityData(40f, 1.0f, 0.25f, CommodityFlags.Perishable | CommodityFlags.Bulky, GameTier.Early), // Biomass
-        new CommodityData(120f, 1.0f, 3.0f, CommodityFlags.Bulky, GameTier.Early), // Ore
-        new CommodityData(83.33333f, 1.0f, 2.0f, CommodityFlags.Bulky, GameTier.Early), // Silicates
+        new CommodityData(40f, 1.0f, 0.25f, CommodityFlag.Perishable | CommodityFlag.Bulky, GameTier.Early), // Biomass
+        new CommodityData(120f, 1.0f, 3.0f, CommodityFlag.Bulky, GameTier.Early), // Ore
+        new CommodityData(83.33333f, 1.0f, 2.0f, CommodityFlag.Bulky, GameTier.Early), // Silicates
         
         // refined
-        new CommodityData(300f, 1.0f, 2.5f, CommodityFlags.None, GameTier.Early), // Metal
-        new CommodityData(187.5f, 1.0f, 0.75f, CommodityFlags.None, GameTier.Mid), // Chemicals
-        new CommodityData(83.33333f, 1.0f, 0.6666667f, CommodityFlags.None, GameTier.Early), // Glass
+        new CommodityData(300f, 1.0f, 2.5f, CommodityFlag.None, GameTier.Early), // Metal
+        new CommodityData(187.5f, 1.0f, 0.75f, CommodityFlag.None, GameTier.Mid), // Chemicals
+        new CommodityData(83.33333f, 1.0f, 0.6666667f, CommodityFlag.None, GameTier.Early), // Glass
         
         // Parts
-        new CommodityData(225f, 1.0f, 0.75f, CommodityFlags.None, GameTier.Mid), // Ceramics
-        new CommodityData(166.66667f, 1.0f, 0.33333334f, CommodityFlags.None, GameTier.Mid), // Polymers
-        new CommodityData(416.66666f, 1.0f, 2.0f, CommodityFlags.None, GameTier.Mid), // Alloys
-        new CommodityData(1333.3334f, 1.0f, 0.6666667f, CommodityFlags.None, GameTier.Late), // Electronics
-        new CommodityData(428.57144f, 1.0f, 0.71428573f, CommodityFlags.Restricted, GameTier.Mid), // Explosives
+        new CommodityData(225f, 1.0f, 0.75f, CommodityFlag.None, GameTier.Mid), // Ceramics
+        new CommodityData(166.66667f, 1.0f, 0.33333334f, CommodityFlag.None, GameTier.Mid), // Polymers
+        new CommodityData(416.66666f, 1.0f, 2.0f, CommodityFlag.None, GameTier.Mid), // Alloys
+        new CommodityData(1333.3334f, 1.0f, 0.6666667f, CommodityFlag.None, GameTier.Late), // Electronics
+        new CommodityData(428.57144f, 1.0f, 0.71428573f, CommodityFlag.Restricted, GameTier.Mid), // Explosives
 
         // Consumer Goods
-        new CommodityData(4000f, 1.0f, 0.5f, CommodityFlags.Perishable, GameTier.Mid), // Medicines
-        new CommodityData(166.66667f, 1.0f, 0.2f, CommodityFlags.None, GameTier.Early), // Textiles
-        new CommodityData(20000f, 1.0f, 2.0f, CommodityFlags.None, GameTier.Late), // Gems
-        new CommodityData(150f, 1.0f, 0.4f, CommodityFlags.None, GameTier.Early), // Toys
-        new CommodityData(250f, 1.0f, 0.75f, CommodityFlags.None, GameTier.Mid), // Machines
-        new CommodityData(25.0f, 0.004f, 0.015f, CommodityFlags.Restricted | CommodityFlags.Integral, GameTier.Late), // AiCores
-        new CommodityData(666.6667f, 1.0f, 0.33333334f, CommodityFlags.None, GameTier.Mid), // Media
+        new CommodityData(4000f, 1.0f, 0.5f, CommodityFlag.Perishable, GameTier.Mid), // Medicines
+        new CommodityData(166.66667f, 1.0f, 0.2f, CommodityFlag.None, GameTier.Early), // Textiles
+        new CommodityData(20000f, 1.0f, 2.0f, CommodityFlag.None, GameTier.Late), // Gems
+        new CommodityData(150f, 1.0f, 0.4f, CommodityFlag.None, GameTier.Early), // Toys
+        new CommodityData(250f, 1.0f, 0.75f, CommodityFlag.None, GameTier.Mid), // Machines
+        new CommodityData(25.0f, 0.004f, 0.015f, CommodityFlag.Restricted | CommodityFlag.Integral, GameTier.Late), // AiCores
+        new CommodityData(666.6667f, 1.0f, 0.33333334f, CommodityFlag.None, GameTier.Mid), // Media
 
         // Vice & Contraband
-        new CommodityData(375f, 1.0f, 1.0f, CommodityFlags.Contraband | CommodityFlags.Bulky, GameTier.Early), // Liquor
-        new CommodityData(12000f, 1.0f, 0.5f, CommodityFlags.Contraband, GameTier.Mid), // Stims
-        new CommodityData(10000f, 1.0f, 0.5f, CommodityFlags.Contraband, GameTier.Mid), // Downers
-        new CommodityData(36000f, 1.0f, 0.6f, CommodityFlags.Contraband, GameTier.Late), // Trips
-        new CommodityData(562.5f, 1.0f, 0.75f, CommodityFlags.Restricted, GameTier.Mid), // SmallArms
+        new CommodityData(375f, 1.0f, 1.0f, CommodityFlag.Contraband | CommodityFlag.Bulky, GameTier.Early), // Liquor
+        new CommodityData(12000f, 1.0f, 0.5f, CommodityFlag.Contraband, GameTier.Mid), // Stims
+        new CommodityData(10000f, 1.0f, 0.5f, CommodityFlag.Contraband, GameTier.Mid), // Downers
+        new CommodityData(36000f, 1.0f, 0.6f, CommodityFlag.Contraband, GameTier.Late), // Trips
+        new CommodityData(562.5f, 1.0f, 0.75f, CommodityFlag.Restricted, GameTier.Mid), // SmallArms
 
         // Religious items
-        new CommodityData(6.0f, 0.003f, 0.004f, CommodityFlags.Integral, GameTier.Early), // Idols
-        new CommodityData(4.0f, 0.005f, 0.002f, CommodityFlags.Integral, GameTier.Early), // Texts
-        new CommodityData(15.0f, 0.002f, 0.003f, CommodityFlags.Integral, GameTier.Late), // Relics
+        new CommodityData(6.0f, 0.003f, 0.004f, CommodityFlag.Integral, GameTier.Early), // Idols
+        new CommodityData(4.0f, 0.005f, 0.002f, CommodityFlag.Integral, GameTier.Early), // Texts
+        new CommodityData(15.0f, 0.002f, 0.003f, CommodityFlag.Integral, GameTier.Late), // Relics
     ];
 
-    public static CommodityFlags Flags(this Commodity commodity) => Data[commodity].Flags;
-    public static bool IsIllegalAtTrade(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Restricted | CommodityFlags.Contraband);
-    public static bool IsPerishable(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Perishable);
-    public static bool IsBulky(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Bulky);
-    public static bool IsEssential(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Essential);
-    public static bool IsIntegral(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlags.Integral);
+    public static CommodityFlag Flags(this Commodity commodity) => Data[commodity].Flag;
+    public static bool IsIllegalAtTrade(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Restricted | CommodityFlag.Contraband);
+    public static bool IsPerishable(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Perishable);
+    public static bool IsBulky(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Bulky);
+    public static bool IsEssential(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Essential);
+    public static bool IsIntegral(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Integral);
     public static float BaseValue(this Commodity commodity) => Data[commodity].BaseValue;
     public static GameTier Tier(this Commodity commodity) => Data[commodity].Tier;
     public static float Mass(this Commodity commodity) => Data[commodity].Mass;

@@ -291,9 +291,7 @@ public class Crawler: IActor {
             var value = amount * commodity.Value(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
-                commodity == Commodity.Scrap ? $"{amount:F1}¢¢" :
-                commodity is Commodity.Crew or Commodity.Soldiers or Commodity.Passengers ? $"{( int ) amount}" :
-                $"{amount:F1}",
+                commodity.CommodityTextFull(amount),
                 $"{commodity.Mass():F3}",
                 $"{commodity.Volume():F3}",
                 $"{value:F1}¢¢"

@@ -348,6 +348,7 @@ public class Game {
             Player.ScrapInv += 1000;
             return 0;
         }, EnableArg.Enabled, ShowArg.Hide),
+        new ActionMenuItem("GIVE", "", args => GiveCommodity(args), EnableArg.Enabled, ShowArg.Hide),
     ];
     IEnumerable<MenuItem> PlayerMenuItems() {
         yield return MenuItem.Sep;
@@ -556,6 +557,33 @@ public class Game {
     int Quit() {
         Console.WriteLine("Quitting...");
         quit = true;
+        return 0;
+    }
+
+    int GiveCommodity(string args) {
+        var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2) {
+            Player.Message("Usage: give <commodity> <amount>");
+            return 0;
+        }
+
+        string commodityPrefix = parts[0].ToLower();
+        if (!float.TryParse(parts[1], out float amount)) {
+            Player.Message($"Invalid amount: {parts[1]}");
+            return 0;
+        }
+
+        // Find first commodity that starts with the input
+        var matchingCommodity = Enum.GetValues<Commodity>()
+            .FirstOrDefault(c => c.ToString().ToLower().StartsWith(commodityPrefix));
+
+        if (matchingCommodity == default(Commodity) && !commodityPrefix.StartsWith("scrap")) {
+            Player.Message($"No commodity found starting with '{parts[0]}'");
+            return 0;
+        }
+
+        Player.Inv[matchingCommodity] += amount;
+        Player.Message($"Added {amount} {matchingCommodity}");
         return 0;
     }
 
