@@ -26,32 +26,118 @@ public static partial class Tuning {
         public static float DynamicCrawlerLifetimeExpectation = 3600.0f * 7.5f;
     }
     public static class Trade {
-        public static float rate = 1.2f;
-        public static float sd = 0.1f;
-        public static float hiked = rate * 1.2f;
-        public static float sale = rate * 0.9f;
-        public static float repairMarkup = 2.0f;
-        public static float repairMarkupSd = 0.3f;
-        public static float commodityBundleCost = 40.0f;
+        // Legacy fields (kept for backward compatibility)
+        public static float rate = 1.05f;
+        public static float sd = 0.07f;
+        public static float repairMarkup = 1.2f;
+        public static float repairMarkupSd = 0.15f;
+
+        // New bid-ask spread model
+        public static float baseBidAskSpread = 0.20f;   // 20% base spread (±10% around mid)
+        public static float tradeBidAskMultiplier = 0.8f; // Trade: 16% spread
+        public static float tradeBidAskSd = 0.05f;      // ±5% variance
+        public static float banditBidAskMultiplier = 1.5f; // Bandit: 30% spread
+        public static float banditBidAskSd = 0.10f;     // ±10% variance
+
+        // Scarcity pricing
+        public static float scarcityWeight = 1.0f;      // Multiplier for scarcity effect
+        public static float scarcityEssential = 0.3f;   // Lower premium for essentials
+        public static float scarcityLuxury = 0.8f;      // Was 1.5
 
         // Bandit markup settings
-        public static float banditRate = 2.0f;          // Higher markup for bandits
-        public static float banditSd = 0.5f;            // More variance
+        public static float banditRate = 1.25f;          // Higher markup for bandits
         public static float banditHostilityThreshold = 5.0f; // Evilness threshold for hostility check
         public static float banditHostilityChance = 0.3f;    // Base chance of turning hostile at threshold
+
+        // Restricted commodity markup at Trade locations
+        public static float restrictedMarkup = 1.35f;   // Was 1.75
+
+        // Policy-based pricing multipliers
+        public static float subsidizedMultiplier = 0.7f;
+        public static float legalMultiplier = 1.0f;
+        public static float taxedMultiplier = 1.3f;
+        public static float restrictedMultiplierNew = 1.75f;
+        public static float restrictedTransactionFee = 100f; // Flat fee for restricted goods
+
+        public static float PolicyMultiplier(TradePolicy policy) => policy switch {
+            TradePolicy.Subsidized => subsidizedMultiplier,
+            TradePolicy.Legal => legalMultiplier,
+            TradePolicy.Taxed => taxedMultiplier,
+            TradePolicy.Restricted => restrictedMultiplierNew,
+            TradePolicy.Prohibited => 1.0f, // Not used
+            _ => legalMultiplier
+        };
+    }
+
+    // Faction trade policies - defines how each faction treats each commodity
+    public static class FactionPolicies {
+        // Policies are stored per faction
+        public static Dictionary<Faction, EArray<Commodity, TradePolicy>> Policies = new();
+
+        // Initialize default policies for core factions
+        static FactionPolicies() {
+            InitializeCoreFactionPolicies();
+        }
+
+        static void InitializeCoreFactionPolicies() {
+            // Player - permissive
+            Policies[Faction.Player] = CreateDefaultPolicy(TradePolicy.Legal);
+
+            // Bandit - sell everything (will override with special logic)
+            Policies[Faction.Bandit] = CreateDefaultPolicy(TradePolicy.Legal);
+
+            // Trade - legitimate merchants, no contraband
+            var tradePolicy = CreateDefaultPolicy(TradePolicy.Legal);
+            tradePolicy[Commodity.Liquor] = TradePolicy.Prohibited;
+            tradePolicy[Commodity.Stims] = TradePolicy.Prohibited;
+            tradePolicy[Commodity.Downers] = TradePolicy.Prohibited;
+            tradePolicy[Commodity.Trips] = TradePolicy.Prohibited;
+            tradePolicy[Commodity.SmallArms] = TradePolicy.Taxed;
+            tradePolicy[Commodity.Explosives] = TradePolicy.Taxed;
+            Policies[Faction.Trade] = tradePolicy;
+        }
+
+        public static EArray<Commodity, TradePolicy> CreateDefaultPolicy(TradePolicy defaultPolicy) {
+            var policy = new EArray<Commodity, TradePolicy>();
+            policy.Initialize(defaultPolicy);
+            return policy;
+        }
+
+        public static TradePolicy GetPolicy(Faction faction, Commodity commodity) {
+            // Bandits ignore all restrictions - sell everything
+            if (faction == Faction.Bandit) {
+                return TradePolicy.Legal;
+            }
+
+            if (Policies.TryGetValue(faction, out var policy)) {
+                return policy[commodity];
+            }
+
+            // Default to legal if no policy defined
+            return TradePolicy.Legal;
+        }
     }
 
     public static class Crawler {
         public static float MoraleAdjCrewLoss = 0.5f;
         public static float StandbyFraction = 0.007f;
         public static float FuelPerKm = 0.002f;
-        public static float RationsPerCrewDay = 1.0f;
+        public static float RationsPerCrewDay = 0.01f;
         public static float WagesPerCrewDay = 0.1f;
         public static float MoraleTakeAttack = -1;
         public static float MoraleHostileDestroyed = 2;
         public static float MoraleFriendlyDestroyed = -2;
         public static float MoraleSurrendered = -1;
         public static float MoraleSurrenderedTo = 3;
+
+        // Life support consumption
+        public static float WaterPerCrew = 0.030f; // m^3 per crew
+        public static float WaterPerPassenger = 0.100f; // m^3 per passenger
+        public static float WaterPerSoldier = 0.025f; // m^3 per soldier
+        public static float WaterRecyclingLossPerHour = 0.002f; // 0.2% per hour
+
+        public static float AirPerPerson = 1.0f; // liters of liquid air per person
+        public static float AirRecyclingLossPerHour = 0.005f; // 0.5% per hour per damaged segment
 
         // Commodity weights by faction for crawler inventory generation
         public static EArray<Faction, EArray<Commodity, float>> CommodityWeights = [
@@ -90,34 +176,34 @@ public static partial class Tuning {
 
     public static class Segments {
         // Approximate sizes: (in  m)  10 14 20 28 40
-        public static PowerScaling LengthTiers = new PowerScaling(10.0f, new(4, 1.2f), "short", "long");
+        public static PowerScaling LengthTiers = new PowerScaling(10.0f, (4, 1.2f), "short", "long");
 
         // Base segment parameters
-        public static PowerScaling WeightTiers = new PowerScaling(30.0f, new(20, 0.9f), "hefty", "lightened");
-        public static PowerScaling CostTiers = new PowerScaling(300.0f, new(100, 2.5f), "cheat", "expensive");
-        public static PowerScaling MaxHitsTiers = new PowerScaling(2.0f, new(12, 2.0f), "decrepit", "hardened");
+        public static PowerScaling WeightTiers = new PowerScaling(30.0f, (20, 0.9f), "hefty", "lightened");
+        public static PowerScaling CostTiers = new PowerScaling(300.0f, (10, 2.0f), "cheap", "expensive");
+        public static PowerScaling MaxHitsTiers = new PowerScaling(2.0f, (12, 2.0f), "decrepit", "hardened");
 
         // Weapon parameters
-        public static PowerScaling DamageTiers = new PowerScaling(3.0f, new(9, 2.0f), "weak", "strong");
-        public static PowerScaling RateTiers = new PowerScaling(1.5f, new(0.4f, 1.5f), "slow", "fast");
-        public static PowerScaling VolleyTiers = new PowerScaling(1.0f, new(3.0f, 2.0f), "limited", "repeating");
-        public static PowerScaling AimTiers = new PowerScaling(0.5f, new Tier(0.75f, 1.5f), "inaccurate", "accurate");
+        public static PowerScaling DamageTiers = new PowerScaling(10f, (15, 1.4f), "weak", "strong");
+        public static PowerScaling RateTiers = new PowerScaling(3f, (0.65f, 1.4f), "slow", "fast");
+        public static PowerScaling ShotsTiers = new PowerScaling(1.0f, (1.0f, 4f), "limited", "repeating");
+        public static PowerScaling AimTiers = new PowerScaling(0.75f, (0.65f, 1.5f), "inaccurate", "accurate");
 
         // Power parameters
-        public static PowerScaling DrainTiers = new PowerScaling(0.5f, new(6.0f, 0.75f), "wasteful", "efficient");
-        public static PowerScaling CapacityTiers = new PowerScaling(2, new(6.0f, 2.0f), "small", "large");
-        public static PowerScaling GenerationTiers = new PowerScaling(1.5f, new(6.0f, 2.0f), "weak", "strong");
-        public static PowerScaling ChargerTiers = new PowerScaling(3.0f, new(10, 2.0f), "slow", "fast");
+        public static PowerScaling DrainTiers = new PowerScaling(1.0f, (25.0f, 0.6f), "wasteful", "efficient");
+        public static PowerScaling CapacityTiers = new PowerScaling(3.5f, (20, 2.0f), "small", "large");
+        public static PowerScaling GenerationTiers = new PowerScaling(2.5f,(10, 2.0f), "weak", "strong");
+        public static PowerScaling ChargerTiers = new PowerScaling(5, (15, 1.75f), "slow", "fast");
         
         // Traction parameters
-        public static PowerScaling LiftTiers = new PowerScaling(150, new (12, 1.5f), "weak", "strong");
-        public static PowerScaling SpeedTiers = new PowerScaling(30, new (8, 1.2f), "slow", "fast");
+        public static PowerScaling LiftTiers = new PowerScaling(150, (12, 1.5f), "weak", "strong");
+        public static PowerScaling SpeedTiers = new PowerScaling(90, (0.15f, 1.2f), "slow", "fast");
         
         // Defense parameters
-        public static PowerScaling ReductionTiers = new PowerScaling(1.5f, new(7, 2.5f), "weak", "strong");
-        public static PowerScaling MitigationTiers = new PowerScaling(0.75f, new(0.4f, 0.7f), "weak", "strong");
-        public static PowerScaling ShieldCapacityTiers = new PowerScaling(2.0f, new(15, 1.3f), "weak", "strong");
-        public static PowerScaling ShieldChargeTiers = new PowerScaling(1.0f, new(4, 1.2f), "slow", "fast");
+        public static PowerScaling ReductionTiers = new PowerScaling(5f, (7, 1.5f), "weak", "strong");
+        public static PowerScaling MitigationTiers = new PowerScaling(0.75f, (0.6f, 0.75f), "thin", "thick");
+        public static PowerScaling ShieldCapacityTiers = new PowerScaling(12.0f, (15, 1.3f), "weak", "strong");
+        public static PowerScaling ShieldChargeTiers = new PowerScaling(5.0f, (8, 1.2f), "slow", "fast");
     }
 
     public static class Economy {
@@ -261,8 +347,11 @@ public static partial class Tuning {
 
     public static float EvilLimit = 10.0f;
 
-    public static float Value(this Commodity commodity, Location location) {
-        return commodity.BaseValue() * Economy.LocalMarkup(commodity, location);
+    public static float CostAt(this Commodity commodity, Location location) {
+        return Commodity.Scrap.Round(commodity.BaseCost() * Economy.LocalMarkup(commodity, location));
+    }
+    public static float CostAt(this Segment segment, Location location) {
+        return Commodity.Scrap.Round(segment.Cost * Economy.LocalMarkup(segment.SegmentKind, location));
     }
 }
 
@@ -272,13 +361,13 @@ public record PowerScaling(float Min, Tier Tier, string badName, string goodName
     float numSizes = 5;
     float numUpgrades = 3;
     public const int NA = -1000;
-    public float At(float size, float quality) {
-        double l = Math.Exp((size - 1) * Math.Log(Tier.Size) / numSizes);
+    public float Value(float size, float quality) {
+        double l = Math.Exp((size - 1) * Math.Log(Tier.Size) / (numSizes - 1));
         double u = Math.Exp(quality * Math.Log(Tier.Quality) / numUpgrades);
         double Y = Min * l * u;
         return ( float ) Y;
     }
-    public float this[Tier tier] => tier.Size <= NA / 2.0f ? 0 : At(tier.Size, tier.Quality);
+    public float this[Tier tier] => tier.Size <= NA / 2.0f ? 0 : Value(tier.Size, tier.Quality);
 }
 
 public record struct Tier(float Size, float Quality) {

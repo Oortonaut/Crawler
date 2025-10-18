@@ -9,19 +9,16 @@ public enum HitType {
 }
 
 public record struct HitRecord(WeaponSegment Weapon, float Damage, float Aim) {
-    const float spread = 0.1f;
-    float PenChance => 0.05f + spread * Aim;
-    float HitChance => 0.75f + spread * Aim;
     float t = Random.Shared.NextSingle();
     public HitType Hit => _Hit();
     HitType _Hit() {
-        var test = Random.Shared.NextSingle();
-        if (test < PenChance) {
-            return HitType.Pierces;
-        } else if (test < HitChance) {
+        var test = t + Aim;
+        if (test < 0.5f) {
+            return HitType.Misses;
+        } else if (test < 1.5f) {
             return HitType.Hits;
         } else {
-            return HitType.Misses;
+            return HitType.Pierces;
         }
     }
 }

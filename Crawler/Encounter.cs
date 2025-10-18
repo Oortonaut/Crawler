@@ -15,12 +15,14 @@ public class EncounterActor {
 
 public class Encounter {
     public Encounter(Location location): this(location,
-        location.ChooseRandomFaction()) {
+        location.Type == EncounterType.Settlement ? location.Sector.ControllingFaction : location.ChooseRandomFaction()) {
     }
     public Encounter(Location location, Faction faction) {
         this.location = location;
         Faction = faction;
         Generate();
+        Tick();
+        Game.Instance.RegisterEncounter(this);
     }
 
     public string Name { get; set; } = "Encounter";
@@ -84,14 +86,14 @@ public class Encounter {
             }
             yield return new ActionMenuItem($"{shortcut}{counter}",
                 $"{interaction.Description}",
-                interaction.Perform,
+                args => interaction.Perform(args),
                 interaction.Enabled().Enable(),
                 show);
         }
     }
     int InteractionMenu(List<IInteraction> interactions, string args, string prefix) {
         List<MenuItem> interactionsMenu = [
-            new MenuItem("X", "Cancel"),
+            MenuItem.Cancel,
             .. InteractionMenuItems(interactions, args, prefix, ShowArg.Show),
         ];
 
@@ -185,36 +187,67 @@ public class Encounter {
     public Faction Faction { get; }
 
     public Crawler GenerateTradeActor() {
-        var trader = Crawler.NewRandom(Location, 0.75f, 0.75f, [1.5f, 0.5f, 1, 1], Faction.Trade);
+        float wealth = Location.Wealth * 0.75f;
+        int crew = ( int ) Math.Sqrt(wealth) / 3;
+        float goodsWealth = wealth * 0.375f * 0.5f;
+        float segmentWealth = wealth * (1.0f - 0.75f);
+        var trader = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1], Faction.Trade);
         trader.Faction = Faction.Trade;
-        trader.StoredProposals.AddRange(ExchangeInteraction.MakeTradeProposals(trader, 0.25f, trader.Faction));
+        trader.StoredProposals.AddRange(trader.MakeTradeProposals( 0.25f, trader.Faction));
         trader.UpdateSegments();
         trader.Recharge(20);
         return trader;
     }
     public Crawler GeneratePlayerActor() {
-        var player = Crawler.NewRandom(Location, 1.0f, 0.65f, [1, 1, 1, 1], Faction.Player);
+        float wealth = Location.Wealth * 1.0f;
+        int crew = (int)Math.Sqrt(wealth) / 3;
+        float goodsWealth = wealth * 0.65f;
+        float segmentWealth = wealth * 0.5f;
+        var player = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1], Faction.Player);
         player.Flags |= EActorFlags.Player;
         player.Faction = Faction.Player;
         player.Recharge(20);
         return player;
     }
-    public Crawler GenerateCombat() {
-        var enemy = Crawler.NewRandom(Location, 0.8f, 0.6f, [1, 1, 1.2f, 0.8f], Faction.Bandit);
+    public Crawler GenerateBanditActor() {
+        float wealth = Location.Wealth * 0.8f;
+        int crew = ( int ) Math.Sqrt(wealth) / 3;
+        float goodsWealth = wealth * 0.6f;
+        float segmentWealth = wealth * 0.5f;
+        var enemy = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f], Faction.Bandit);
         enemy.Faction = Faction.Bandit;
         enemy.Recharge(20);
 
         return enemy;
     }
+
+    public Crawler GenerateCivilianActor(Faction civilianFaction) {
+        // Similar to Trade but with faction-specific policies
+        float wealth = Location.Wealth * 0.75f;
+        int crew = Math.Max(1, (int)(wealth / 40));
+        float goodsWealth = wealth * 0.375f * 0.5f;
+        float segmentWealth = wealth * (1.0f - 0.75f);
+        var civilian = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f], civilianFaction);
+        civilian.Faction = civilianFaction;
+        civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(0.25f, civilian.Faction));
+        civilian.UpdateSegments();
+        civilian.Recharge(20);
+        return civilian;
+    }
+
     public void GenerateSettlement() {
         float t = Location.Position.Y / ( float ) Location.Map.Height;
-        int domes = (int)(1 + Location.Population);
-        var settlement = Crawler.NewRandom(Location, domes, 0.75f, [4, 0, 1, 3]);
+        int domes = (int)(1 + Location.Population / 50);
+        int crew = domes * 10;
+        // wealth is also population scaled,
+        float goodsWealth = Location.Wealth * domes * 0.5f;
+        float segmentWealth = Location.Wealth * domes * 0.25f;
+        var settlement = Crawler.NewRandom(Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
         settlement.Faction = Faction;
         settlement.Recharge(20);
-        var proposals = ExchangeInteraction.MakeTradeProposals(settlement, 1, settlement.Faction);
+        var proposals = settlement.MakeTradeProposals( 1, settlement.Faction);
         settlement.StoredProposals.AddRange(proposals);
         settlement.UpdateSegments();
 
@@ -391,15 +424,18 @@ public class Encounter {
     }
     public IActor GenerateFactionActor(Faction faction, int? lifetime) {
         Name = $"{faction} Crossroads";
-        Crawler result = faction switch {
-            Faction.Bandit => GenerateCombat(),
-            Faction.Player => GeneratePlayerActor(),
-            Faction.Trade => GenerateTradeActor(),
-            //Faction.Hero => GenerateHero(),
-            //Faction.Mercenary => GenerateMercenary(),
-            //Faction.Civilian => GenerateCivilian(),
-            _ => throw new ArgumentException($"Unexpected faction: {faction}")
-        };
+        Crawler result;
+
+        if (faction.IsCivilian()) {
+            result = GenerateCivilianActor(faction);
+        } else {
+            result = faction switch {
+                Faction.Bandit => GenerateBanditActor(),
+                Faction.Player => GeneratePlayerActor(),
+                Faction.Trade => GenerateTradeActor(),
+                _ => throw new ArgumentException($"Unexpected faction: {faction}")
+            };
+        }
         result.Recharge(20);
         AddActor(result, lifetime);
         return result;

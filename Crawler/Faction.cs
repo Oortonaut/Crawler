@@ -3,11 +3,45 @@
 public enum Faction {
     Player, // eg a Player crawler
     Bandit, // a Bandit crawler
-    Trade,
+    Trade,  // Traveling merchants
+
+    // Civilian factions - regional powers controlling sectors
+    // Generated during map creation based on highest population settlements
+    Civilian0,
+    Civilian1,
+    Civilian2,
+    Civilian3,
+    Civilian4,
+    Civilian5,
+    Civilian6,
+    Civilian7,
+    Civilian8,
+    Civilian9,
+    Civilian10,
+    Civilian11,
+    Civilian12,
+    Civilian13,
+    Civilian14,
+    Civilian15,
+    Civilian16,
+    Civilian17,
+    Civilian18,
+    Civilian19,
+
     //Hero,
     //Mercenary,
-    //Civilian,
     //World,
+}
+
+public static class FactionEx {
+    public static bool IsCivilian(this Faction faction) =>
+        faction >= Faction.Civilian0 && faction <= Faction.Civilian19;
+
+    public static int CivilianIndex(this Faction faction) =>
+        faction.IsCivilian() ? (int)faction - (int)Faction.Civilian0 : -1;
+
+    public static Faction FromCivilianIndex(int index) =>
+        index >= 0 && index <= 19 ? (Faction)((int)Faction.Civilian0 + index) : Faction.Trade;
 }
 /*
 public class FactionToFaction {

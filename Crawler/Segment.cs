@@ -12,7 +12,7 @@ public enum SegmentKind {
 // So a reference tier 3 segment might be leveled up to tier 5 by adding 2 to all
 public record SegmentDef(
     char Symbol,
-    Tier ReferenceTier,
+    Tier Size,
     string Name,
     SegmentKind SegmentKind,
     Tier WeightTier,
@@ -20,17 +20,34 @@ public record SegmentDef(
     Tier CostTier,
     Tier MaxHitsTier) {
     public virtual Segment NewSegment() => new(this, null);
+    public override string ToString() => $"{Symbol} {Name} {Size} {SegmentKind} {WeightTier} {DrainTier} {CostTier} {MaxHitsTier}";
+    public string NameSize => $"{Name} " + (int)Math.Round(Size.Size) switch {
+        -1 => "Micro",
+        0 => "Mini",
+        1 => "I",
+        2 => "II",
+        3 => "III",
+        4 => "IV",
+        5 => "V",
+        6 => "VI",
+        7 => "VII",
+        8 => "VIII",
+        9 => "IX",
+        10 => "X",
+        var x => $"{x}",
+    } + (Size.Quality == 0 ? "" : $" {Size.Quality:0.00}");
 
     public float Weight => Tuning.Segments.WeightTiers[WeightTier];
     public float Drain => Tuning.Segments.DrainTiers[DrainTier];
     public float Cost => Tuning.Segments.CostTiers[CostTier];
+    public float Length => Tuning.Segments.LengthTiers[Size];
     public int MaxHits => ( int ) Math.Round(Tuning.Segments.MaxHitsTiers[MaxHitsTier]);
     public virtual char ClassCode => '?';
 
     public virtual SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - this.Size.Size);
         return this with {
-            ReferenceTier = ReferenceTier + delta,
+            Size = this.Size + delta,
             WeightTier = WeightTier + delta,
             DrainTier = DrainTier + delta,
             CostTier = CostTier + delta,
@@ -54,8 +71,10 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     public SegmentDef SegmentDef { get; } = segmentDef;
     public IActor? Owner { get; set; } = Owner;
     public string Name => SegmentDef.Name;
+    public string NameSize => SegmentDef.NameSize;
     public char Symbol => SegmentDef.Symbol;
     public SegmentKind SegmentKind => SegmentDef.SegmentKind;
+    public float Length => SegmentDef.Length;
     public float Weight => SegmentDef.Weight;
     public float Drain => SegmentDef.Drain;
     public float Cost => SegmentDef.Cost;
@@ -152,24 +171,24 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     protected static char fracCode(float x, float n = 1.0f) => fracLevels[(Math.Clamp(( int ) ((x * fracLevels.Length) / n), 0, fracLevels.Length - 1))];
 }
 
-public record OffenseDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
-    : SegmentDef(Symbol, ReferenceTier, Name, SegmentKind.Offense, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+public record OffenseDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
+    : SegmentDef(Symbol, Size, Name, SegmentKind.Offense, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override OffenseSegment NewSegment() => new(this, null);
     public override char ClassCode => 'O';
 }
 public class OffenseSegment(OffenseDef OffenseDef, IActor? Owner): Segment(OffenseDef, Owner) {
 }
-public record WeaponDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
-    : OffenseDef(Symbol, ReferenceTier, Name, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
+    : OffenseDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override WeaponSegment NewSegment() => new(this, null);
 
-    public float Damage => Tuning.Segments.DamageTiers[DamageTier];
+    public float Damage => (float)Math.Round(Tuning.Segments.DamageTiers[DamageTier]);
     public float Rate => Tuning.Segments.RateTiers[RateTier];
-    public float Shots => Tuning.Segments.VolleyTiers[ShotsTier];
+    public float Shots => (float)Math.Round(Tuning.Segments.ShotsTiers[ShotsTier]);
     public float Aim => Tuning.Segments.AimTiers[AimTier];
 
     public override SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
         return (( WeaponDef ) base.Resize(Size)) with {
             DamageTier = DamageTier + delta,
             RateTier = RateTier + delta,
@@ -194,8 +213,8 @@ public class WeaponSegment(WeaponDef weaponDef, IActor? Owner): OffenseSegment(w
         yield return hit;
     }
 }
-public record GunDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
-    : WeaponDef(Symbol, ReferenceTier, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
+public record GunDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
+    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
     public override GunSegment NewSegment() => new(this, null);
 }
 public class GunSegment(GunDef GunDef, IActor? Owner): WeaponSegment(GunDef, Owner) {
@@ -206,8 +225,8 @@ public class GunSegment(GunDef GunDef, IActor? Owner): WeaponSegment(GunDef, Own
         yield return hit;
     }
 }
-public record LaserDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
-    : WeaponDef(Symbol, ReferenceTier, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
+public record LaserDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
+    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
     public override LaserSegment NewSegment() => new(this, null);
 }
 public class LaserSegment(LaserDef LaserDef, IActor? Owner): WeaponSegment(LaserDef, Owner) {
@@ -220,8 +239,8 @@ public class LaserSegment(LaserDef LaserDef, IActor? Owner): WeaponSegment(Laser
         yield return hit;
     }
 }
-public record MissileDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
-    : WeaponDef(Symbol, ReferenceTier, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
+public record MissileDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
+    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
     public override MissileSegment NewSegment() => new(this, null);
 }
 public class MissileSegment(MissileDef MissileDef, IActor? Owner): WeaponSegment(MissileDef, Owner) {
@@ -234,21 +253,21 @@ public class MissileSegment(MissileDef MissileDef, IActor? Owner): WeaponSegment
         yield return hit;
     }
 }
-public record PowerDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
-    : SegmentDef(Symbol, ReferenceTier, Name, SegmentKind.Power, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+public record PowerDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
+    : SegmentDef(Symbol, Size, Name, SegmentKind.Power, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override PowerSegment NewSegment() => new(this, null);
     public override char ClassCode => 'R';
 }
 public class PowerSegment(PowerDef PowerDef, IActor? Owner): Segment(PowerDef, Owner) {
 }
-public record ReactorDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier CapacityTier, Tier ChargerTier)
-    : PowerDef(Symbol, ReferenceTier, Name, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
+public record ReactorDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier CapacityTier, Tier ChargerTier)
+    : PowerDef(Symbol, Size, Name, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
     public override ReactorSegment NewSegment() => new(this, null);
     public float Capacity => Tuning.Segments.CapacityTiers[CapacityTier];
     public float Generation => Tuning.Segments.GenerationTiers[ChargerTier];
 
     public override SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
         return (( ReactorDef ) base.Resize(Size)) with {
             CapacityTier = CapacityTier + delta,
             ChargerTier = ChargerTier + delta,
@@ -276,13 +295,13 @@ public class ReactorSegment(ReactorDef reactorDef, IActor? Owner): PowerSegment(
         }
     }
 }
-public record ChargerDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ChargeTier)
-    : PowerDef(Symbol, ReferenceTier, Name, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
+public record ChargerDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ChargeTier)
+    : PowerDef(Symbol, Size, Name, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
     public override ChargerSegment NewSegment() => new(this, null);
     public float Charge => Tuning.Segments.ChargerTiers[ChargeTier];
 
     public override SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
         return (( ChargerDef ) base.Resize(Size)) with {
             ChargeTier = ChargeTier + delta,
         };
@@ -299,15 +318,15 @@ public class ChargerSegment(ChargerDef ChargerDef, IActor? Owner): PowerSegment(
         return 0;
     }
 }
-public record TractionDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier LiftTier, Tier SpeedTier, TerrainType TerrainLimit)
-    : SegmentDef(Symbol, ReferenceTier, Name, SegmentKind.Traction, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+public record TractionDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier LiftTier, Tier SpeedTier, TerrainType TerrainLimit)
+    : SegmentDef(Symbol, Size, Name, SegmentKind.Traction, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override TractionSegment NewSegment() => new(this, null);
     public override char ClassCode => 'T';
     public float Lift => Tuning.Segments.LiftTiers[LiftTier];
     public float Speed => Tuning.Segments.SpeedTiers[SpeedTier];
 
     public override SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - base.Size.Size);
         return (( TractionDef ) base.Resize(Size)) with {
             LiftTier = LiftTier + delta,
             SpeedTier = SpeedTier + delta,
@@ -332,21 +351,21 @@ public class TractionSegment(TractionDef tractionDef, IActor? Owner): Segment(tr
     public float SpeedOn(TerrainType terrain) => Speed * Penalty(terrain, TerrainSpeedPenalty);
     public float DrainOn(TerrainType terrain) => Drain * Penalty(terrain, TerrainPowerPenalty);
 }
-public record DefenseDef(char Symbol, Tier ReferenceTier, string Name, SegmentKind SegmentKind, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
-    : SegmentDef(Symbol, ReferenceTier, Name, SegmentKind, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+public record DefenseDef(char Symbol, Tier Size, string Name, SegmentKind SegmentKind, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
+    : SegmentDef(Symbol, Size, Name, SegmentKind, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override DefenseSegment NewSegment() => new(this, null);
     public override char ClassCode => 'D';
 }
 public class DefenseSegment(DefenseDef defenseDef, IActor? Owner): Segment(defenseDef, Owner) {
 }
-public record ArmorDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ReductionTier)
-    : DefenseDef(Symbol, ReferenceTier, Name, SegmentKind.Defense, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
+public record ArmorDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ReductionTier)
+    : DefenseDef(Symbol, Size, Name, SegmentKind.Defense, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
     public override ArmorSegment NewSegment() => new(this, null);
 
     public int Reduction => ( int ) Math.Round(Tuning.Segments.ReductionTiers[ReductionTier]);
 
     public override SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
         return (( ArmorDef ) base.Resize(Size)) with {
             ReductionTier = ReductionTier + delta,
         };
@@ -377,13 +396,13 @@ public class ArmorSegment(ArmorDef armorDef, IActor? Owner): DefenseSegment(armo
         return base.AddDmg(hitType, delta);
     }
 }
-public record PlatingDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier MitigationTier)
-    : DefenseDef(Symbol, ReferenceTier, Name, SegmentKind.Defense, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
+public record PlatingDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier MitigationTier)
+    : DefenseDef(Symbol, Size, Name, SegmentKind.Defense, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
     public override PlatingSegment NewSegment() => new(this, null);
-    public float Mitigation => Tuning.Segments.MitigationTiers[MitigationTier];
+    public float Mitigation => 1 - Tuning.Segments.MitigationTiers[MitigationTier];
 
     public override SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
         return (( PlatingDef ) base.Resize(Size)) with {
             MitigationTier = MitigationTier + delta,
         };
@@ -394,7 +413,7 @@ public class PlatingSegment(PlatingDef PlatingDef, IActor? Owner): DefenseSegmen
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
         string msg = $" {Name}";
         if (State is Working.Active or Working.Disabled && hitType is HitType.Hits) {
-            int remaining = (delta * (1 - Mitigation)).StochasticInt();
+            int remaining = (delta * Mitigation).StochasticInt();
             if (remaining != delta) {
                 msg += $", {delta - remaining} absorbed";
             }
@@ -407,15 +426,15 @@ public class PlatingSegment(PlatingDef PlatingDef, IActor? Owner): DefenseSegmen
         return (delta, msg);
     }
 }
-public record ShieldDef(char Symbol, Tier ReferenceTier, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier CapacityTier, Tier ChargeTier)
-    : DefenseDef(Symbol, ReferenceTier, Name, SegmentKind.Defense, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+public record ShieldDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier CapacityTier, Tier ChargeTier)
+    : DefenseDef(Symbol, Size, Name, SegmentKind.Defense, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override ShieldSegment NewSegment() => new(this, null);
 
     public int Capacity => ( int ) Math.Round(Tuning.Segments.ShieldCapacityTiers[CapacityTier]);
     public int Charge => ( int ) Math.Round(Tuning.Segments.ShieldChargeTiers[ChargeTier]);
 
     public override SegmentDef Resize(int Size) {
-        Tier delta = new(Size - ReferenceTier.Size);
+        Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
         return (( ShieldDef ) base.Resize(Size)) with {
             CapacityTier = CapacityTier + delta,
             ChargeTier = ChargeTier + delta,
@@ -467,13 +486,179 @@ public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(s
     }
 }
 public static class SegmentEx {
+    public static string SegmentReport(this IEnumerable<Segment> segments, Location location) {
+        string result = "";
+
+        // Group segments by kind
+        var segmentsByKind = segments
+            .GroupBy(s => s.SegmentKind)
+            .OrderBy(g => g.Key)
+            .ToList();
+
+        foreach (var group in segmentsByKind) {
+
+            switch (group.Key) {
+                case SegmentKind.Power:
+                    var powerTable = new Table(
+                        ("Name", -24),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Length", 6),
+                        ("Drain", 6),
+                        ("Cost", 10),
+                        ("Cap", 6),
+                        ("Gen", 6)
+                    );
+                    foreach (var segment in group) {
+                        string cap = "", gen = "";
+                        if (segment is ReactorSegment rs) {
+                            cap = $"{rs.Capacity:F1}";
+                            gen = $"{rs.Generation:F1}";
+                        } else if (segment is ChargerSegment cs) {
+                            gen = $"{cs.Generation:F1}";
+                        }
+                        powerTable.AddRow(
+                            segment.NameSize,
+                            segment.StatusLine(location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Length:F1}",
+                            $"{segment.Drain:F2}",
+                            $"{segment.Cost:F1}",
+                            cap,
+                            gen
+                        );
+                    }
+                    result += powerTable.ToString();
+                    break;
+
+                case SegmentKind.Traction:
+                    var tractionTable = new Table(
+                        ("Name", -24),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Length", 6),
+                        ("Drain", 6),
+                        ("Cost", 10),
+                        ("Lift", 6),
+                        ("Speed", 6),
+                        ("Terrain", -10)
+                    );
+                    foreach (var segment in group.Cast<TractionSegment>()) {
+                        tractionTable.AddRow(
+                            segment.NameSize,
+                            segment.StatusLine(location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Length:F1}",
+                            $"{segment.Drain:F2}",
+                            $"{segment.Cost:F1}",
+                            $"{segment.Lift:F1}",
+                            $"{segment.Speed:F1}",
+                            segment.TerrainLimit.ToString()
+                        );
+                    }
+                    result += tractionTable.ToString();
+                    break;
+
+                case SegmentKind.Offense:
+                    var offenseTable = new Table(
+                        ("Name", -24),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Length", 6),
+                        ("Drain", 6),
+                        ("Cost", 10),
+                        ("Dmg", 6),
+                        ("Time s", 6),
+                        ("Shots", 6),
+                        ("Aim", 6),
+                        ("DPM", 6),
+                        ("DPM/C", 6)
+                    );
+                    foreach (var segment in group) {
+                        string dmg = "", rate = "", shots = "", aim = "", dpm = "", dpsCost = "";
+                        if (segment is WeaponSegment ws) {
+                            dmg = $"{ws.Damage:F0}";
+                            rate = $"{60/ws.Rate:F1}";
+                            shots = $"{ws.Shots:F0}";
+                            aim = $"{ws.Aim*100:F0}%";
+                            float dpmValue = ws.Damage * ws.Shots * ws.Rate;
+                            dpm = $"{dpmValue:F1}";
+                            dpsCost = segment.Cost > 0 ? $"{dpmValue / segment.Cost:F3}" : "N/A";
+                        }
+                        offenseTable.AddRow(
+                            segment.NameSize,
+                            segment.StatusLine(location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Length:F1}",
+                            $"{segment.Drain:F2}",
+                            $"{segment.Cost:F1}",
+                            dmg,
+                            rate,
+                            shots,
+                            aim,
+                            dpm,
+                            dpsCost
+                        );
+                    }
+                    result += offenseTable.ToString();
+                    break;
+
+                case SegmentKind.Defense:
+                    var defenseTable = new Table(
+                        ("Name", -24),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Length", 6),
+                        ("Drain", 6),
+                        ("Cost", 10),
+                        ("Reduction", 12),
+                        ("Charge", 12)
+                    );
+                    foreach (var segment in group) {
+                        string reduction = "";
+                        string charge = "";
+                        if (segment is ArmorSegment ars) {
+                            reduction = $"{ars.Reduction:F1}";
+                        } else if (segment is PlatingSegment ps) {
+                            reduction = $"{ps.Mitigation*100:F0}%";
+                        } else if (segment is ShieldSegment ss) {
+                            reduction = $"{ss.ShieldLeft}";
+                            charge = $"+{ss.Charge}/t";
+                        }
+                        defenseTable.AddRow(
+                            segment.NameSize,
+                            segment.StatusLine(location),
+                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Length:F1}",
+                            $"{segment.Drain:F2}",
+                            $"{segment.Cost:F1}",
+                            reduction,
+                            charge
+                        );
+                    }
+                    result += defenseTable.ToString();
+                    break;
+            }
+        }
+
+        return result;
+    }
+
     // Becase leveling a segment by a level causes an increase in all its tiers,
     // Each individual tier can vary from the reference tier by one or two as long as the
     // average comes to [tier -0.5 (shitty items) to  tier + 1.5 (best in class items).
     public static List<WeaponDef> BaseWeaponDefs = [
-        new GunDef('g', 1, "Guns", 1, 1, 1, 1, 1, 1, 1, 1),
-        new LaserDef('l', 1, "Lasers", 1, 1, 1, 1, 1, 1, 1, 1),
-        new MissileDef('m', 1, "Missiles", 1, 1, 1, 1, 1, 1, 1, 1),
+        new GunDef('g', 1, "Guns", 1.2f, 1, 1, 1, 0f, 1.25f, (1, 1), 1.2f),
+        new LaserDef('l', 1, "Lasers", 0.8f, 1.2f, 1.2f, 1, 1, (1, 1), 1, 1.0f),
+        new MissileDef('m', 1, "Missiles", 1.0f, 0.8f, 1.1f, 1, 1.33f, 1.5f, 1, 0.8f),
     ];
 
     public static List<WeaponDef> WeaponDefs = Variations(BaseWeaponDefs).ToList();
@@ -502,9 +687,9 @@ public static class SegmentEx {
 
     // Defense definitions (Amount = Damage soaked, Rate = Hits before destruction)
     public static List<DefenseDef> DefenseDefs = [
-        new ArmorDef('a', 1, "Armor", 1, 1, 1, 1),
-        new PlatingDef('p', 1, "Plating", 1, 1, 1.5f, 1),
-        new ShieldDef('s', 1, "Shields", 1, 1, 1, 1, 1, 1),
+        new ArmorDef('a', 1, "Armor", 1.2f, 1, 1.25f, 1),
+        new PlatingDef('p', 1, "Plating", 1.5f, 0.9f, 1.75f, 1),
+        new ShieldDef('s', 1, "Shields", 0.5f, 2, 1.25f, 0.8f, 1, 1),
     ];
 
     public static IEnumerable<DefenseDef> CoreDefenseDefs => DefenseDefs;
@@ -526,25 +711,28 @@ public static class SegmentEx {
 
     public static WeaponDef Heavy(this WeaponDef weapon, float qualityBias = 1.0f) => weapon with {
         Name = $"Heavy {weapon.Name}",
+        WeightTier = weapon.WeightTier + (qualityBias / 3, 0),
         DamageTier = weapon.DamageTier + qualityBias * 2,
         RateTier = weapon.RateTier - qualityBias / 2,
-        DrainTier = weapon.DrainTier - qualityBias / 2,
+        DrainTier = weapon.DrainTier + (qualityBias / 3, 0),
         CostTier = weapon.CostTier + qualityBias, // this should be == net quality
     };
 
     public static WeaponDef Rapid(this WeaponDef weapon, float qualityBias = 1.0f) => weapon with {
         Name = $"Rapid {weapon.Name}",
+        WeightTier = weapon.WeightTier + (qualityBias / 3, 0),
         DamageTier = weapon.DamageTier - qualityBias / 2,
         RateTier = weapon.RateTier + qualityBias * 2,
-        DrainTier = weapon.DrainTier - qualityBias / 2,
+        DrainTier = weapon.DrainTier + (qualityBias / 3, 0),
         CostTier = weapon.CostTier + qualityBias,
     };
 
     public static IEnumerable<WeaponDef> Variations(IEnumerable<WeaponDef> weapons) {
         foreach (var weapon in weapons) {
             yield return weapon;
-            yield return weapon.Heavy();
-            yield return weapon.Rapid();
+            //yield return weapon.Heavy();
+            //yield return weapon.Rapid();
+            //yield return weapon.Heavy().Rapid();
         }
     }
 }

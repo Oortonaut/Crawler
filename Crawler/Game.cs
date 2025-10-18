@@ -39,7 +39,11 @@ public class Game {
         }
         _map = new Map(H, 2 * H);
         var currentLocation = Map.GetStartingLocation();
-        _player = Crawler.NewRandom(currentLocation, 1.25f, 0.5f, [1, 1, 1, 1]);
+        float wealth = currentLocation.Wealth * 1.25f;
+        int crew = 10;
+        float goodsWealth = wealth;
+        float segmentWealth = wealth * 0.5f;
+        _player = Crawler.NewRandom(currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         _player.Name = crawlerName;
         _player.Faction = Faction.Player;
         _player.Recharge(20);
@@ -109,6 +113,20 @@ public class Game {
         return 0;
     }
 
+    int SegmentDefinitionsReport() {
+        IEnumerable<SegmentDef> Variants(SegmentDef def) {
+            yield return def;
+            yield return def.Resize(2);
+            yield return def.Resize(3);
+            yield return def.Resize(4);
+            yield return def.Resize(5);
+        }
+        // Create a segment for each definition
+        var segments = SegmentEx.AllDefs.SelectMany(def => Variants(def)).Select(def => def.NewSegment()).ToList();
+        Player.Message(segments.SegmentReport(CurrentLocation));
+        return 0;
+    }
+
     IEnumerable<MenuItem> EncounterMenuItems() {
         return Encounter?.MenuItems(Player) ?? [];
     }
@@ -155,6 +173,8 @@ public class Game {
 
     IEnumerable<MenuItem> WorldMapMenuItems(ShowArg showOption = ShowArg.Hide) {
         var sector = CurrentLocation.Sector;
+
+        yield return MenuItem.Cancel;
 
         bool isPinned = Player.Pinned();
         if (isPinned) {
@@ -229,29 +249,6 @@ public class Game {
         CrawlerEx.ClearMessages();
         return 0;
     }
-    string DrawMap() {
-        var worldMapLines = Map.DumpMap(Player).Split('\n');
-        var worldMapWidth = worldMapLines.Max(x => x.Length);
-        var height = worldMapLines.Length;
-        var width = (5 * height) / 3;
-        var sectorMapLines = Map.DumpSector(CurrentLocation.Sector.X, CurrentLocation.Sector.Y, width, height).Split('\n');
-        var sectorMapWidth = sectorMapLines.Max(x => x.Length);
-        var zippedLines = worldMapLines.Zip(sectorMapLines, (a, b) => $"│{a}│{b}║");
-        // ┌─┬╖
-        // │ │║
-        // ├─┼╢
-        // ╘═╧╝
-        var worldHeader = $"[Sector {CurrentLocation.Sector.Name}|Turn {TimeSeconds/1000.0:F3}]";
-        worldHeader += new string('─', Math.Max(0, worldMapWidth - worldHeader.Length));
-        var sectorHeader = $"[{CurrentLocation.EncounterName(Player)}|{CurrentLocation.Terrain}]";
-        sectorHeader += new string('─', Math.Max(0, sectorMapWidth - sectorHeader.Length));
-        var header = $"┌{worldHeader}┬{sectorHeader}╖";
-        var footer = $"╘{new string('═', worldMapWidth)}╧{new string('═', sectorMapWidth)}╝";
-
-        var mapLines = zippedLines.StringJoin("\n");
-        var result = $"{header}\n{mapLines}\n{footer}";
-        return result;
-    }
     string DrawWorldMap() {
         var worldMapLines = Map.DumpMap(Player).Split('\n');
         var worldMapWidth = worldMapLines.Max(x => x.Length);
@@ -282,11 +279,25 @@ public class Game {
     }
     void Tick() {
         ++TimeSeconds;
+
+        // Clean weak references list every hour
+        if (TimeSeconds % 3600 == 0) {
+            CleanEncounterReferences();
+        }
+
         if (Moving) {
             Player.Tick();
         } else {
             Encounter?.Tick();
         }
+    }
+
+    void CleanEncounterReferences() {
+        allEncounters.RemoveAll(weakRef => !weakRef.TryGetTarget(out _));
+    }
+
+    public void RegisterEncounter(Encounter encounter) {
+        allEncounters.Add(new WeakReference<Encounter>(encounter));
     }
 
     bool PlayerWon => false;
@@ -310,7 +321,7 @@ public class Game {
         AP -= ap;
         return selected;
     }
-    int LocalMenu() {
+    int SectorMap() {
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
         Console.WriteLine(DrawSectorMap());
         Console.WriteLine(CurrentLocation.Sector.Look() + " " + CurrentLocation.PosString);
@@ -325,7 +336,7 @@ public class Game {
         ]);
         return ap;
     }
-    int WorldMapMenu() {
+    int WorldMap() {
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
         Console.WriteLine(DrawWorldMap());
         Console.WriteLine(CurrentLocation.Sector.Look() + " " + CurrentLocation.PosString);
@@ -338,12 +349,13 @@ public class Game {
         return ap;
     }
     IEnumerable<MenuItem> GameMenuItems() => [
-        new ActionMenuItem("M", "Sector Map", _ => LocalMenu()),
-        new ActionMenuItem("W", "World Map", _ => WorldMapMenu()),
+        new ActionMenuItem("M", "Sector Map", _ => SectorMap()),
+        new ActionMenuItem("W", "World Map", _ => WorldMap()),
         new ActionMenuItem("R", "Status Report", _ => Report()),
         new ActionMenuItem("K", "Skip Turn/Wait", args => Turn(args)),
         new ActionMenuItem("Q", "Save and Quit", _ => Save() + Quit()),
         new ActionMenuItem("QQ", "Quit ", _ => Quit()),
+        new ActionMenuItem("TEST", "Test Menu", _ => TestMenu()),
         new ActionMenuItem("GG", "", args => {
             Player.ScrapInv += 1000;
             return 0;
@@ -587,6 +599,155 @@ public class Game {
         return 0;
     }
 
+    int TestMenu() {
+        var (selected, ap) = CrawlerEx.MenuRun("Test Menu", [
+            MenuItem.Cancel,
+            new ActionMenuItem("SD", "Segment Definitions", _ => SegmentDefinitionsReport()),
+            new ActionMenuItem("PS", "Price Statistics", _ => PriceStatisticsReport()),
+        ]);
+        return ap;
+    }
+
+    int PriceStatisticsReport() {
+        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.WriteLine("Surveying all locations for price statistics...");
+        Console.WriteLine("\nPrice Factors Analysis (NEW BID-ASK MODEL):");
+        Console.WriteLine("MidPrice = BaseValue * LocationMarkup * ScarcityPremium * RestrictedMarkup");
+        Console.WriteLine("Spread = MidPrice * BaseBidAskSpread * FactionMultiplier");
+        Console.WriteLine("AskPrice (Buy) = MidPrice + Spread/2");
+        Console.WriteLine("BidPrice (Sell) = MidPrice - Spread/2");
+        Console.WriteLine();
+        Console.WriteLine("Factors:");
+        Console.WriteLine("- LocationMarkup: EncounterMarkup * TerrainMarkup * ScrapInflation");
+        Console.WriteLine("- ScarcityPremium: 1 + (1-Availability) * Weight (Essential=0.3x, Luxury=1.5x)");
+        Console.WriteLine("- BaseBidAskSpread: 20% base");
+        Console.WriteLine("- FactionMultiplier: Trade=0.8±0.05 (16% spread), Bandit=1.5±0.1 (30% spread)");
+        Console.WriteLine("- Result: Symmetric variance, location patterns preserved\n");
+
+        // Dictionary to store buy/sell prices for each commodity
+        var buyPrices = new Dictionary<Commodity, List<float>>();
+        var sellPrices = new Dictionary<Commodity, List<float>>();
+        var baseValues = new Dictionary<Commodity, float>();
+        var tradeTraders = new Dictionary<Commodity, int>();
+        var banditTraders = new Dictionary<Commodity, int>();
+
+        // Initialize the dictionaries and track base values
+        foreach (var commodity in Enum.GetValues<Commodity>()) {
+            buyPrices[commodity] = new List<float>();
+            sellPrices[commodity] = new List<float>();
+            baseValues[commodity] = commodity.BaseCost();
+            tradeTraders[commodity] = 0;
+            banditTraders[commodity] = 0;
+        }
+
+        int locationsProcessed = 0;
+        int crawlersProcessed = 0;
+        int totalTradeTraders = 0;
+        int totalBanditTraders = 0;
+
+        // Survey every location on the map
+        for (int y = 0; y < Map.Height; y++) {
+            for (int x = 0; x < Map.Width; x++) {
+                var sector = Map.GetSector(x, y);
+                foreach (var location in sector.Locations) {
+                    locationsProcessed++;
+
+                    // Instantiate the encounter
+                    var encounter = location.Encounter;
+
+                    // Gather statistics from any crawler's trade proposals
+                    foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
+                        crawlersProcessed++;
+                        var tradeProposals = crawler.MakeTradeProposals(1.0f, crawler.Faction);
+
+                        // Track which commodities this trader offers
+                        var offeredCommodities = new HashSet<Commodity>();
+
+                        foreach (var proposal in tradeProposals.OfType<ProposeSellBuy>()) {
+                            // Crawler is selling to player (player buys)
+                            if (proposal.Stuff is CommodityOffer commodityOffer) {
+                                float pricePerUnit = proposal.Cash / commodityOffer.Amount;
+                                buyPrices[commodityOffer.Commodity].Add(pricePerUnit);
+                                offeredCommodities.Add(commodityOffer.Commodity);
+                            }
+                        }
+
+                        foreach (var proposal in tradeProposals.OfType<ProposeBuySell>()) {
+                            // Crawler is buying from player (player sells)
+                            if (proposal.Stuff is CommodityOffer commodityOffer) {
+                                float pricePerUnit = proposal.Cash / commodityOffer.Amount;
+                                sellPrices[commodityOffer.Commodity].Add(pricePerUnit);
+                                offeredCommodities.Add(commodityOffer.Commodity);
+                            }
+                        }
+
+                        // Increment trader count per commodity
+                        foreach (var commodity in offeredCommodities.Distinct()) {
+                            if (crawler.Faction == Faction.Trade) {
+                                tradeTraders[commodity]++;
+                            } else if (crawler.Faction == Faction.Bandit) {
+                                banditTraders[commodity]++;
+                            }
+                        }
+
+                        if (offeredCommodities.Count > 0) {
+                            if (crawler.Faction == Faction.Trade) {
+                                totalTradeTraders++;
+                            } else if (crawler.Faction == Faction.Bandit) {
+                                totalBanditTraders++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Console.WriteLine($"Processed {locationsProcessed} locations and {crawlersProcessed} crawlers\n");
+        Console.WriteLine("Price Statistics (from Player Perspective):\n");
+        Console.WriteLine($"{"Commodity",-15} {"Base",8} {$"T%{totalTradeTraders}",5} {$"B%{totalBanditTraders}",5} {"Buy Mean",10} {"Buy SD",10} {"Buy Max",10} {"Buy Min",10} . {"Sell Max",10} {"Sell Min",10} {"Sell SD",10} {"Sell Mean",10}");
+        Console.WriteLine(new string('-', 137));
+
+        foreach (var commodity in Enum.GetValues<Commodity>()) {
+            if (commodity == Commodity.Scrap) continue; // Skip scrap as it's the currency
+
+            var buyList = buyPrices[commodity];
+            var sellList = sellPrices[commodity];
+
+            if (buyList.Count > 0 || sellList.Count > 0) {
+                string baseVal = $"{baseValues[commodity]:F1}";
+                int tradeCount = tradeTraders[commodity];
+                int banditCount = banditTraders[commodity];
+
+                string tradePercent = totalTradeTraders > 0 ? $"{(100.0 * tradeCount / totalTradeTraders):F0}%" : "N/A";
+                string banditPercent = totalBanditTraders > 0 ? $"{(100.0 * banditCount / totalBanditTraders):F0}%" : "N/A";
+
+                string buyMin = buyList.Count > 0 ? $"{buyList.Min():F1}" : "N/A";
+                string buyMax = buyList.Count > 0 ? $"{buyList.Max():F1}" : "N/A";
+                string buyMean = buyList.Count > 0 ? $"{buyList.Average():F1}" : "N/A";
+                string buySD = buyList.Count > 1 ? $"{CalculateStandardDeviation(buyList):F1}" : "N/A";
+
+                string sellMin = sellList.Count > 0 ? $"{sellList.Min():F1}" : "N/A";
+                string sellMax = sellList.Count > 0 ? $"{sellList.Max():F1}" : "N/A";
+                string sellMean = sellList.Count > 0 ? $"{sellList.Average():F1}" : "N/A";
+                string sellSD = sellList.Count > 1 ? $"{CalculateStandardDeviation(sellList):F1}" : "N/A";
+
+                Console.WriteLine($"{commodity,-15} {baseVal,8} {tradePercent,5} {banditPercent,5} {buyMean,10} {buySD,10} {buyMax,10} {buyMin,10} . {sellMax,10} {sellMin,10} {sellSD,10} {sellMean,10}");
+            }
+        }
+
+        Console.WriteLine("\nPress any key to continue...");
+        Console.ReadKey(true);
+        return 0;
+    }
+
+    double CalculateStandardDeviation(List<float> values) {
+        if (values.Count <= 1) return 0;
+
+        double mean = values.Average();
+        double sumOfSquares = values.Sum(val => Math.Pow(val - mean, 2));
+        return Math.Sqrt(sumOfSquares / (values.Count - 1));
+    }
+
     Crawler? _player;
     public Crawler Player => _player!;
     public List<IProposal> StoredProposals { get; } = [
@@ -595,6 +756,9 @@ public class Game {
         new ProposeAcceptSurrender("S"),
         new ProposeRepairBuy( "R"),
     ];
+
+    // Track all created encounters using weak references
+    List<WeakReference<Encounter>> allEncounters = new();
     // Accessor methods for save/load
     public long GetTime() => TimeSeconds;
     public int GetAP() => AP;

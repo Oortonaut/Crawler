@@ -657,4 +657,5 @@ public static partial class CrawlerEx {
         ( byte ) Math.Clamp(c.R * s, 0, 255),
         ( byte ) Math.Clamp(c.G* s, 0, 255),
         ( byte ) Math.Clamp(c.B * s, 0, 255));
+    public static float Length(this Point point) => MathF.Sqrt(point.X * point.X + point.Y * point.Y);
 }

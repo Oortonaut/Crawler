@@ -82,8 +82,8 @@ public record ProposeAttackDefend(string Description): IProposal {
         yield return new AttackInteraction(Agent, Subject);
     }
     public record AttackInteraction(IActor _attacker, IActor Defender) : IInteraction {
-        public bool Enabled() => true;
-        public int Perform() {
+        public bool Enabled(string args = "") => true;
+        public int Perform(string args = "") {
             var attacker = _attacker as Crawler;
             attacker!.Attack(Defender);
             return 1;

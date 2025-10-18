@@ -10,8 +10,8 @@ public interface IProposal {
 }
 
 public interface IInteraction {
-    bool Enabled();
-    int Perform();
+    bool Enabled(string args = "");
+    int Perform(string args = "");
     string Description { get; }
     string OptionCode { get; }
 }
@@ -49,7 +49,8 @@ public record EmptyOffer(): IOffer {
 }
 
 // A quantity of a single commodity
-public record CommodityOffer(Commodity Commodity, float Amount): IOffer {
+public record CommodityOffer(Commodity Commodity, float amount): IOffer {
+    public readonly float Amount = Commodity.Round(amount);
     public virtual string Description => Commodity.CommodityText(Amount);
     public override string ToString() => Description;
     public virtual bool EnabledFor(IActor Agent, IActor Subject) => Agent.Inv[Commodity] >= Amount;
@@ -57,7 +58,7 @@ public record CommodityOffer(Commodity Commodity, float Amount): IOffer {
         Agent.Inv[Commodity] -= Amount;
         Subject.Inv[Commodity] += Amount;
     }
-    public float ValueFor(IActor Agent) => Commodity.Value(Agent.Location);
+    public float ValueFor(IActor Agent) => Commodity.CostAt(Agent.Location);
 }
 
 // A cash-only offer, for convenience
@@ -106,7 +107,8 @@ public record InventoryOffer(
 }
 
 // Agent is seller
-public record ProposeSellBuy(IOffer Stuff, float Cash, string OptionCode = "T"): IProposal {
+public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"): IProposal {
+    public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Seller) => true;
     public bool SubjectCapable(IActor Buyer) => true;
     public bool InteractionCapable(IActor Seller, IActor Buyer) => 
@@ -121,17 +123,18 @@ public record ProposeSellBuy(IOffer Stuff, float Cash, string OptionCode = "T"):
 }
 
 // Agent is buyer
-public record ProposeBuySell(float Price, IOffer Stuff, string OptionCode = "T"): IProposal {
+public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"): IProposal {
+    public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Buyer) => true;
     public bool SubjectCapable(IActor Seller) => true;
     public bool InteractionCapable(IActor Buyer, IActor Seller) =>
         Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
     public IEnumerable<IInteraction> GetInteractions(IActor Buyer, IActor Seller) {
-        var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Price), Seller, Stuff, OptionCode, Description);
+        var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;
     }
     // Description is from theI  subjects POV
-    public string Description => $"Sell {Stuff.Description} for {Price}¢¢";
+    public string Description => $"Sell {Stuff.Description} for {Cash}¢¢";
     public override string ToString() => Description;
 }
 
@@ -152,20 +155,32 @@ public record ExchangeInteraction: IInteraction {
     public IActor Agent { get; init; }
     public IActor Subject { get; init; }
 
-    public bool Enabled() {
+    public bool Enabled(string args = "") {
         return AgentOffer.EnabledFor(Agent, Subject) &&
                SubjectOffer.EnabledFor(Subject, Agent);
     }
-    
-    public int Perform() {
-        if (!Enabled()) {
-            throw new InvalidOperationException($"ExchangeInteraction {this} requires passing offers");
+
+    public int Perform(string args = "") {
+        int count = 1;
+        if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args, out int parsed)) {
+            count = Math.Max(1, parsed);
         }
-        AgentOffer.PerformOn(Agent, Subject);
-        SubjectOffer.PerformOn(Subject, Agent);
-        Agent.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return.");
-        Subject.Message($"You gave {Agent.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return.");
-        return 1;
+
+        int performed = 0;
+        for (int i = 0; i < count; i++) {
+            if (!Enabled()) {
+                break;
+            }
+            AgentOffer.PerformOn(Agent, Subject);
+            SubjectOffer.PerformOn(Subject, Agent);
+            performed++;
+        }
+
+        if (performed > 0) {
+            Agent.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{performed})");
+            Subject.Message($"You gave {Agent.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{performed})");
+        }
+        return performed;
     }
     public string Description { get; init; }
     public override string ToString() => Description;
@@ -188,62 +203,91 @@ public record ExchangeInteraction: IInteraction {
         return $"Give {sellerDesc} for {buyerDesc}";
     }
 
-    public static IEnumerable<IProposal> MakeTradeProposals(IActor Seller, float wealthFraction, Faction faction = Faction.Trade) {
+}
+
+public static class TradeEx {
+        public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, float wealthFraction, Faction faction = Faction.Trade) {
         var Location = Seller.Location;
         var wealth = Location.Wealth * wealthFraction;
-        float Cutoff = 1 - (float)Math.Pow(0.5, wealth / 1000);
-        float CFrac = wealth / (Enum.GetValues<Commodity>().Length - 1);
 
         // Use bandit markup for bandit faction, regular for others
         bool isBandit = faction == Faction.Bandit;
         float merchantMarkup = 1.0f;
-        if (Seller is Crawler seller) {
-            merchantMarkup = seller.Markup;
-        }
+        Crawler? seller = Seller as Crawler;
+        merchantMarkup = seller?.Markup ?? 1.0f;
 
-        foreach (var commodity in Enum.GetValues<Commodity>()) {
-            if (commodity == Commodity.Scrap) continue; // Skip cash-for-cash trades
+        var commodities = Enum.GetValues<Commodity>()
+            .Where(s => s != Commodity.Scrap)
+            .Where(s => Random.Shared.NextSingle() < s.AvailabilityAt(Location))
+            .ToList();
+        commodities.Shuffle();
 
-            // Filter illegal items based on faction
-            if (!isBandit && commodity.IsIllegalAtTrade()) {
-                continue; // Trade settlements don't deal in illegal goods
+        float CFrac = wealth;
+
+        foreach (var commodity in commodities) {
+            // Check faction policy for this commodity
+            var policy = Tuning.FactionPolicies.GetPolicy(faction, commodity);
+
+            // Skip prohibited goods
+            if (policy == TradePolicy.Prohibited) {
+                continue;
             }
 
-            var markup = Tuning.Economy.LocalMarkup(commodity, Location);
-            markup *= merchantMarkup;
-
-            float r = Random.Shared.NextSingle();
-            r = Math.Clamp(r, 0, 1);
-            if (r < Cutoff) {
-                // Sell
-                var quantity = Inventory.QuantitySold(CFrac / markup, commodity, Location);
-                Seller.Inv[commodity] += quantity;
-                var saleQuantity = Inventory.QuantitySold(Tuning.Trade.commodityBundleCost / markup, commodity, Location);
-                var offer = new CommodityOffer(commodity, (float)Math.Floor(saleQuantity));
-                var price = saleQuantity * commodity.Value(Location);
-                yield return new ProposeSellBuy(offer, price, "B");
-            }
-            if (1 - r < Cutoff) {
-                // Buy
-                var quantity = Inventory.QuantityBought(CFrac * markup, commodity, Location);
-                var saleQuantity = Inventory.QuantityBought(Tuning.Trade.commodityBundleCost * markup, commodity, Location);
-                var offer = new CommodityOffer(commodity, (float)Math.Ceiling(saleQuantity));
-                var price = saleQuantity * commodity.Value(Location);
-                yield return new ProposeBuySell(price, offer, "S");
+            // Contraband flag now means "only Bandits sell this"
+            if (!isBandit && commodity.Flags().HasFlag(CommodityFlag.Contraband)) {
+                continue;
             }
 
+            // Calculate mid-price with location, scarcity, and policy markups
+            var locationMarkup = Tuning.Economy.LocalMarkup(commodity, Location);
+            var scarcityPremium = commodity.ScarcityPremium(Location);
+            var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
+
+            float midPrice = commodity.CostAt(Location) * scarcityPremium * policyMultiplier;
+
+            // Calculate bid-ask spread
+            float bidAskSpread = Tuning.Trade.baseBidAskSpread;
+            bidAskSpread *= seller?.BidAskMultiplier ?? 1.0f;
+            float spreadAmount = midPrice * bidAskSpread;
+
+            // Ask price (player buys from NPC)
+            float askPrice = midPrice + spreadAmount / 2;
+            // Bid price (player sells to NPC)
+            float bidPrice = midPrice - spreadAmount / 2;
+
+            // Add commodity to seller's inventory
+            var quantity = Inventory.QuantitySold(CFrac / locationMarkup, commodity, Location);
+            Seller.Inv[commodity] += quantity;
+
+            // Create proposals
+            var saleQuantity = 1f;
+            var sellOffer = new CommodityOffer(commodity, (float)Math.Floor(saleQuantity));
+            var sellPrice = saleQuantity * askPrice;
+
+            // Add transaction fee for restricted goods
+            if (policy == TradePolicy.Restricted) {
+                sellPrice += Tuning.Trade.restrictedTransactionFee;
+            }
+
+            yield return new ProposeSellBuy(sellOffer, sellPrice, "B");
+
+            var buyOffer = new CommodityOffer(commodity, (float)Math.Ceiling(saleQuantity));
+            var buyPrice = saleQuantity * bidPrice;
+
+            // Transaction fee applies to purchases too
+            if (policy == TradePolicy.Restricted) {
+                buyPrice = Math.Max(0, buyPrice - Tuning.Trade.restrictedTransactionFee);
+            }
+
+            yield return new ProposeBuySell(buyPrice, buyOffer, "S");
         }
 
         // Offer segments from trade inventory if available
-        if (Seller is Crawler crawler && crawler.TradeInv.Segments.Any()) {
-            foreach (var segment in crawler.TradeInv.Segments.ToList()) {
-                var markup = Tuning.Economy.LocalMarkup(segment.SegmentKind, Location);
-                markup *= merchantMarkup;
-                var price = segment.Cost * markup;
-                yield return new ProposeSellBuy(new SegmentOffer(segment), price);
-            }
+        foreach (var segment in seller?.TradeInv.Segments.ToList() ?? []) {
+            var localCost =  segment.CostAt(Location);
+            var price = localCost * merchantMarkup;
+            yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
-
         int SaleSegments = CrawlerEx.SamplePoisson((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1));
         while (SaleSegments --> 0) {
             var segmentDef = SegmentEx.AllDefs.ChooseRandom()!;
@@ -255,4 +299,5 @@ public record ExchangeInteraction: IInteraction {
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
     }
+
 }

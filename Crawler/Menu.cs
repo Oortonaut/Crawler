@@ -6,6 +6,7 @@ public record MenuItem(string Option, string Item) {
     public virtual bool IsEnabled => Option.Length > 0;
     public override string ToString() => $"{Option}) {Item}";
     public static MenuItem Sep => new("", "");
+    public static MenuItem Cancel => new("X", "Cancel");
     public virtual string Format() {
         if (Option == "") {
             if (Item.StartsWith('\e')) {

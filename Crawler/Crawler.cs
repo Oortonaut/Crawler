@@ -15,12 +15,9 @@ public class ActorToActor {
 }
 
 public class Crawler: IActor {
-    public static Crawler NewRandom(Location here, float LocWealthScale, float CommoditiesFraction, EArray<SegmentKind, float> segmentClassWeights, Faction faction = Faction.Player) {
+    public static Crawler NewRandom(Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights, Faction faction = Faction.Player) {
         var newInv = new Inventory();
-        float Budget = here.Wealth * LocWealthScale;
-        float CrewSplit = CommoditiesFraction * 0.5f;
-        float GoodsSplit = CommoditiesFraction * 0.5f;
-        newInv.AddRandomInventory(here, Budget, CrewSplit, GoodsSplit, true, segmentClassWeights, faction);
+        newInv.AddRandomInventory(here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
         return new Crawler(here, newInv);
     }
     public Crawler(Location location, Inventory inventory) {
@@ -31,17 +28,20 @@ public class Crawler: IActor {
     }
     public string Name { get; set; }
     public string Brief(IActor viewer) {
-        var C = CrawlerDisplay(viewer).Split('\n');
+        var C = CrawlerDisplay(viewer).Split('\n').ToList();
 
         C[1] += $" Power: {TotalCharge:F1} + {TotalGeneration:F1}/t  Drain: Off:{OffenseDrain:F1}  Def:{DefenseDrain:F1}  Move:{MovementDrain:F1}";
         C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h";
         if (this == viewer) {
-            float RationsPerDay = CrewInv * Tuning.Crawler.RationsPerCrewDay;
-            C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}";
-            C[4] += $" Crew: {CrewInv:F0}  Rations: {RationsInv:F1}, {RationsPerDay:F1}/d  Morale: {MoraleInv}";
-            C[5] += $" Fuel: {FuelPerHr:F1}/d, {MovementFuelUsePerKm*100:F2}/100km";
+            float RationsPerDay = TotalPeople * Tuning.Crawler.RationsPerCrewDay;
+            float WaterPerDay = WaterPerHr * 24;
+            float AirPerDay = AirPerHr * 24;
+            C.Add($" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}");
+            C.Add($" Crew: {CrewInv:F0}  Soldiers: {SoldiersInv:F0}  Passengers: {PassengersInv:F0}  Morale: {MoraleInv}");
+            C.Add($" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)");
+            C.Add($" Fuel: {FuelPerHr:F1}/h, {MovementFuelUsePerKm*100:F2}/100km");
         } else {
-            C = C.Take(3).ToArray();
+            C = C.Take(3).ToList();
         }
         return string.Join("\n", C);
     }
@@ -56,7 +56,23 @@ public class Crawler: IActor {
     public float FuelPerHr => StandbyDrain / FuelEfficiency;
     public float MovementFuelUsePerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
     public float WagesPerHr => CrewInv * Tuning.Crawler.WagesPerCrewDay / 24;
-    public float RationsPerHr => CrewInv * Tuning.Crawler.RationsPerCrewDay / 24;
+    public float RationsPerHr => TotalPeople * Tuning.Crawler.RationsPerCrewDay / 24;
+    public float WaterPerHr {
+        get {
+            float crewWater = CrewInv * Tuning.Crawler.WaterPerCrew;
+            float soldierWater = SoldiersInv * Tuning.Crawler.WaterPerSoldier;
+            float passengerWater = PassengersInv * Tuning.Crawler.WaterPerPassenger;
+            float totalWater = crewWater + soldierWater + passengerWater;
+            return totalWater * Tuning.Crawler.WaterRecyclingLossPerHour;
+        }
+    }
+    public float AirPerHr {
+        get {
+            int hitSegments = UndestroyedSegments.Count(s => s.Hits > 0);
+            return TotalPeople * Tuning.Crawler.AirPerPerson * Tuning.Crawler.AirRecyclingLossPerHour * hitSegments;
+        }
+    }
+    public float TotalPeople => CrewInv + SoldiersInv + PassengersInv;
     public (float Fuel, float Time) FuelTimeTo(Location location) {
         float dist = Location.Distance(location);
         float startSpeed = Speed;
@@ -74,16 +90,6 @@ public class Crawler: IActor {
     public int EvilPoints { get; set; } = 0;
     public List<IProposal> StoredProposals { get; private set; } = new();
     public virtual IEnumerable<IProposal> Proposals() => StoredProposals;
-    //IEnumerable<MenuItem> BanditActions(Crawler other, int attackIndex) {
-    //    var banditToPlayer = GetRelationTo(other);
-    //    if (!IsDestroyed) {
-    //        yield return new ActionMenuItem($"A{attackIndex}", $"Attack {Name}", _ => other.Attack(this));
-    //        if (IsVulnerable && !banditToPlayer.Surrendered) {
-    //
-    //            //yield return new TradeMenuItem(AcceptSurrenderOffer.MakeSurrenderTo(other, this), attackIndex);
-    //        }
-    //    }
-    //}
 
     public bool Pinned() {
         bool CantEscape(Crawler crawler) => crawler.To(this).Hostile && Speed < crawler.Speed;
@@ -94,13 +100,39 @@ public class Crawler: IActor {
         UpdateSegments();
         if (Game.Instance.TimeSeconds % 3600 == 0) {
             Recharge(1);
+
+            // Check rations
             if (RationsInv <= 0) {
                 Message("You are out of rations and your crew is starving.");
-                CrewInv *= 0.99f;
+                float starveRate = 0.01f;
+                CrewInv *= (1 - starveRate);
+                SoldiersInv *= (1 - starveRate);
+                PassengersInv *= (1 - starveRate);
                 RationsInv = 0;
             }
+
+            // Check water
+            if (WaterInv <= 0) {
+                Message("You are out of water. People are dying of dehydration.");
+                float dehydrateRate = 0.02f;
+                CrewInv *= (1 - dehydrateRate);
+                SoldiersInv *= (1 - dehydrateRate);
+                PassengersInv *= (1 - dehydrateRate);
+                WaterInv = 0;
+            }
+
+            // Check air
+            if (AirInv <= 0) {
+                Message("You are out of air. People are suffocating.");
+                float suffocateRate = 0.03f;
+                CrewInv *= (1 - suffocateRate);
+                SoldiersInv *= (1 - suffocateRate);
+                PassengersInv *= (1 - suffocateRate);
+                AirInv = 0;
+            }
+
             if (IsDepowered) {
-                Message("Your oxygen is running low.");
+                Message("Your life support systems are offline.");
                 MoraleInv -= 1.0f;
             }
         }
@@ -108,6 +140,10 @@ public class Crawler: IActor {
             // TODO: List killers
             if (RationsInv == 0) {
                 End(EEndState.Starved, "All the crew have starved.");
+            } else if (WaterInv == 0) {
+                End(EEndState.Killed, "All the crew have died of dehydration.");
+            } else if (AirInv == 0) {
+                End(EEndState.Killed, "All the crew have suffocated.");
             } else {
                 End(EEndState.Killed, "The crew have been killed.");
             }
@@ -131,6 +167,14 @@ public class Crawler: IActor {
             Message($"{Name} is radio silent.");
             return;
         }
+
+        // Flee if vulnerable and not pinned
+        if (IsVulnerable && !Pinned()) {
+            Message($"{Name} flees the encounter.");
+            Location.Encounter.RemoveActor(this);
+            return;
+        }
+
         foreach (var actor in Actors) {
             var relation = To(actor);
             if (actor.Faction == Faction.Player) {
@@ -288,7 +332,7 @@ public class Crawler: IActor {
         );
 
         foreach (var (commodity, amount) in Inv.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
-            var value = amount * commodity.Value(Location);
+            var value = amount * commodity.CostAt(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
                 commodity.CommodityTextFull(amount),
@@ -299,144 +343,7 @@ public class Crawler: IActor {
         }
         result += commodityTable.ToString() + "\n";
 
-        // Group segments by kind
-        var segmentsByKind = Segments
-            .GroupBy(s => s.SegmentKind)
-            .OrderBy(g => g.Key)
-            .ToList();
-
-        foreach (var group in segmentsByKind) {
-
-            switch (group.Key) {
-                case SegmentKind.Power:
-                    var powerTable = new Table(
-                        ("Name", -16),
-                        ("State", -12),
-                        ("Health", 6),
-                        ("Weight", 6),
-                        ("Drain", 6),
-                        ("Cap", 6),
-                        ("Gen", 6)
-                    );
-                    foreach (var segment in group) {
-                        string cap = "", gen = "";
-                        if (segment is ReactorSegment rs) {
-                            cap = $"{rs.Capacity:F1}";
-                            gen = $"{rs.Generation:F1}";
-                        } else if (segment is ChargerSegment cs) {
-                            gen = $"{cs.Generation:F1}";
-                        }
-                        powerTable.AddRow(
-                            segment.Name,
-                            segment.StatusLine(Location),
-                            $"{segment.Health}/{segment.MaxHits}",
-                            $"{segment.Weight:F1}",
-                            $"{segment.Drain:F1}",
-                            cap,
-                            gen
-                        );
-                    }
-                    result += powerTable.ToString();
-                    break;
-
-                case SegmentKind.Traction:
-                    var tractionTable = new Table(
-                        ("Name", -16),
-                        ("State", -12),
-                        ("Health", 6),
-                        ("Weight", 6),
-                        ("Drain", 6),
-                        ("Lift", 6),
-                        ("Speed", 6),
-                        ("Terrain", -10)
-                    );
-                    foreach (var segment in group.Cast<TractionSegment>()) {
-                        tractionTable.AddRow(
-                            segment.Name,
-                            segment.StatusLine(Location),
-                            $"{segment.Health}/{segment.MaxHits}",
-                            $"{segment.Weight:F1}",
-                            $"{segment.Drain:F1}",
-                            $"{segment.Lift:F1}",
-                            $"{segment.Speed:F1}",
-                            segment.TerrainLimit.ToString()
-                        );
-                    }
-                    result += tractionTable.ToString();
-                    break;
-
-                case SegmentKind.Offense:
-                    var offenseTable = new Table(
-                        ("Name", -16),
-                        ("State", -12),
-                        ("Health", 6),
-                        ("Weight", 6),
-                        ("Drain", 6),
-                        ("Dmg", 6),
-                        ("Rate", 6),
-                        ("Shots", 6),
-                        ("Aim", 6)
-                    );
-                    foreach (var segment in group) {
-                        string dmg = "", rate = "", shots = "", aim = "";
-                        if (segment is WeaponSegment ws) {
-                            dmg = $"{ws.Damage:F1}";
-                            rate = $"{ws.Rate:F1}";
-                            shots = $"{ws.Shots:F1}";
-                            aim = $"{ws.Aim:F1}";
-                        }
-                        offenseTable.AddRow(
-                            segment.Name,
-                            segment.StatusLine(Location),
-                            $"{segment.Health}/{segment.MaxHits}",
-                            $"{segment.Weight:F1}",
-                            $"{segment.Drain:F1}",
-                            dmg,
-                            rate,
-                            shots,
-                            aim
-                        );
-                    }
-                    result += offenseTable.ToString();
-                    break;
-
-                case SegmentKind.Defense:
-                    var defenseTable = new Table(
-                        ("Name", -16),
-                        ("State", -12),
-                        ("Health", 6),
-                        ("Weight", 6),
-                        ("Drain", 6),
-                        ("Cost", 6),
-                        ("Reduction", -12),
-                        ("Charge", -12)
-                    );
-                    foreach (var segment in group) {
-                        string reduction = "";
-                        string charge = "";
-                        if (segment is ArmorSegment ars) {
-                            reduction = $"{ars.Reduction}";
-                        } else if (segment is PlatingSegment ps) {
-                            reduction = $"{ps.Mitigation:P0}";
-                        } else if (segment is ShieldSegment ss) {
-                            reduction = $"{ss.ShieldLeft}";
-                            charge = $"+{ss.Charge}/t";
-                        }
-                        defenseTable.AddRow(
-                            segment.Name,
-                            segment.StatusLine(Location),
-                            $"{segment.Health}/{segment.MaxHits}",
-                            $"{segment.Weight:F1}",
-                            $"{segment.Drain:F1}",
-                            $"{segment.Cost:F1}",
-                            reduction,
-                            charge
-                        );
-                    }
-                    result += defenseTable.ToString();
-                    break;
-            }
-        }
+        result += Segments.SegmentReport(Location);
 
         return result;
     }
@@ -510,6 +417,22 @@ public class Crawler: IActor {
         get => Inv[Commodity.Morale];
         set => Inv[Commodity.Morale] = value;
     }
+    public float WaterInv {
+        get => Inv[Commodity.Water];
+        set => Inv[Commodity.Water] = value;
+    }
+    public float AirInv {
+        get => Inv[Commodity.Air];
+        set => Inv[Commodity.Air] = value;
+    }
+    public float PassengersInv {
+        get => Inv[Commodity.Passengers];
+        set => Inv[Commodity.Passengers] = value;
+    }
+    public float SoldiersInv {
+        get => Inv[Commodity.Soldiers];
+        set => Inv[Commodity.Soldiers] = value;
+    }
     public void End(EEndState state, string message = "") {
         EndMessage = $"{state}: {message}";
         EndState = state;
@@ -565,6 +488,8 @@ public class Crawler: IActor {
             FeedPower(overflowPower);
             ScrapInv -= WagesPerHr;
             RationsInv -= RationsPerHr;
+            WaterInv -= WaterPerHr;
+            AirInv -= AirPerHr;
             FuelInv -= FuelPerHr;
         }
     }
@@ -760,6 +685,10 @@ public class Crawler: IActor {
 
     // Accessor methods for save/load
     public Dictionary<IActor, ActorToActor> GetRelations() => _relations;
+    public Dictionary<Location, ActorLocation> GetVisitedLocations() => _locations;
+    public float GetMarkup() => _markup;
+    public void SetMarkup(float markup) => _markup = markup;
+    public void SetVisitedLocations(Dictionary<Location, ActorLocation> locations) => _locations = locations;
     public bool RelatedTo(IActor other) => _relations.ContainsKey(other);
     public int Embark(Location location) {
         throw new NotImplementedException();
@@ -767,4 +696,17 @@ public class Crawler: IActor {
     public int Domes { get; init; } = 0;
     float _markup = 1.0f;
     public float Markup => _markup * (Faction is Faction.Bandit ? Tuning.Trade.banditRate : Tuning.Trade.rate);
+
+    // New bid-ask spread model
+    public float BidAskMultiplier {
+        get {
+            float baseMultiplier = Faction is Faction.Bandit ?
+                Tuning.Trade.banditBidAskMultiplier :
+                Tuning.Trade.tradeBidAskMultiplier;
+            float variance = Faction is Faction.Bandit ?
+                Tuning.Trade.banditBidAskSd :
+                Tuning.Trade.tradeBidAskSd;
+            return _markup * (float)CrawlerEx.NextGaussian(baseMultiplier, variance);
+        }
+    }
 }
