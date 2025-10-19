@@ -650,7 +650,7 @@ if !UndestroyedSegments.Any():
   End(EEndState.Destroyed)
 ```
 
-### Encounter Tick (Encounter.cs:488-532)
+### Encounter Tick (Encounter.cs:588-637)
 
 **Every Second:**
 ```csharp
@@ -663,6 +663,11 @@ foreach actor in actors:
 foreach actor in actors:
   actor.Tick(otherActors)  // AI behavior
 ```
+
+**Dynamic Crawler Spawning:**
+- Settlements spawn traders (Independent or civilian faction) ~75%, bandits ~25%
+- Crossroads spawn based on terrain weights (see Tuning.cs)
+- Dynamic spawns never overwrite encounter name (only set for permanent actors)
 
 **Every 5 Minutes (TimeSeconds % 300 == 0):**
 ```csharp

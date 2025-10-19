@@ -42,8 +42,7 @@ interface IActor {
     ActorLocation To(Location loc); // Visit tracking
 
     // ===== Actions =====
-    IEnumerable<IProposal> Proposals();                // Available interactions
-    IEnumerable<IInteraction> ForcedInteractions(IActor other);  // Deprecated
+    IEnumerable<IProposal> Proposals();                // potential interactions 
     void Tick();                                       // Update (solo)
     void Tick(IEnumerable<IActor> others);            // Update (with context)
     void ReceiveFire(IActor from, List<HitRecord> fire);  // Combat
