@@ -336,14 +336,14 @@ public class Game {
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
 
-        var (selected, ap) = CrawlerEx.MenuRun("World Map", [
+        var (selected, ap) = CrawlerEx.MenuRun("Global Map", [
             .. WorldMapMenuItems(ShowArg.Show),
         ]);
         return ap;
     }
     IEnumerable<MenuItem> GameMenuItems() => [
         new ActionMenuItem("M", "Sector Map", _ => SectorMap()),
-        new ActionMenuItem("G", "World Map", _ => WorldMap()),
+        new ActionMenuItem("G", "Global Map", _ => WorldMap()),
         new ActionMenuItem("R", "Status Report", _ => Report()),
         new ActionMenuItem("K", "Skip Turn/Wait", args => Turn(args)),
         new ActionMenuItem("Q", "Save and Quit", _ => Save() + Quit()),

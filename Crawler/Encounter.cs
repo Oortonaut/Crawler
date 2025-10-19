@@ -184,12 +184,21 @@ public class Encounter {
 
     void InitDynamicCrawlers() {
         if (hourlyArrivals <= 0) return;
-        
+
         float expectedCount = hourlyArrivals * (Tuning.Encounter.DynamicCrawlerLifetimeExpectation / 3600f);
         int initialCount = CrawlerEx.SamplePoisson(expectedCount);
-        
+
+        // Calculate arrival times and sort by them
+        var arrivals = new List<(int arrivalTime, int lifetime)>();
         for (int i = 0; i < initialCount; i++) {
             int lifetime = ( int ) CrawlerEx.SampleExponential(Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
+            // Spread initial arrivals across the lifetime expectation window
+            int arrivalTime = (int)(Random.Shared.NextSingle() * -lifetime);
+            arrivals.Add((arrivalTime, lifetime));
+        }
+
+        // Add crawlers in order of arrival time
+        foreach (var (arrivalTime, lifetime) in arrivals.OrderBy(a => a.arrivalTime)) {
             AddDynamicCrawler(lifetime);
         }
     }
@@ -245,13 +254,22 @@ public class Encounter {
             RemoveActor(actor);
         }
 
-        // Sample how many crawlers should be present
-        int arrivals = CrawlerEx.SamplePoisson(hourlyArrivals / 60);
+        // Sample how many crawlers should arrive
+        int arrivalCount = CrawlerEx.SamplePoisson(hourlyArrivals / 60);
 
-        if (arrivals > 0) {
-            // Add crawlers
-            for (int i = 0; i < arrivals; i++) {
-                AddDynamicCrawler();
+        if (arrivalCount > 0) {
+            // Calculate arrival times for each new crawler and add in order
+            var arrivals = new List<(int arrivalTime, int lifetime)>();
+            for (int i = 0; i < arrivalCount; i++) {
+                int lifetime = CrawlerEx.SamplePoisson(Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
+                // Arrivals spread across the next minute (60 seconds)
+                int arrivalTime = Random.Shared.Next(0, 60);
+                arrivals.Add((arrivalTime, lifetime));
+            }
+
+            // Add crawlers in order of arrival time
+            foreach (var (arrivalTime, lifetime) in arrivals.OrderBy(a => a.arrivalTime)) {
+                AddDynamicCrawler(lifetime);
             }
         }
     }
@@ -414,6 +432,7 @@ public class Encounter {
         float goodsWealth = Location.Wealth * domes * 0.5f;
         float segmentWealth = Location.Wealth * domes * 0.25f;
         var settlement = Crawler.NewRandom(Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
+        settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
         settlement.Faction = Faction;

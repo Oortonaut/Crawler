@@ -480,13 +480,14 @@ public class Crawler: IActor {
         ];
         string result = coloredSegments.TransposeJoinStyled();
         var Adjs = StateString(viewer);
-        var nameString = Style.Name.Format(Name) + $": {Faction}{Adjs}";
+        var nameString = Style.Name.Format(Name) + $": {Faction.Name()}{Adjs}";
         if (Flags.HasFlag(EActorFlags.Settlement)) {
             if (Location.Sector.ControllingFaction.Capital() == this) {
                 nameString += " Capital";
             } else {
                 nameString += " Settlement";
             }
+            nameString += $" ({Domes} Domes)";
         }
         return $"{nameString}\n{result}";
     }
@@ -787,7 +788,7 @@ public class Crawler: IActor {
     public int Embark(Location location) {
         throw new NotImplementedException();
     }
-    public int Domes { get; init; } = 0;
+    public int Domes { get; set; } = 0;
     float _markup = 1.0f;
     public float Markup => _markup * (Faction is Faction.Bandit ? Tuning.Trade.banditRate : Tuning.Trade.rate);
 

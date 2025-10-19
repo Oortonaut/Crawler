@@ -303,7 +303,8 @@ public static class SaveLoadExtensions {
             Height = map.Height,
             Sectors = savedSectors,
             FactionData = map.FactionData.Pairs()
-                .Select(kvp => kvp.Value.ToSaveData(kvp.Key))
+                .TakeWhile(kvp => kvp.Value != null)
+                .Select(kvp => kvp.Value!.ToSaveData(kvp.Key))
                 .ToList()
         };
     }

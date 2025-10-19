@@ -237,7 +237,7 @@ public class Map {
 
         // Generate policies for each civilian faction
         foreach (var (faction, data) in FactionData.Pairs()) {
-            if (data.Capital is {} capital) {
+            if (data?.Capital is {} capital) {
                 Tuning.FactionPolicies.Policies[faction] = GenerateFactionPolicy(capital);
             }
         }
@@ -253,7 +253,7 @@ public class Map {
             Faction closestFaction = Faction.Independent;
 
             foreach (var (faction, data) in FactionData.Pairs()) {
-                if (data.Capital is { } capital) {
+                if (data?.Capital is { } capital) {
                     float distance = sector.Offset(capital.Location.Sector).Length();
                     float weightedDistance = distance / capital.Influence;
 
@@ -405,7 +405,7 @@ public class Map {
     public int Height => Sectors.GetLength(0);
     public int Width => Sectors.GetLength(1);
     Sector[,] Sectors { get; }
-    public EArray<Faction, FactionData> FactionData { get; } = new();
+    public EArray<Faction, FactionData?> FactionData { get; } = new();
 
     public Sector GetSector(int x, int y) => Sectors[y, x];
     public IEnumerable<Location> FindLocationsInRadius(Vector2 center, float radius) {
@@ -477,8 +477,8 @@ public class Map {
 
 
         var worldMapWidth = Width * 3 + 2;
-        var header = defaultStyle + "┌[" + titleStyle + "World Map" + defaultStyle + "]";
-        header += new string('─', Math.Max(0, worldMapWidth - header.Length + 1)) + "╖\n";
+        var header = defaultStyle + "┌[" + titleStyle + "Global Map" + defaultStyle + "]";
+        header += new string('─', Math.Max(0, worldMapWidth - 12)) + "╖\n";
         var footer = defaultStyle + $"╘{new string('═', worldMapWidth)}╝\n";
 
         string result = header;
