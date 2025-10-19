@@ -206,7 +206,7 @@ public record ExchangeInteraction: IInteraction {
 }
 
 public static class TradeEx {
-        public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, float wealthFraction, Faction faction = Faction.Trade) {
+        public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, float wealthFraction, Faction faction = Faction.Independent) {
         var Location = Seller.Location;
         var wealth = Location.Wealth * wealthFraction;
 
@@ -233,8 +233,8 @@ public static class TradeEx {
                 continue;
             }
 
-            // Contraband flag now means "only Bandits sell this"
-            if (!isBandit && commodity.Flags().HasFlag(CommodityFlag.Contraband)) {
+            // Vice category goods are only sold by Bandits
+            if (!isBandit && commodity.Category() == CommodityCategory.Vice) {
                 continue;
             }
 
@@ -265,7 +265,7 @@ public static class TradeEx {
             var sellPrice = saleQuantity * askPrice;
 
             // Add transaction fee for restricted goods
-            if (policy == TradePolicy.Restricted) {
+            if (policy == TradePolicy.Controlled) {
                 sellPrice += Tuning.Trade.restrictedTransactionFee;
             }
 
@@ -275,7 +275,7 @@ public static class TradeEx {
             var buyPrice = saleQuantity * bidPrice;
 
             // Transaction fee applies to purchases too
-            if (policy == TradePolicy.Restricted) {
+            if (policy == TradePolicy.Controlled) {
                 buyPrice = Math.Max(0, buyPrice - Tuning.Trade.restrictedTransactionFee);
             }
 

@@ -20,10 +20,11 @@ public record Location(
     public Map Map => Sector.Map;
     Encounter? _encounter = null;
     public bool HasEncounter => _encounter != null;
-    public Encounter Encounter => _encounter ??= NewEncounter(this);
+    public Encounter GetEncounter() => _encounter ??= NewEncounter(this);
     public string PosString => $"{(int)(Position.X * 100) % 100:D2},{(int)(Position.Y * 100) % 100:D2}";
-    public string EncounterName(IActor visitor) => visitor.To(this).Visited switch {
-        true => Encounter.Name,
+    public string Name => HasEncounter ? _encounter!.Name : Type.ToString();
+    public string EncounterName(IActor visitor) => (visitor.To(this).Visited && HasEncounter) switch {
+        true => _encounter!.Name,
         false => Type.ToString(),
     };
     float zipf = Random.Shared.NextSingle();
@@ -75,23 +76,31 @@ public class ActorLocation {
 }
 
 // Represents a faction's capital city/settlement
-public record FactionCapital(Faction Faction, Location Location, float Population) {
+public record FactionCapital(Faction Faction, string Name, Crawler Settlement, float Population) {
+    public Location Location => Settlement.Location;
     public Sector Sector => Location.Sector;
     public Vector2 Position => Location.Position;
 }
 
-public struct Sector(Map map, string name, int x, int y) {
+public class Sector(Map map, string name, int x, int y) {
     public Map Map => map;
-    public string Name => name;
+    public string Name { get; set; } = name;
     public int X => x;
     public int Y => y;
+    public Point Position => new(x, y);
     public TerrainType Terrain { get; set; }
-    public Faction ControllingFaction { get; set; } = Faction.Trade; // Default to Trade for unassigned
+    public Faction ControllingFaction { get; set; } = Faction.Independent; // Default to Trade for unassigned
     public List<Sector> Neighbors { get; } = new();
     public List<Location> Locations { get; } = new();
+    public IEnumerable<Location> Settlements => Locations.Where(loc => loc.Type == EncounterType.Settlement);
     public List<IActor> Actors { get; set; } = new();
     public override string ToString() => $"{Name} ({Terrain})";
-    public string Look() => $"Sector {Name} ({Terrain} Terrain), Under {ControllingFaction}";
+    public string Look() {
+        var result = $"{ControllingFaction.Name()} - {Name} ({Terrain} Terrain) ";
+        var locationSummary = Locations.GroupBy(loc => loc.Type).Select(g => $"{g.Key}" + (g.Count() > 1 ? $" ({g.Count()})" : ""));
+        result += string.Join(", ", locationSummary);
+        return result;
+    }
     public Point Offset(Sector other) {
         int dx = x - other.X;
         int dy = y - other.Y;
@@ -188,25 +197,34 @@ public class Map {
 
     void IdentifyFactionCapitals() {
         // Collect all settlement locations
-        var settlements = new List<Location>();
+        var settlementLocations = new List<Location>();
         foreach (var (X, Y) in Sectors.Index()) {
             var sector = Sectors[Y, X];
-            settlements.AddRange(sector.Locations.Where(loc => loc.Type == EncounterType.Settlement));
+            settlementLocations.AddRange(sector.Locations.Where(loc => loc.Type == EncounterType.Settlement));
         }
 
         // Sort by population descending
-        settlements = settlements.OrderByDescending(loc => loc.Population).ToList();
+        settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).ToList();
 
         // Take top N, skipping duplicate sectors
         var usedSectors = new HashSet<Sector>();
         int numFactions = Math.Min(Height, 20); // Max 20 civilian factions
 
-        for (int i = 0; i < settlements.Count && FactionCapitals.Count < numFactions; i++) {
-            var settlement = settlements[i];
-            if (!usedSectors.Contains(settlement.Sector)) {
+        for (int i = 0; i < settlementLocations.Count && FactionCapitals.Count < numFactions; i++) {
+            var setLocation = settlementLocations[i];
+            var sector = setLocation.Sector;
+            if (!usedSectors.Contains(sector)) {
                 var faction = FactionEx.FromCivilianIndex(FactionCapitals.Count);
-                FactionCapitals.Add(new FactionCapital(faction, settlement, settlement.Population));
-                usedSectors.Add(settlement.Sector);
+                sector.ControllingFaction = faction;
+                var encounter = setLocation.GetEncounter();
+                var name = setLocation.Name;
+                foreach (var crawler in encounter.Settlements.OfType<Crawler>()) {
+                    name = crawler.Name;
+                    FactionCapitals.Add(new FactionCapital(faction, name, crawler, setLocation.Population));
+                    break;
+                }
+                sector.Name = $"{name} Capital";
+                usedSectors.Add(sector);
             }
         }
 
@@ -221,20 +239,15 @@ public class Map {
     void AssignSectorFactions() {
         // Weighted Voronoi: assign each sector to nearest faction capital weighted by population
         foreach (var (X, Y) in Sectors.Index()) {
-            ref var sector = ref Sectors[Y, X];
-
-            if (FactionCapitals.Count == 0) {
-                sector.ControllingFaction = Faction.Trade;
-                continue;
-            }
+            var sector = Sectors[Y, X];
 
             // Calculate weighted distance to each capital
             float minWeightedDistance = float.MaxValue;
-            Faction closestFaction = Faction.Trade;
+            Faction closestFaction = Faction.Independent;
 
             foreach (var capital in FactionCapitals) {
                 float distance = sector.Offset(capital.Sector).Length();
-                float weightedDistance = distance / capital.Population;
+                float weightedDistance = distance / (8 + (float)Math.Log2(capital.Population));
 
                 if (weightedDistance < minWeightedDistance) {
                     minWeightedDistance = weightedDistance;
@@ -268,8 +281,8 @@ public class Map {
             policy[Commodity.Stims] = TradePolicy.Prohibited;
             policy[Commodity.Downers] = TradePolicy.Prohibited;
             policy[Commodity.Trips] = TradePolicy.Prohibited;
-            policy[Commodity.SmallArms] = TradePolicy.Restricted;
-            policy[Commodity.Explosives] = TradePolicy.Restricted;
+            policy[Commodity.SmallArms] = TradePolicy.Controlled;
+            policy[Commodity.Explosives] = TradePolicy.Controlled;
         } else if (archetypeRoll < 60) {
             // Industrial/Mining faction - subsidize raw materials, tax weapons
             policy[Commodity.Ore] = TradePolicy.Subsidized;
@@ -283,14 +296,14 @@ public class Map {
             // Authoritarian/Restrictive faction - prohibit many things
             policy[Commodity.SmallArms] = TradePolicy.Prohibited;
             policy[Commodity.Explosives] = TradePolicy.Prohibited;
-            policy[Commodity.Liquor] = TradePolicy.Restricted;
+            policy[Commodity.Liquor] = TradePolicy.Controlled;
             policy[Commodity.Stims] = TradePolicy.Prohibited;
             policy[Commodity.Downers] = TradePolicy.Prohibited;
             policy[Commodity.Trips] = TradePolicy.Prohibited;
-            policy[Commodity.Idols] = TradePolicy.Restricted;
-            policy[Commodity.Texts] = TradePolicy.Restricted;
-            policy[Commodity.Relics] = TradePolicy.Restricted;
-            policy[Commodity.AiCores] = TradePolicy.Restricted;
+            policy[Commodity.Idols] = TradePolicy.Controlled;
+            policy[Commodity.Texts] = TradePolicy.Controlled;
+            policy[Commodity.Relics] = TradePolicy.Controlled;
+            policy[Commodity.AiCores] = TradePolicy.Controlled;
         }
 
         return policy;
@@ -318,13 +331,13 @@ public class Map {
         var loc = actor.Location;
         var sector = Sectors[(int)loc.Position.Y, (int)loc.Position.X];
         sector.Actors.Add(actor);
-        loc.Encounter.AddActor(actor);
+        loc.GetEncounter().AddActor(actor);
     }
     public void RemoveActor(IActor actor) {
         var loc = actor.Location;
         var sector = Sectors[(int)loc.Position.Y, (int)loc.Position.X];
         sector.Actors.Remove(actor);
-        loc.Encounter.RemoveActor(actor);
+        loc.GetEncounter().RemoveActor(actor);
     }
     public void MoveActor(IActor actor, Location newPos) {
         if (actor.Location == newPos) {
@@ -449,49 +462,89 @@ public class Map {
         return result;
     }
 
-    public string DumpMap(params IActor[] players) {
-        string result = "_ ";
+    public string DumpMap(params List<IActor> players) {
+        string defaultStyle = Style.MenuNormal.StyleString();
+        string titleStyle = Style.MenuUnvisited.StyleString();
+
+
+        var worldMapWidth = Width * 3 + 2;
+        var header = defaultStyle + "┌[" + titleStyle + "World Map" + defaultStyle + "]";
+        header += new string('─', Math.Max(0, worldMapWidth - header.Length + 1)) + "╖\n";
+        var footer = defaultStyle + $"╘{new string('═', worldMapWidth)}╝\n";
+
+        string result = header;
+
+        result += "│ :" + titleStyle;
         for (int x = 0; x < Width; x++) {
             result += $"{x,3}";
         }
-        result += "\n";
+        result += defaultStyle + "║\n";
         for (int y = 0; y < Height; y++) {
-            string map = string.Empty;
-            string map2 = string.Empty;
+            string map = defaultStyle + "│" + titleStyle + (char)('A' + y) + defaultStyle + ":";
+            string map2 = defaultStyle + "│ :";
             for (int x = 0; x < Width; x++) {
                 var sector = GetSector(x, y);
-                char terrainChar = TerrainCode(sector.Terrain);
-                char indicator = terrainChar;
-                char indicator2 = terrainChar;
-
-                // Show faction control in background
-                if (sector.ControllingFaction.IsCivilian()) {
-                    int factionIndex = sector.ControllingFaction.CivilianIndex();
-                    indicator2 = factionIndex < 10 ? (char)('0' + factionIndex) : (char)('A' + (factionIndex - 10));
-                } else {
-                    indicator2 = sector.ControllingFaction.ToString()[0];
+                var sectorColor = sector.ControllingFaction.GetColor();
+                var sectorStyle = sectorColor.On(Color.Black);
+                int playerIndex = players.FindIndex(p => p.Location.Sector.Position == sector.Position);
+                if (playerIndex >= 0) {
+                    sectorStyle = sectorColor.On(Color.DarkBlue);
                 }
+                char terrainChar = TerrainCode(sector.Terrain);
+                string top = sectorStyle;
+                string bottom = sectorStyle;
+                int topWidth = 0;
+                int bottomWidth = 0;
 
                 // Mark settlements
-                bool hasSettlement = sector.Locations.Any(loc => loc.Type == EncounterType.Settlement);
-                if (hasSettlement) {
-                    indicator = 'S';
+                foreach (var settlement in sector.Locations.Where(loc => loc.Type == EncounterType.Settlement)) {
+                    bottom += "o123456789ABCDEF"[(int)Math.Log(settlement.Population, 2)];
+                    ++bottomWidth;
                 }
 
-                // Mark player position
-                foreach (var (i, player) in players.Index()) {
-                    if (player.Location.Sector.Name == sector.Name) {
-                        indicator = (char)('1' + i);
-                        break;
-                    }
-                }
+                top += new string(terrainChar, 3 - topWidth);
+                bottom += new string(terrainChar, 3 - bottomWidth);
 
-                map += $"{terrainChar}{indicator2}{terrainChar}";
-                map2 += $"{terrainChar}{indicator}{terrainChar}";
+                map += top;
+                map2 += bottom;
             }
-            char row = (char)('A' + y);
-            result += $"{row}:{map}\n :{map2}\n";
+            map += defaultStyle + "║";
+            map2 += defaultStyle + "║";
+
+            // Add civilian faction info for this row
+            if (y < FactionCapitals.Count) {
+                var capital = FactionCapitals[y];
+                var option = Style.MenuOption.Format($"{y + 1}");
+                var capitalString = capital.Faction.GetColor().On(Color.Black) + capital.Name + defaultStyle;
+                map += $" [{option}] {capitalString} ({capital.Faction})";
+                /* TODO: Move this policy text into a helper function
+                var policy = Tuning.FactionPolicies.Policies[capital.Faction];
+
+                // Get restricted/prohibited commodities
+                var restrictedList = policy.Pairs()
+                    .Where(p => p.Item2 == TradePolicy.Controlled || p.Item2 == TradePolicy.Prohibited)
+                    .Select(p => $"{p.Item1}:{(p.Item2 == TradePolicy.Controlled ? '-' : 'X')}")
+                    .ToList();
+
+                // Get subsidized commodities
+                var subsidizedList = policy.Pairs()
+                    .Where(p => p.Item2 == TradePolicy.Subsidized)
+                    .Select(p => $"{p.Item1}:+")
+                    .ToList();
+
+                int factionIndex = capital.Faction.CivilianIndex();
+                string factionName = factionIndex < 10 ? factionIndex.ToString() : ((char)('A' + (factionIndex - 10))).ToString();
+
+                var restrictions = restrictedList.Concat(subsidizedList).ToList();
+                factionInfo = restrictions.Any()
+                    ? $" [{factionName}] {string.Join(", ", restrictions)}"
+                    : $" [{factionName}] Open Trade";
+                    */
+            }
+
+            result += $"{map}\n{map2}\n";
         }
-        return result.Trim();
+        result += footer;
+        return result;
     }
 }

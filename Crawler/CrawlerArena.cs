@@ -30,7 +30,7 @@ public class CrawlerArena {
             new System.Numerics.Vector2(0.5f, 0.5f),
             EncounterType.None,
             1000.0f,
-            loc => new Encounter(loc, Faction.Trade)
+            loc => new Encounter(loc, Faction.Independent)
         );
 
         sector.Locations.Add(arenaLocation);

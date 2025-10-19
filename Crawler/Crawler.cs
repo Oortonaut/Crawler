@@ -18,7 +18,16 @@ public class Crawler: IActor {
     public static Crawler NewRandom(Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights, Faction faction = Faction.Player) {
         var newInv = new Inventory();
         newInv.AddRandomInventory(here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
-        return new Crawler(here, newInv);
+        var crawler = new Crawler(here, newInv);
+
+        // Add initial fuel based on supply days and movement power at current location
+        float fuelPerHr = crawler.FuelPerHr;
+        float hoursOfFuel = supplyDays * 24;
+        float initialFuel = fuelPerHr * hoursOfFuel;
+        float mileageFuel = 10 * supplyDays * crawler.FuelPerHr;
+        crawler.Inv[Commodity.Fuel] += initialFuel;
+
+        return crawler;
     }
     public Crawler(Location location, Inventory inventory) {
         Inv = inventory;
@@ -39,7 +48,7 @@ public class Crawler: IActor {
             C.Add($" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}");
             C.Add($" Crew: {CrewInv:F0}  Soldiers: {SoldiersInv:F0}  Passengers: {PassengersInv:F0}  Morale: {MoraleInv}");
             C.Add($" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)");
-            C.Add($" Fuel: {FuelPerHr:F1}/h, {MovementFuelUsePerKm*100:F2}/100km");
+            C.Add($" Fuel: {FuelPerHr:F1}/h, {FuelPerKm*100:F2}/100km");
         } else {
             C = C.Take(3).ToList();
         }
@@ -54,7 +63,7 @@ public class Crawler: IActor {
 
     }
     public float FuelPerHr => StandbyDrain / FuelEfficiency;
-    public float MovementFuelUsePerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
+    public float FuelPerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
     public float WagesPerHr => CrewInv * Tuning.Crawler.WagesPerCrewDay / 24;
     public float RationsPerHr => TotalPeople * Tuning.Crawler.RationsPerCrewDay / 24;
     public float WaterPerHr {
@@ -82,7 +91,7 @@ public class Crawler: IActor {
             return (-1, -1);
         }
         float time = dist / terrainRate;
-        float fuel = MovementFuelUsePerKm * dist + FuelPerHr * time;
+        float fuel = FuelPerKm * dist + FuelPerHr * time;
         return (fuel, time);
     }
 
@@ -90,10 +99,75 @@ public class Crawler: IActor {
     public int EvilPoints { get; set; } = 0;
     public List<IProposal> StoredProposals { get; private set; } = new();
     public virtual IEnumerable<IProposal> Proposals() => StoredProposals;
+    public virtual IEnumerable<IInteraction> ForcedInteractions(IActor other) {
+        // Bandits demand cargo from players on encounter entry
+        if (Faction == Faction.Bandit && other.Faction == Faction.Player) {
+            float cargoValue = other.Inv.ValueAt(Location);
+            if (cargoValue >= Tuning.Bandit.minValueThreshold &&
+                Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
+                !To(other).Hostile &&
+                !To(other).Surrendered &&
+                !IsDisarmed) {
+
+                var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction);
+                foreach (var interaction in extortion.GetInteractions(this, other)) {
+                    yield return interaction;
+                }
+            }
+        }
+
+        // Settlements and civilian factions scan for contraband
+        if ((Flags & EActorFlags.Settlement) != 0 || Faction.IsCivilian() || Faction == Faction.Independent) {
+            if (other.Faction == Faction.Player && !To(other).Hostile) {
+                var contraband = ScanForContraband(other);
+                if (!contraband.IsEmpty) {
+                    float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
+                    var seizure = new ProposeContrabandSeizure(contraband, penalty);
+                    foreach (var interaction in seizure.GetInteractions(this, other)) {
+                        yield return interaction;
+                    }
+                }
+
+                // Also check for taxes if this is a settlement in own territory
+                if ((Flags & EActorFlags.Settlement) != 0 &&
+                    Faction.IsCivilian() &&
+                    Location.Sector.ControllingFaction == Faction) {
+
+                    var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
+                    foreach (var interaction in taxes.GetInteractions(this, other)) {
+                        yield return interaction;
+                    }
+                }
+            }
+        }
+    }
+
+    // Scan actor's inventory for contraband based on this faction's policies
+    public Inventory ScanForContraband(IActor target) {
+        var contraband = new Inventory();
+
+        // Random chance to detect
+        if (Random.Shared.NextSingle() > Tuning.Civilian.contrabandScanChance) {
+            return contraband; // Scan failed
+        }
+
+        // Check each commodity
+        foreach (var commodity in Enum.GetValues<Commodity>()) {
+            var policy = Tuning.FactionPolicies.GetPolicy(Faction, commodity);
+            if (policy == TradePolicy.Prohibited) {
+                float amount = target.Inv[commodity];
+                if (amount > 0) {
+                    contraband.Add(commodity, amount);
+                }
+            }
+        }
+
+        return contraband;
+    }
 
     public bool Pinned() {
         bool CantEscape(Crawler crawler) => crawler.To(this).Hostile && Speed < crawler.Speed;
-        return Location.Encounter.Actors.Any(a => a is Crawler crawler && CantEscape(crawler));
+        return Location.GetEncounter().Actors.Any(a => a is Crawler crawler && CantEscape(crawler));
     }
 
     public void Tick() {
@@ -171,7 +245,7 @@ public class Crawler: IActor {
         // Flee if vulnerable and not pinned
         if (IsVulnerable && !Pinned()) {
             Message($"{Name} flees the encounter.");
-            Location.Encounter.RemoveActor(this);
+            Location.GetEncounter().RemoveActor(this);
             return;
         }
 
@@ -655,7 +729,7 @@ public class Crawler: IActor {
     }
     ActorToActor NewRelation(IActor to) {
         var result = new ActorToActor();
-        bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.Encounter.Faction is Faction.Trade;
+        bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.GetEncounter().Faction is Faction.Independent;
         if (Faction is Faction.Bandit && to.Faction is Faction.Player && !isTradeSettlement) {
             // Bandits check player evilness before turning hostile
             if (to is Crawler playerCrawler) {

@@ -1,9 +1,11 @@
-﻿namespace Crawler;
+﻿using System.Drawing;
+
+namespace Crawler;
 
 public enum Faction {
     Player, // eg a Player crawler
     Bandit, // a Bandit crawler
-    Trade,  // Traveling merchants
+    Independent,  // Traveling merchants
 
     // Civilian factions - regional powers controlling sectors
     // Generated during map creation based on highest population settlements
@@ -41,7 +43,41 @@ public static class FactionEx {
         faction.IsCivilian() ? (int)faction - (int)Faction.Civilian0 : -1;
 
     public static Faction FromCivilianIndex(int index) =>
-        index >= 0 && index <= 19 ? (Faction)((int)Faction.Civilian0 + index) : Faction.Trade;
+        index >= 0 && index <= 19 ? (Faction)((int)Faction.Civilian0 + index) : Faction.Independent;
+
+    public static Color GetColor(this Faction faction) =>
+        _factionColors[faction];
+    public static string Name(this Faction faction) => faction switch {
+        Faction.Player => "Player",
+        Faction.Bandit => "Bandit",
+        Faction.Independent => "Independent",
+        var civilian => Game.Instance.Map.FactionCapitals[civilian.CivilianIndex()].Name,
+    };
+
+    static EArray<Faction, Color> _factionColors = [
+        Color.Red,
+        Color.Blue,
+        Color.White,
+        Color.LightGreen,
+        Color.MediumPurple,
+        Color.Coral,
+        Color.Yellow,
+        Color.Pink,
+        Color.Orange,
+        Color.PaleVioletRed,
+        Color.SteelBlue,
+        Color.Khaki,
+        Color.DarkSeaGreen,
+        Color.BlueViolet,
+        Color.OrangeRed,
+        Color.DarkGoldenrod,
+        Color.CadetBlue,
+        Color.Brown,
+        Color.Gold,
+        Color.Tomato,
+        Color.BurlyWood,
+        Color.Chocolate,
+    ];
 }
 /*
 public class FactionToFaction {

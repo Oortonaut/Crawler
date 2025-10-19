@@ -90,6 +90,7 @@ Map (H×W sectors, wraps horizontally)
 **Faction Capitals:**
 - Generated during world creation
 - Highest population settlements become faction capitals
+- Each capital is represented by a Crawler (settlement actor), not just a Location
 - Up to 20 civilian factions control regions
 
 ### 3. Crawler (Crawler.cs)
@@ -116,7 +117,7 @@ Segments can be: Active → Deactivated → Disabled (damaged) → Destroyed →
 - `IsVulnerable` - Any of the above (triggers AI flee/surrender)
 
 **Resource Consumption (per hour):**
-- Fuel: `StandbyDrain / FuelEfficiency`
+- Fuel: `StandbyDrain / FuelEfficiency` (initial fuel calculated as `FuelPerHr * supplyDays * 24`)
 - Wages: `CrewCount * WagesPerCrewDay / 24`
 - Rations: `TotalPeople * RationsPerCrewDay / 24`
 - Water: Crew needs, recycling loss
@@ -163,14 +164,16 @@ Dynamically builds interaction menus based on:
 - **Essential:** Scrap (currency), Fuel, Crew, Morale, Air, Water, Rations
 - **Raw Materials:** Biomass, Ore, Silicates
 - **Refined:** Metal, Chemicals, Glass
-- **Parts:** Ceramics, Polymers, Alloys, Electronics, Explosives
-- **Consumer Goods:** Medicines, Textiles, Gems, Toys, Machines, AiCores, Media
-- **Contraband:** Liquor, Stims, Downers, Trips, SmallArms
+- **Parts:** Ceramics, Polymers, Alloys, Electronics
+- **Consumer Goods:** Medicines, Textiles, Gems, Toys, Machines, Media, Passengers
+- **Vice:** Liquor, Stims, Downers, Trips (only sold by Bandits)
+- **Dangerous:** Explosives, SmallArms, AiCores, Soldiers
 - **Religious:** Idols, Texts, Relics
 
 **Commodity Properties:**
 - Base value, volume, mass
-- Flags: Perishable, Contraband, Bulky, Essential, Integral
+- Category: Essential, Raw, Refined, Parts, Consumer, Vice, Dangerous, Religious
+- Flags: Perishable, Bulky, Integral
 - Game tier: Early, Mid, Late
 
 **Segments:**
@@ -201,7 +204,8 @@ Func<Location, Encounter> NewEncounter
 
 **Crawler Creation:**
 ```csharp
-Crawler.NewRandom(location, crew, supplies, wealth, segmentWealth, weights, faction)
+Crawler.NewRandom(location, crew, supplyDays, goodsWealth, segmentWealth, segmentClassWeights, faction)
+// Initial fuel calculated based on crawler's FuelPerHr and supplyDays after segments are installed
 ```
 
 ### 3. Proposal/Interaction System
@@ -232,6 +236,11 @@ IOffer (exchange component)
 - `ProposeAcceptSurrender` - Accept surrender from vulnerable enemy
 - `ProposeSellBuy` / `ProposeBuySell` - Trading
 - `ProposeRepairBuy` - Repair services
+- `ProposeDemand` - Generic "give me A or I'll do B" demand
+- `ProposeExtortion` - Bandit demands cargo or attacks
+- `ProposeTaxes` - Civilian faction checkpoint taxes
+- `ProposeContrabandSeizure` - Confiscate prohibited goods or fine
+- `ProposePlayerDemand` - Player threatens vulnerable NPCs
 
 **Why This Design?**
 - **Separation of concerns:** Capability checking vs execution
@@ -239,7 +248,46 @@ IOffer (exchange component)
 - **Extensibility:** New proposals don't require changes to Actor class
 - **Dynamic menu generation:** Menus built from available proposals
 
-### 4. Component-Based Segments
+### 4. Forced Interaction System
+
+**Purpose:** Enable "offers you can't refuse" - automatic demands triggered on encounter entry or periodically.
+
+**Architecture:**
+```
+IActor.ForcedInteractions(other) → IInteraction[]
+  Called by:
+  - Encounter.AddActor() - when actor enters
+  - Encounter.Tick() - periodically (every 5 minutes)
+```
+
+**Flow:**
+1. Actor enters encounter → `CheckForcedInteractions()` called
+2. For each pair of actors, check `ForcedInteractions(other)`
+3. If player is subject → Present demand menu immediately
+4. If NPC is subject → Auto-execute first enabled interaction
+
+**Demand Pattern (ProposeDemand):**
+```
+ProposeDemand(
+  Demand: IOffer,              // What they want
+  Consequence: IInteraction,   // What happens if refused
+  Ultimatum: string,           // Description
+  Condition: Func<bool>?       // When to apply
+)
+```
+
+**Use Cases:**
+- **Bandit Extortion:** 60% chance to demand cargo on entry, attacks if refused
+- **Civilian Taxes:** Settlements in own territory demand 5% cargo value
+- **Contraband Seizure:** 70% chance to detect prohibited goods, fine or confiscate
+- **Player Threats:** Player can demand cargo from vulnerable NPCs
+
+**Contraband System:**
+- Each faction has `TradePolicy` per commodity (Legal/Taxed/Restricted/Prohibited)
+- `ScanForContraband()` detects prohibited goods with configurable success rate
+- Penalties: Surrender contraband OR pay 2x value fine OR turn hostile
+
+### 5. Component-Based Segments
 
 Segments use inheritance hierarchy:
 ```
@@ -301,6 +349,7 @@ interface IActor {
 
     // Actions
     IEnumerable<IProposal> Proposals();
+    IEnumerable<IInteraction> ForcedInteractions(IActor other);
     void Tick();
     void Tick(IEnumerable<IActor> others);
     void ReceiveFire(IActor from, List<HitRecord> fire);
@@ -664,10 +713,13 @@ public enum Faction {
 All game balance parameters live in `Tuning.cs`:
 - `Tuning.Crawler` - Resource consumption rates, morale adjustments
 - `Tuning.Economy` - Price markups, availability curves
-- `Tuning.Trade` - Bid-ask spreads, faction markups
+- `Tuning.Trade` - Bid-ask spreads, faction markups, contraband detection
 - `Tuning.Segments` - Tier value tables
 - `Tuning.Encounter` - Spawn weights, generation parameters
 - `Tuning.Game` - Core mechanics (loot return, etc.)
+- `Tuning.Bandit` - Extortion chances, demand fractions, value thresholds
+- `Tuning.Civilian` - Tax rates, contraband scanning, penalty multipliers
+- `Tuning.FactionPolicies` - Trade policies per faction (Legal/Taxed/Restricted/Prohibited)
 
 ---
 

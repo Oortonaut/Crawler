@@ -121,8 +121,10 @@ public class SavedMap {
 [YamlSerializable]
 public class SavedFactionCapital {
     public Faction Faction { get; set; }
+    public string Name { get; set; }
     public Vector2 LocationPos { get; set; }
     public float Population { get; set; }
+    public SavedCrawler Settlement { get; set; } = new();
 }
 
 [YamlSerializable]
@@ -131,7 +133,7 @@ public class SavedSector {
     public int Y { get; set; }
     public TerrainType Terrain { get; set; }
     public float Wealth { get; set; }
-    public Faction ControllingFaction { get; set; } = Faction.Trade;
+    public Faction ControllingFaction { get; set; } = Faction.Independent;
     public Dictionary<Commodity, float> LocalMarkup { get; set; } = new();
     public Dictionary<SegmentKind, float> LocalSegmentRates { get; set; } = new();
     public List<SavedLocation> Locations { get; set; } = new();
@@ -161,7 +163,7 @@ public static class SaveLoadExtensions {
             Hour = game.GetTime(),
             AP = game.GetAP(),
             TurnAP = game.GetTurnAP(),
-            CurrentLocationPos = game.CurrentLocation.Position,
+            CurrentLocationPos = game.PlayerLocation.Position,
             Player = game.GetPlayer().ToSaveData(),
             Map = game.GetMap().ToSaveData(),
             Quit = game.GetQuit()
@@ -301,8 +303,10 @@ public static class SaveLoadExtensions {
     public static SavedFactionCapital ToSaveData(this FactionCapital capital) {
         return new SavedFactionCapital {
             Faction = capital.Faction,
+            Name = capital.Name,
             LocationPos = capital.Location.Position,
-            Population = capital.Population
+            Population = capital.Population,
+            Settlement = capital.Settlement.ToSaveData()
         };
     }
 
@@ -325,7 +329,7 @@ public static class SaveLoadExtensions {
             Terrain = location.Terrain,
             Type = location.Type,
             Wealth = location.Wealth,
-            Encounter = location.HasEncounter ? location.Encounter.ToSaveData() : null
+            Encounter = location.HasEncounter ? location.GetEncounter().ToSaveData() : null
         };
     }
 
@@ -357,13 +361,15 @@ public static class SaveLoadExtensions {
             }
         }
 
-        // Restore faction capitals
+        // Restore faction capitals - must be done after encounters are loaded
         map.FactionCapitals.Clear();
         foreach (var savedCapital in savedMap.FactionCapitals) {
             var location = map.FindLocationByPosition(savedCapital.LocationPos);
+            var settlement = savedCapital.Settlement.ToGameCrawler(map);
             map.FactionCapitals.Add(new FactionCapital(
                 savedCapital.Faction,
-                location,
+                savedCapital.Name,
+                settlement,
                 savedCapital.Population
             ));
         }

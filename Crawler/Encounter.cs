@@ -15,7 +15,9 @@ public class EncounterActor {
 
 public class Encounter {
     public Encounter(Location location): this(location,
-        location.Type == EncounterType.Settlement ? location.Sector.ControllingFaction : location.ChooseRandomFaction()) {
+        location.Type == EncounterType.Settlement ?
+            location.Sector.ControllingFaction :
+            location.ChooseRandomFaction()) {
     }
     public Encounter(Location location, Faction faction) {
         this.location = location;
@@ -173,6 +175,45 @@ public class Encounter {
             other.Message($"{actor.Name} enters");
         }
         actor.Message($"You enter {Name}");
+
+        // Check for forced interactions triggered by entry
+        CheckForcedInteractions(actor);
+    }
+
+    void CheckForcedInteractions(IActor actor) {
+        foreach (var other in ActorsExcept(actor)) {
+            // Check if other has forced interactions for the new actor
+            var otherForced = other.ForcedInteractions(actor).ToList();
+            if (otherForced.Any()) {
+                PresentForcedInteractions(other, actor, otherForced);
+            }
+
+            // Check if new actor has forced interactions for existing actors
+            var actorForced = actor.ForcedInteractions(other).ToList();
+            if (actorForced.Any()) {
+                PresentForcedInteractions(actor, other, actorForced);
+            }
+        }
+    }
+
+    void PresentForcedInteractions(IActor agent, IActor subject, List<IInteraction> interactions) {
+        if (subject.Faction == Faction.Player) {
+            // Present to player immediately
+            var menuItems = new List<MenuItem> { MenuItem.Cancel };
+            foreach (var (index, interaction) in interactions.Index()) {
+                string shortcut = $"F{index + 1}";
+                menuItems.Add(new ActionMenuItem(shortcut,
+                    interaction.Description,
+                    args => interaction.Perform(args),
+                    interaction.Enabled().Enable(),
+                    ShowArg.Show));
+            }
+            var (result, turns) = CrawlerEx.MenuRun($"{agent.Name} Demands", menuItems.ToArray());
+        } else {
+            // NPC - auto-execute first available interaction
+            var first = interactions.FirstOrDefault(i => i.Enabled());
+            first?.Perform();
+        }
     }
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
     public virtual void RemoveActor(IActor actor) {
@@ -183,6 +224,7 @@ public class Encounter {
         actors.Remove(actor);
     }
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
+    public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(EActorFlags.Settlement));
     public Location Location => location;
     public Faction Faction { get; }
 
@@ -191,8 +233,8 @@ public class Encounter {
         int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var trader = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1], Faction.Trade);
-        trader.Faction = Faction.Trade;
+        var trader = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1], Faction.Independent);
+        trader.Faction = Faction.Independent;
         trader.StoredProposals.AddRange(trader.MakeTradeProposals( 0.25f, trader.Faction));
         trader.UpdateSegments();
         trader.Recharge(20);
@@ -327,7 +369,7 @@ public class Encounter {
         var Inv = new Inventory();
         Inv.Add(resource, amt);
 
-        var resourceActor = new StaticActor(name, giftDesc, Faction.Trade, Inv, Location);
+        var resourceActor = new StaticActor(name, giftDesc, Faction.Independent, Inv, Location);
         resourceActor.StoredProposals.Add(new ProposeHarvestFree(resourceActor, Inv, "H", verb));
         AddActor(resourceActor);
     }
@@ -406,7 +448,7 @@ public class Encounter {
         var Risked = new Inventory();
         Risked.Add(penaltyType, penaltyAmt);
 
-        var hazardActor = new StaticActor(Name, hazardDesc, Faction.Trade,  Promised, Location);
+        var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent,  Promised, Location);
         hazardActor.StoredProposals.Add(new ProposeLootRisk(
             hazardActor,
             Risked,
@@ -432,7 +474,7 @@ public class Encounter {
             result = faction switch {
                 Faction.Bandit => GenerateBanditActor(),
                 Faction.Player => GeneratePlayerActor(),
-                Faction.Trade => GenerateTradeActor(),
+                Faction.Independent => GenerateTradeActor(),
                 _ => throw new ArgumentException($"Unexpected faction: {faction}")
             };
         }
@@ -454,6 +496,23 @@ public class Encounter {
         }
         foreach (var actor in actors.Keys) {
             actor.Tick(ActorsExcept(actor));
+        }
+
+        // Periodically check for forced interactions (e.g., demands during standoffs)
+        if (Game.Instance.TimeSeconds % 300 == 0) { // Every 5 minutes
+            CheckPeriodicForcedInteractions();
+        }
+    }
+
+    void CheckPeriodicForcedInteractions() {
+        var actorList = actors.Keys.ToList();
+        foreach (var actor in actorList) {
+            foreach (var other in ActorsExcept(actor)) {
+                var forced = actor.ForcedInteractions(other).ToList();
+                if (forced.Any()) {
+                    PresentForcedInteractions(actor, other, forced);
+                }
+            }
         }
     }
 }

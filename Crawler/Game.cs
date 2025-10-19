@@ -9,7 +9,7 @@ public class Game {
     public static Game Instance => _instance!;
 
     Map? _map = null;
-    Map Map => _map!;
+    public Map Map => _map!;
 
     public static Game NewGame(string crawlerName, int H) {
         var game = new Game();
@@ -105,8 +105,8 @@ public class Game {
 
     int AP = 1;
     int TurnAP = 1;
-    public Location CurrentLocation => Player.Location;
-    public TerrainType CurrentTerrain => CurrentLocation.Terrain;
+    public Location PlayerLocation => _player!.Location;
+    public TerrainType CurrentTerrain => PlayerLocation.Terrain;
 
     int Report() {
         Player.Message(Player.Report());
@@ -123,16 +123,16 @@ public class Game {
         }
         // Create a segment for each definition
         var segments = SegmentEx.AllDefs.SelectMany(def => Variants(def)).Select(def => def.NewSegment()).ToList();
-        Player.Message(segments.SegmentReport(CurrentLocation));
+        Player.Message(segments.SegmentReport(PlayerLocation));
         return 0;
     }
 
     IEnumerable<MenuItem> EncounterMenuItems() {
-        return Encounter?.MenuItems(Player) ?? [];
+        return PlayerEncounter().MenuItems(Player) ?? [];
     }
 
     IEnumerable<MenuItem> LocalMenuItems(ShowArg showOption = ShowArg.Hide) {
-        var sector = CurrentLocation.Sector;
+        var sector = PlayerLocation.Sector;
 
         bool isPinned = Player.Pinned();
         if (isPinned) {
@@ -144,10 +144,10 @@ public class Game {
         int index = 0;
         foreach (var location in sector.Locations) {
             ++index;
-            if (location == CurrentLocation) {
+            if (location == PlayerLocation) {
                 continue;
             }
-            float dist = CurrentLocation.Distance(location);
+            float dist = PlayerLocation.Distance(location);
 
             string locationName = location.EncounterName(Player);
             if (!location.HasEncounter || !Player.Visited(location)) {
@@ -172,7 +172,7 @@ public class Game {
     }
 
     IEnumerable<MenuItem> WorldMapMenuItems(ShowArg showOption = ShowArg.Hide) {
-        var sector = CurrentLocation.Sector;
+        var sector = PlayerLocation.Sector;
 
         yield return MenuItem.Cancel;
 
@@ -183,13 +183,16 @@ public class Game {
 
         float fuel = -1, time = -1;
 
-        int mapWidth = sector.Map.Width;
         foreach (var neighbor in sector.Neighbors) {
             if (!neighbor.Locations.Any()) {
                 continue;
             }
             var locations = string.Join(", ", neighbor.Locations.Select(x => x.Type.ToString().Substring(0, 1)).Distinct());
-            var location = neighbor.Locations.MinBy(x => CurrentLocation.Distance(x))!;
+            var destinations = neighbor.Settlements.ToList();
+            if (destinations.Count == 0) {
+                destinations = neighbor.Locations;
+            }
+            var location = destinations.MinBy(x => PlayerLocation.Distance(x))!;
             string dir = "N";
             var D = neighbor.Offset(sector);
             var DX = D.X;
@@ -238,32 +241,22 @@ public class Game {
     }
     Location? PendingLocation = null;
 
-    Encounter Encounter => CurrentLocation.Encounter;
+    Encounter PlayerEncounter() => PlayerLocation.GetEncounter();
 
     int Look() {
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
-        //Console.WriteLine(DrawMap());
-        Console.WriteLine(CurrentLocation.Sector.Look() + " " + CurrentLocation.PosString);
-        Console.WriteLine(Encounter.ViewFrom(Player));
+        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
+        Console.WriteLine(PlayerEncounter().ViewFrom(Player));
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
         return 0;
     }
-    string DrawWorldMap() {
-        var worldMapLines = Map.DumpMap(Player).Split('\n');
-        var worldMapWidth = worldMapLines.Max(x => x.Length);
-        var header = $"┌[World Map|Sector {CurrentLocation.Sector.Name}|Turn {TimeSeconds/1000.0:F3}]";
-        header += new string('─', Math.Max(0, worldMapWidth - header.Length + 1)) + "╖";
-        var footer = $"╘{new string('═', worldMapWidth)}╝";
-        var mapLines = worldMapLines.Select(line => $"│{line}║").StringJoin("\n");
-        return $"{header}\n{mapLines}\n{footer}";
-    }
     string DrawSectorMap() {
         var height = 20;
         var width = (5 * height) / 3;
-        var sectorMapLines = Map.DumpSector(CurrentLocation.Sector.X, CurrentLocation.Sector.Y, width, height).Split('\n');
+        var sectorMapLines = Map.DumpSector(PlayerLocation.Sector.X, PlayerLocation.Sector.Y, width, height).Split('\n');
         var sectorMapWidth = sectorMapLines.Max(x => x.Length);
-        var header = $"┌[Sector Map|{CurrentLocation.EncounterName(Player)}|{CurrentLocation.Terrain}]";
+        var header = $"┌[Sector Map|{PlayerLocation.EncounterName(Player)}|{PlayerLocation.Terrain}]";
         header += new string('─', Math.Max(0, sectorMapWidth - header.Length + 1)) + "╖";
         var footer = $"╘{new string('═', sectorMapWidth)}╝";
         var mapLines = sectorMapLines.Select(line => $"│{line}║").StringJoin("\n");
@@ -288,7 +281,7 @@ public class Game {
         if (Moving) {
             Player.Tick();
         } else {
-            Encounter?.Tick();
+            PlayerEncounter().Tick();
         }
     }
 
@@ -324,9 +317,9 @@ public class Game {
     int SectorMap() {
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
         Console.WriteLine(DrawSectorMap());
-        Console.WriteLine(CurrentLocation.Sector.Look() + " " + CurrentLocation.PosString);
-        if (Encounter != null) {
-            Console.WriteLine(Encounter.ViewFrom(Player));
+        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
+        if (PlayerEncounter != null) {
+            Console.WriteLine(PlayerEncounter().ViewFrom(Player));
         }
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
@@ -338,8 +331,8 @@ public class Game {
     }
     int WorldMap() {
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
-        Console.WriteLine(DrawWorldMap());
-        Console.WriteLine(CurrentLocation.Sector.Look() + " " + CurrentLocation.PosString);
+        Console.WriteLine(Map.DumpMap(Player));
+        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
 
@@ -350,7 +343,7 @@ public class Game {
     }
     IEnumerable<MenuItem> GameMenuItems() => [
         new ActionMenuItem("M", "Sector Map", _ => SectorMap()),
-        new ActionMenuItem("W", "World Map", _ => WorldMap()),
+        new ActionMenuItem("G", "World Map", _ => WorldMap()),
         new ActionMenuItem("R", "Status Report", _ => Report()),
         new ActionMenuItem("K", "Skip Turn/Wait", args => Turn(args)),
         new ActionMenuItem("Q", "Save and Quit", _ => Save() + Quit()),
@@ -484,66 +477,6 @@ public class Game {
         Player.UpdateSegments();
         return 0;
     }
-    /*
-    IEnumerable<MenuItem> MapScreen() {
-        var worldMapLines = Map.DumpMap(Player).Split('\n');
-        var sector = Player.Location.Sector;
-        var destinations = new List<string>();
-        foreach (var neighbor in sector.Neighbors) {
-            if (!neighbor.Locations.Any()) {
-                continue;
-            }
-            var locations = string.Join(", ", neighbor.Locations.Select(x => x.Type).Distinct());
-            var location = neighbor.Locations.MinBy(x => CurrentLocation.Distance(x))!;
-            string dir = "N";
-            Point D = neighbor.Offset(sector);
-            if (D.X == 0 && D.Y == 0) {
-                dir = "KK";
-            } else {
-                var angle = (int)Math.Floor(Math.Atan2(D.Y, D.X) * 8 / Math.Tau + 0.5);
-                dir = angle switch {
-                    -4 => "W",
-                    -3 => "SW",
-                    -2 => "S",
-                    -1 => "SE",
-                    0 => "E",
-                    1 => "NE",
-                    2 => "N",
-                    3 => "NW",
-                    4 => "W",
-                    _ => throw new ArithmeticException("Invalid angle calculated"),
-                };
-            }
-
-            var (fuel, time) = Player.FuelTimeTo(location);
-
-            string neighborName = $"{neighbor.Name} ({neighbor.Terrain})";
-            if (!neighbor.VisitedBy.Contains(Player)) {
-                neighborName = Style.MenuUnvisited.Format(neighborName);
-            } else if (!neighbor.Locations.Any()) {
-                neighborName = Style.MenuEmpty.Format(neighborName);
-            }
-
-            bool isPinned = Player.Pinned();
-            bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
-            var enableArg = enabled ? EnableArg.Enabled : EnableArg.Disabled;
-            var fmtDir = (enabled ? Style.MenuOption : Style.MenuDisabled).Format(dir);
-            if (fuel > 0) {
-
-                destinations.Add($"{fmtDir} Sector {neighborName} ({locations}) {time:F0}h Fuel: {fuel:F1}");
-                yield return new ActionMenuItem(dir, $"Sector {neighborName} ({locations}) {time:F0}h Fuel: {fuel:F1}", _ => Player.Embark(location), enableArg, ShowArg.Hide);
-            } else {
-                destinations.Add($"{fmtDir} Sector {neighborName} ({locations})");
-                yield return new ActionMenuItem(dir, $"Sector {neighborName} ({locations})", _ => Player.Embark(location), enableArg, ShowArg.Hide);
-            }
-        }
-        var result = worldMapLines.ZipColumns(destinations).StringJoin("\n");
-        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
-        Console.WriteLine(result);
-        CrawlerEx.ShowMessages();
-        CrawlerEx.ClearMessages();
-    }
-    */
 
     int Save() {
         try {
@@ -653,7 +586,7 @@ public class Game {
                     locationsProcessed++;
 
                     // Instantiate the encounter
-                    var encounter = location.Encounter;
+                    var encounter = location.GetEncounter();
 
                     // Gather statistics from any crawler's trade proposals
                     foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
@@ -683,7 +616,7 @@ public class Game {
 
                         // Increment trader count per commodity
                         foreach (var commodity in offeredCommodities.Distinct()) {
-                            if (crawler.Faction == Faction.Trade) {
+                            if (crawler.Faction == Faction.Independent) {
                                 tradeTraders[commodity]++;
                             } else if (crawler.Faction == Faction.Bandit) {
                                 banditTraders[commodity]++;
@@ -691,7 +624,7 @@ public class Game {
                         }
 
                         if (offeredCommodities.Count > 0) {
-                            if (crawler.Faction == Faction.Trade) {
+                            if (crawler.Faction == Faction.Independent) {
                                 totalTradeTraders++;
                             } else if (crawler.Faction == Faction.Bandit) {
                                 totalBanditTraders++;
@@ -754,7 +687,8 @@ public class Game {
         new ProposeLootFree("L"),
         new ProposeAttackDefend("A"),
         new ProposeAcceptSurrender("S"),
-        new ProposeRepairBuy( "R"),
+        new ProposeRepairBuy("R"),
+        new ProposePlayerDemand(0.5f, "X"),
     ];
 
     // Track all created encounters using weak references

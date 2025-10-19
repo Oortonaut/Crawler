@@ -13,6 +13,18 @@ public static partial class Tuning {
         public static float resourcePayoffFraction = 0.05f; // Fraction of location wealth
     }
 
+    public static class Bandit {
+        public static float demandChance = 0.6f;         // 60% chance to make demand on encounter entry
+        public static float demandFraction = 0.33f;      // Demand 1/3 of cargo
+        public static float minValueThreshold = 50f;     // Don't bother demanding if cargo worth less than this
+    }
+
+    public static class Civilian {
+        public static float taxRate = 0.05f;             // 5% tax on cargo value at checkpoints
+        public static float contrabandScanChance = 0.7f; // 70% chance to detect contraband
+        public static float contrabandPenaltyMultiplier = 2.0f; // Fine is 2x value of contraband
+    }
+
     public static class Encounter {
         public static EArray<EncounterType, float> HourlyArrivals = [0, 0.125f, 0.4f, 0.08f, 0.04f];
         // Faction spawn weights by terrain type: Player, Bandit, Trade
@@ -49,22 +61,23 @@ public static partial class Tuning {
         public static float banditHostilityThreshold = 5.0f; // Evilness threshold for hostility check
         public static float banditHostilityChance = 0.3f;    // Base chance of turning hostile at threshold
 
-        // Restricted commodity markup at Trade locations
-        public static float restrictedMarkup = 1.35f;   // Was 1.75
+        // Trade prohibition enforcement
+        public static float contrabandScanChance = 0.7f;     // Chance to detect contraband
+        public static float restrictedTransactionFee = 50f;  // Fee for restricted goods
 
         // Policy-based pricing multipliers
         public static float subsidizedMultiplier = 0.7f;
         public static float legalMultiplier = 1.0f;
         public static float taxedMultiplier = 1.3f;
-        public static float restrictedMultiplierNew = 1.75f;
-        public static float restrictedTransactionFee = 100f; // Flat fee for restricted goods
+        public static float restrictedMultiplier = 1.75f;
+        public static float prohibitedMultiplier = 5.0f;
 
         public static float PolicyMultiplier(TradePolicy policy) => policy switch {
             TradePolicy.Subsidized => subsidizedMultiplier,
             TradePolicy.Legal => legalMultiplier,
             TradePolicy.Taxed => taxedMultiplier,
-            TradePolicy.Restricted => restrictedMultiplierNew,
-            TradePolicy.Prohibited => 1.0f, // Not used
+            TradePolicy.Controlled => restrictedMultiplier,
+            TradePolicy.Prohibited => prohibitedMultiplier, // gray or black market only, based on reputation (tbi)
             _ => legalMultiplier
         };
     }
@@ -94,7 +107,7 @@ public static partial class Tuning {
             tradePolicy[Commodity.Trips] = TradePolicy.Prohibited;
             tradePolicy[Commodity.SmallArms] = TradePolicy.Taxed;
             tradePolicy[Commodity.Explosives] = TradePolicy.Taxed;
-            Policies[Faction.Trade] = tradePolicy;
+            Policies[Faction.Independent] = tradePolicy;
         }
 
         public static EArray<Commodity, TradePolicy> CreateDefaultPolicy(TradePolicy defaultPolicy) {

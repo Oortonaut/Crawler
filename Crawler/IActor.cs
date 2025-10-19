@@ -55,6 +55,7 @@ public interface IActor {
     string Report(); // A detailed report on the actor
 
     IEnumerable<IProposal> Proposals();
+    IEnumerable<IInteraction> ForcedInteractions(IActor other);
 
     void Tick();
     void Tick(IEnumerable<IActor> other);
@@ -87,6 +88,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
     public List<IProposal> StoredProposals { get; private set; } = new();
     public IEnumerable<IProposal> Proposals() => StoredProposals;
+    public IEnumerable<IInteraction> ForcedInteractions(IActor other) => [];
     public void Tick() {
     }
     public void Tick(IEnumerable<IActor> other) { }
