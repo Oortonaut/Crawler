@@ -112,7 +112,7 @@ public static class CommodityEx {
         // refined
         new CommodityData(30f, 0.1f, 0.25f, CommodityFlag.None, GameTier.Early, CommodityCategory.Refined), // Metal
         new CommodityData(18.75f, 0.1f, 0.075f, CommodityFlag.None, GameTier.Mid, CommodityCategory.Refined), // Chemicals
-        new CommodityData(8.333333f, 0.1f, 0.065f, CommodityFlag.None, GameTier.Early, CommodityCategory.Refined), // Glass
+        new CommodityData(11f, 0.1f, 0.065f, CommodityFlag.None, GameTier.Early, CommodityCategory.Refined), // Glass
 
         // Parts
         new CommodityData(225f, 1.0f, 0.75f, CommodityFlag.None, GameTier.Mid, CommodityCategory.Parts), // Ceramics

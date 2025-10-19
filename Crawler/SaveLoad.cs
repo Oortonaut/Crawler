@@ -121,10 +121,10 @@ public class SavedMap {
 [YamlSerializable]
 public class SavedFactionCapital {
     public Faction Faction { get; set; }
-    public string Name { get; set; }
+    public required string Name { get; set; }
     public Vector2 LocationPos { get; set; }
     public float Population { get; set; }
-    public SavedCrawler Settlement { get; set; } = new();
+    public required SavedCrawler Settlement { get; set; }
 }
 
 [YamlSerializable]
