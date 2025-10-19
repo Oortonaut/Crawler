@@ -1,4 +1,18 @@
-# Crawler Architecture
+# Crawler Architecture (DEPRECATED)
+
+**⚠️ This file is deprecated as of 2025-01-19**
+
+**Please use the new documentation structure:**
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - High-level overview
+- **[docs/SYSTEMS.md](docs/SYSTEMS.md)** - Detailed system descriptions
+- **[docs/DATA-MODEL.md](docs/DATA-MODEL.md)** - Class/interface reference
+- **[docs/EXTENDING.md](docs/EXTENDING.md)** - How to add new content
+
+This file is kept for reference only and should not be updated.
+
+---
+
+# Original Content (Deprecated)
 
 ## Overview
 
@@ -216,7 +230,10 @@ Crawler.NewRandom(location, crew, supplyDays, goodsWealth, segmentWealth, segmen
 IProposal (capability check)
   ├── AgentCapable(IActor) - Can agent make this proposal?
   ├── SubjectCapable(IActor) - Can subject receive it?
-  └── InteractionCapable(Agent, Subject) - Does context allow it?
+  └── InteractionCapable(Agent, Subject) → InteractionCapability
+      ├── Disabled - Not available
+      ├── Possible - Available but optional
+      └── Mandatory - Must be addressed immediately
       └── GetInteractions() → IInteraction[]
 
 IInteraction (concrete action)
@@ -230,62 +247,97 @@ IOffer (exchange component)
   └── ValueFor(Agent)
 ```
 
+**InteractionCapability System:**
+- **Disabled**: Interaction is not available (conditions not met)
+- **Possible**: Optional interaction available in normal menus
+- **Mandatory**: Urgent interaction displayed prominently with countdown timer
+  - Tracked via `ActorToActor.UltimatumTime`
+  - Automatically triggers consequence if time expires
+  - Displayed at top of menus with highlighting
+
 **Example Proposals:**
-- `ProposeLootFree` - Loot destroyed crawler
-- `ProposeAttackDefend` - Initiate combat
-- `ProposeAcceptSurrender` - Accept surrender from vulnerable enemy
-- `ProposeSellBuy` / `ProposeBuySell` - Trading
-- `ProposeRepairBuy` - Repair services
-- `ProposeDemand` - Generic "give me A or I'll do B" demand
-- `ProposeExtortion` - Bandit demands cargo or attacks
-- `ProposeTaxes` - Civilian faction checkpoint taxes
-- `ProposeContrabandSeizure` - Confiscate prohibited goods or fine
-- `ProposePlayerDemand` - Player threatens vulnerable NPCs
+- `ProposeLootFree` - Loot destroyed crawler (Possible)
+- `ProposeAttackDefend` - Initiate combat (Possible)
+- `ProposeAcceptSurrender` - Accept surrender from vulnerable enemy (Possible)
+- `ProposeSellBuy` / `ProposeBuySell` - Trading (Possible)
+- `ProposeRepairBuy` - Repair services (Possible)
+- `ProposeDemand` - Generic "give me A or I'll do B" demand (Mandatory when active)
+  - Yields both AcceptDemandInteraction and RefuseDemandInteraction
+  - Each has separate option codes (DA for accept, DR for refuse)
+- `ProposeExtortion` - Bandit demands cargo or attacks (Mandatory when ultimatum set)
+- `ProposeTaxes` - Civilian faction checkpoint taxes (Mandatory when ultimatum set)
+- `ProposeContrabandSeizure` - Confiscate prohibited goods or fine (Mandatory when ultimatum set)
+- `ProposePlayerDemand` - Player threatens vulnerable NPCs (Possible)
 
 **Why This Design?**
 - **Separation of concerns:** Capability checking vs execution
 - **Composability:** Offers can be combined in different ways
 - **Extensibility:** New proposals don't require changes to Actor class
 - **Dynamic menu generation:** Menus built from available proposals
+- **Urgency tracking:** Mandatory interactions are clearly distinguished and time-limited
 
-### 4. Forced Interaction System
+### 4. Mandatory Interaction System (Ultimatums)
 
-**Purpose:** Enable "offers you can't refuse" - automatic demands triggered on encounter entry or periodically.
+**Purpose:** Enable "offers you can't refuse" - time-limited demands triggered on encounter entry.
 
 **Architecture:**
 ```
-IActor.ForcedInteractions(other) → IInteraction[]
+Crawler.CheckAndSetUltimatums(other)
   Called by:
-  - Encounter.AddActor() - when actor enters
-  - Encounter.Tick() - periodically (every 5 minutes)
+  - Encounter.AddActor() → CheckForcedInteractions() - when actor enters
+
+Flow:
+1. Actor enters encounter
+2. CheckAndSetUltimatums() evaluates conditions and adds proposals to StoredProposals
+3. Sets ActorToActor.UltimatumTime = CurrentTime + 300 seconds (5 minutes)
+4. Proposal.InteractionCapable() returns Mandatory when UltimatumTime is active
+5. Encounter menu displays mandatory interactions at top with countdown
+6. Player selects Accept or Refuse interaction
+7. UltimatumTime cleared on resolution
 ```
 
-**Flow:**
-1. Actor enters encounter → `CheckForcedInteractions()` called
-2. For each pair of actors, check `ForcedInteractions(other)`
-3. If player is subject → Present demand menu immediately
-4. If NPC is subject → Auto-execute first enabled interaction
+**Ultimatum Expiration:**
+- Every 5 minutes, `Encounter.CheckPeriodicForcedInteractions()` runs
+- If `UltimatumTime` reached without response:
+  - Auto-execute Refuse interaction (triggers consequence)
+  - Display "Time's up!" message to both parties
 
 **Demand Pattern (ProposeDemand):**
 ```
 ProposeDemand(
   Demand: IOffer,              // What they want
-  Consequence: IInteraction,   // What happens if refused
+  Consequence: IInteraction,   // What happens if refused (created via ConsequenceFn)
   Ultimatum: string,           // Description
-  Condition: Func<bool>?       // When to apply
+  Condition: Func<bool>?       // When to apply (checked in InteractionCapable)
 )
+
+Returns two interactions:
+  - AcceptDemandInteraction (option code: DA)
+  - RefuseDemandInteraction (option code: DR)
 ```
 
 **Use Cases:**
 - **Bandit Extortion:** 60% chance to demand cargo on entry, attacks if refused
+  - Triggered via `CheckAndSetUltimatums()` in Crawler.cs
+  - Adds `ProposeExtortion` to StoredProposals with 5-min timer
 - **Civilian Taxes:** Settlements in own territory demand 5% cargo value
+  - Triggered on entry to controlled territory
+  - Adds `ProposeTaxes` to StoredProposals with 5-min timer
 - **Contraband Seizure:** 70% chance to detect prohibited goods, fine or confiscate
-- **Player Threats:** Player can demand cargo from vulnerable NPCs
+  - Triggered via `ScanForContraband()` check
+  - Adds `ProposeContrabandSeizure` to StoredProposals with 5-min timer
+- **Player Threats:** Player can manually threaten vulnerable NPCs (not time-limited)
 
 **Contraband System:**
-- Each faction has `TradePolicy` per commodity (Legal/Taxed/Restricted/Prohibited)
+- Each faction has `TradePolicy` per commodity (Legal/Controlled/Prohibited)
 - `ScanForContraband()` detects prohibited goods with configurable success rate
 - Penalties: Surrender contraband OR pay 2x value fine OR turn hostile
+
+**Menu Display:**
+- Mandatory interactions shown at top with "!!! URGENT DEMANDS !!!" header
+- Each displays: `>>> {Description} [Time: {Seconds}s]`
+- Uses Style.SegmentDestroyed for red highlighting
+- Shortcut keys: UA, UB, UC... (U = Urgent)
 
 ### 5. Component-Based Segments
 

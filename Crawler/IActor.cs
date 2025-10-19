@@ -43,35 +43,89 @@ public enum EActorFlags {
     Looted = 1 << 16,
 }
 
+/// <summary>
+/// Common interface for all interactive entities (Crawlers, Settlements, Resources).
+/// See: docs/DATA-MODEL.md#iactor-interface
+/// </summary>
 public interface IActor {
-    string Name { get; } // A user-specified or generated name for the actor. Not unique.
-    Faction Faction { get; } // The faction this actor belongs to.
-    Inventory Inv { get; } // The inventory of this actor; commodities like fuel and crew as well as crawler segments.
+    // ===== Identity =====
+    /// <summary>Display name (not unique)</summary>
+    string Name { get; }
+
+    /// <summary>Political allegiance</summary>
+    Faction Faction { get; }
+
+    /// <summary>Type flags (Mobile, Settlement, Creature, Looted)</summary>
     EActorFlags Flags { get; set; }
 
-    Location Location { get; set; } // Where the actor is located.
+    /// <summary>Current location in the world</summary>
+    Location Location { get; set; }
 
-    string Brief(IActor viewer); // A brief writing on the actor; the viewer affects what info shows
-    string Report(); // A detailed report on the actor
+    // ===== Resources =====
+    /// <summary>Commodities and segments owned by this actor</summary>
+    Inventory Inv { get; }
 
-    IEnumerable<IProposal> Proposals();
-    IEnumerable<IInteraction> ForcedInteractions(IActor other);
-
-    void Tick();
-    void Tick(IEnumerable<IActor> other);
-    void ReceiveFire(IActor from, List<HitRecord> fire);
-
-    void End(EEndState state, string message = "");
+    // ===== State =====
+    /// <summary>Game over message if actor is destroyed/ended</summary>
     string EndMessage { get; }
+
+    /// <summary>End condition (Destroyed, Revolt, etc.) or null if still active</summary>
     EEndState? EndState { get; }
 
+    // ===== Knowledge & Relations =====
+    /// <summary>Has met this actor before?</summary>
     bool Knows(IActor other);
+
+    /// <summary>Has visited this location before?</summary>
     bool Knows(Location loc);
+
+    /// <summary>
+    /// Get relationship state with another actor (hostile, damage history, ultimatum timer).
+    /// See: docs/DATA-MODEL.md#actortoactor-relationship-state
+    /// </summary>
     ActorToActor To(IActor other);
+
+    /// <summary>Get visit tracking for a location</summary>
     ActorLocation To(Location loc);
 
+    // ===== Interactions =====
+    /// <summary>
+    /// Available proposals this actor can make.
+    /// See: docs/SYSTEMS.md#proposalinteraction-system
+    /// </summary>
+    IEnumerable<IProposal> Proposals();
+
+    /// <summary>
+    /// DEPRECATED: Forced interactions (now handled via Proposals with InteractionCapability.Mandatory).
+    /// Use Crawler.CheckAndSetUltimatums() instead.
+    /// </summary>
+    IEnumerable<IInteraction> ForcedInteractions(IActor other);
+
+    // ===== Simulation =====
+    /// <summary>Update this actor (called every game second)</summary>
+    void Tick();
+
+    /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
+    void Tick(IEnumerable<IActor> other);
+
+    /// <summary>Receive combat damage from another actor</summary>
+    void ReceiveFire(IActor from, List<HitRecord> fire);
+
+    /// <summary>End this actor's existence (game over, destruction)</summary>
+    void End(EEndState state, string message = "");
+
+    // ===== Display =====
+    /// <summary>One-line summary (context-aware based on viewer)</summary>
+    string Brief(IActor viewer);
+
+    /// <summary>Detailed report (inventory, segments, stats)</summary>
+    string Report();
+
+    /// <summary>Send notification message to this actor</summary>
     void Message(string message);
 
+    // ===== Misc =====
+    /// <summary>Number of domes (for settlements)</summary>
     int Domes { get; }
 }
 
