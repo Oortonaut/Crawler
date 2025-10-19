@@ -41,15 +41,23 @@ public static partial class Tuning {
         // Legacy fields (kept for backward compatibility)
         public static float rate = 1.05f;
         public static float sd = 0.07f;
+        public static float LocalMarkup() => CrawlerEx.NextGaussian(1, sd);
+        public static float TradeMarkup() => CrawlerEx.NextGaussian(rate, sd);
+        public static float banditRate = 1.25f;          // Higher markup for bandits
+        public static float banditSd = 0.1f;
+        public static float BanditMarkup() => CrawlerEx.NextGaussian(banditRate, banditSd);
         public static float repairMarkup = 1.2f;
         public static float repairMarkupSd = 0.15f;
+        public static float RepairMarkup() => CrawlerEx.NextGaussian(repairMarkup, repairMarkupSd);
 
         // New bid-ask spread model
         public static float baseBidAskSpread = 0.20f;   // 20% base spread (±10% around mid)
-        public static float tradeBidAskMultiplier = 0.8f; // Trade: 16% spread
-        public static float tradeBidAskSd = 0.05f;      // ±5% variance
-        public static float banditBidAskMultiplier = 1.5f; // Bandit: 30% spread
-        public static float banditBidAskSd = 0.10f;     // ±10% variance
+        public static float tradeSpreadMultiplier = 0.8f; // Trade: 16% spread
+        public static float tradeSpreadSd = 0.05f;      // ±5% variance
+        public static float banditSpreadMultiplier = 1.5f; // Bandit: 30% spread
+        public static float banditSpreadSd = 0.10f;     // ±10% variance
+        public static float TradeSpread() => CrawlerEx.NextGaussian(baseBidAskSpread * tradeSpreadMultiplier, tradeSpreadSd);
+        public static float BanditSpread() => CrawlerEx.NextGaussian(baseBidAskSpread * banditSpreadMultiplier, banditSpreadSd);
 
         // Scarcity pricing
         public static float scarcityWeight = 1.0f;      // Multiplier for scarcity effect
@@ -57,7 +65,6 @@ public static partial class Tuning {
         public static float scarcityLuxury = 0.8f;      // Was 1.5
 
         // Bandit markup settings
-        public static float banditRate = 1.25f;          // Higher markup for bandits
         public static float banditHostilityThreshold = 5.0f; // Evilness threshold for hostility check
         public static float banditHostilityChance = 0.3f;    // Base chance of turning hostile at threshold
 

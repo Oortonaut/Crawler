@@ -380,7 +380,7 @@ public class Encounter {
         int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var trader = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1], Faction.Independent);
+        var trader = Crawler.NewRandom(Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
         trader.Faction = Faction.Independent;
         trader.StoredProposals.AddRange(trader.MakeTradeProposals( 0.25f, trader.Faction));
         trader.UpdateSegments();
@@ -392,7 +392,7 @@ public class Encounter {
         int crew = (int)Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.65f;
         float segmentWealth = wealth * 0.5f;
-        var player = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1], Faction.Player);
+        var player = Crawler.NewRandom(Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         player.Flags |= EActorFlags.Player;
         player.Faction = Faction.Player;
         player.Recharge(20);
@@ -403,7 +403,7 @@ public class Encounter {
         int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.6f;
         float segmentWealth = wealth * 0.5f;
-        var enemy = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f], Faction.Bandit);
+        var enemy = Crawler.NewRandom(Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
         enemy.Faction = Faction.Bandit;
         enemy.Recharge(20);
 
@@ -416,7 +416,7 @@ public class Encounter {
         int crew = Math.Max(1, (int)(wealth / 40));
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var civilian = Crawler.NewRandom(Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f], civilianFaction);
+        var civilian = Crawler.NewRandom(civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
         civilian.Faction = civilianFaction;
         civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(0.25f, civilian.Faction));
         civilian.UpdateSegments();
@@ -431,11 +431,10 @@ public class Encounter {
         // wealth is also population scaled,
         float goodsWealth = Location.Wealth * domes * 0.5f;
         float segmentWealth = Location.Wealth * domes * 0.25f;
-        var settlement = Crawler.NewRandom(Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
+        var settlement = Crawler.NewRandom(Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
         settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
-        settlement.Faction = Faction;
         settlement.Recharge(20);
         var proposals = settlement.MakeTradeProposals( 1, settlement.Faction);
         settlement.StoredProposals.AddRange(proposals);

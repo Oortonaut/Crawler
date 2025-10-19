@@ -22,10 +22,10 @@ public class ActorToActor {
 }
 
 public class Crawler: IActor {
-    public static Crawler NewRandom(Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights, Faction faction = Faction.Player) {
+    public static Crawler NewRandom(Faction faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
         var newInv = new Inventory();
         newInv.AddRandomInventory(here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
-        var crawler = new Crawler(here, newInv);
+        var crawler = new Crawler(faction, here, newInv);
 
         // Add initial fuel based on supply days and movement power at current location
         float fuelPerHr = crawler.FuelPerHr;
@@ -36,11 +36,18 @@ public class Crawler: IActor {
 
         return crawler;
     }
-    public Crawler(Location location, Inventory inventory) {
+    public Crawler(Faction faction, Location location, Inventory inventory) {
+        Faction = faction;
         Inv = inventory;
         Location = location;
         Name = Names.HumanName();
-        _markup = Math.Max(CrawlerEx.NextGaussian(Tuning.Trade.rate, Tuning.Trade.sd), 1);
+        if (faction == Faction.Bandit) {
+            Markup = Tuning.Trade.BanditMarkup();
+            Spread = Tuning.Trade.BanditSpread();
+        } else {
+            Markup = Tuning.Trade.TradeMarkup();
+            Spread = Tuning.Trade.TradeSpread();
+        }
     }
     public string Name { get; set; }
     public string Brief(IActor viewer) {
@@ -781,27 +788,8 @@ public class Crawler: IActor {
     // Accessor methods for save/load
     public Dictionary<IActor, ActorToActor> GetRelations() => _relations;
     public Dictionary<Location, ActorLocation> GetVisitedLocations() => _locations;
-    public float GetMarkup() => _markup;
-    public void SetMarkup(float markup) => _markup = markup;
+    public float Markup { get; set; }
+    public float Spread { get; set; }
     public void SetVisitedLocations(Dictionary<Location, ActorLocation> locations) => _locations = locations;
-    public bool RelatedTo(IActor other) => _relations.ContainsKey(other);
-    public int Embark(Location location) {
-        throw new NotImplementedException();
-    }
     public int Domes { get; set; } = 0;
-    float _markup = 1.0f;
-    public float Markup => _markup * (Faction is Faction.Bandit ? Tuning.Trade.banditRate : Tuning.Trade.rate);
-
-    // New bid-ask spread model
-    public float BidAskMultiplier {
-        get {
-            float baseMultiplier = Faction is Faction.Bandit ?
-                Tuning.Trade.banditBidAskMultiplier :
-                Tuning.Trade.tradeBidAskMultiplier;
-            float variance = Faction is Faction.Bandit ?
-                Tuning.Trade.banditBidAskSd :
-                Tuning.Trade.tradeBidAskSd;
-            return _markup * (float)CrawlerEx.NextGaussian(baseMultiplier, variance);
-        }
-    }
 }

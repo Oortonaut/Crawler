@@ -185,7 +185,7 @@ public static class SaveLoadExtensions {
             Segments = crawler.Segments.Select(s => s.ToSaveData()).ToList(),
             TradeInventory = crawler.TradeInv.ToSaveData(),
             TradeSegments = crawler.TradeInv.Segments.Select(s => s.ToSaveData()).ToList(),
-            Markup = crawler.GetMarkup(),
+            Markup = crawler.Markup,
             Relations = crawler.GetRelations().ToDictionary(
                 kvp => kvp.Key.Name,
                 kvp => kvp.Value.ToSaveData()
@@ -417,9 +417,8 @@ public static class SaveLoadExtensions {
             inventory.Add(segment);
         }
 
-        var crawler = new Crawler(location, inventory) {
+        var crawler = new Crawler(savedCrawler.Faction, location, inventory) {
             Name = savedCrawler.Name,
-            Faction = savedCrawler.Faction,
             EvilPoints = savedCrawler.EvilPoints
         };
 
@@ -433,7 +432,7 @@ public static class SaveLoadExtensions {
         crawler.TradeInv.Add(tradeInventory);
 
         // Restore markup
-        crawler.SetMarkup(savedCrawler.Markup);
+        crawler.Markup = savedCrawler.Markup;
 
         // Restore visited locations
         var visitedLocations = new Dictionary<Location, ActorLocation>();

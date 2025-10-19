@@ -43,9 +43,8 @@ public class Game {
         int crew = 10;
         float goodsWealth = wealth;
         float segmentWealth = wealth * 0.5f;
-        _player = Crawler.NewRandom(currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
+        _player = Crawler.NewRandom(Faction.Player, currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         _player.Name = crawlerName;
-        _player.Faction = Faction.Player;
         _player.Recharge(20);
         Map.AddActor(_player);
     }

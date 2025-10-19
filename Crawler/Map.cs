@@ -119,13 +119,13 @@ public class Sector(Map map, string name, int x, int y) {
     public EArray<Commodity, float> LocalMarkup = InitLocalOfferRates();
     static EArray<Commodity, float> InitLocalOfferRates() {
         EArray<Commodity, float> result = new();
-        result.Initialize(() => CrawlerEx.NextGaussian(Tuning.Trade.rate, Tuning.Trade.sd));
+        result.Initialize(() => Tuning.Trade.LocalMarkup());
         return result;
     }
     public EArray<SegmentKind, float> LocalSegmentRates = InitLocalSegmentRates();
     static EArray<SegmentKind, float> InitLocalSegmentRates() {
         EArray<SegmentKind, float> result = new();
-        result.Initialize(() => CrawlerEx.NextGaussian(Tuning.Trade.rate, Tuning.Trade.sd));
+        result.Initialize(() => Tuning.Trade.LocalMarkup());
         return result;
     }
 }

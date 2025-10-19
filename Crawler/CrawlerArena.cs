@@ -337,7 +337,7 @@ public class CrawlerArena {
 
     private Crawler CreateInitializedCrawler(CrawlerDesign design, string name, Faction faction) {
         var inventory = design.Inventory.Copy();
-        var crawler = new Crawler(arenaLocation, inventory);
+        var crawler = new Crawler(faction, arenaLocation, inventory);
 
         // Set up basic properties
         crawler.Name = name;

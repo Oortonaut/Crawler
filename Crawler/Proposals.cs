@@ -533,6 +533,6 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
             --SubjectSegment.Hits;
         public float ValueFor(IActor Agent) => price;
     }
-    public float Markup = CrawlerEx.NextGaussian(Tuning.Trade.repairMarkup, Tuning.Trade.repairMarkupSd);
+    public float Markup = Tuning.Trade.RepairMarkup();
     public override string ToString() => Description;
 }

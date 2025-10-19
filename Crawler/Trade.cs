@@ -301,7 +301,7 @@ public static class TradeEx {
 
             // Calculate bid-ask spread
             float bidAskSpread = Tuning.Trade.baseBidAskSpread;
-            bidAskSpread *= seller?.BidAskMultiplier ?? 1.0f;
+            bidAskSpread *= seller?.Spread ?? 1.0f;
             float spreadAmount = midPrice * bidAskSpread;
 
             // Ask price (player buys from NPC)
