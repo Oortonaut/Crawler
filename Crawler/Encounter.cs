@@ -45,6 +45,82 @@ public class Encounter {
         var result = new List<MenuItem>();
         result.Add(new MenuItem("", "<Interactions>"));
         result.Add(MenuItem.Sep);
+
+        // Check for mandatory interactions first
+        var mandatoryInteractions = new List<(IActor, IInteraction, IProposal)>();
+        foreach (var actor in ActorsExcept(agent)) {
+            // Check agent's proposals
+            foreach (var proposal in agent.Proposals()) {
+                if (proposal.InteractionCapable(agent, actor) == InteractionCapability.Mandatory) {
+                    foreach (var interaction in proposal.GetInteractions(agent, actor)) {
+                        mandatoryInteractions.Add((actor, interaction, proposal));
+                    }
+                }
+            }
+
+            // Check other actor's proposals
+            foreach (var proposal in actor.Proposals()) {
+                if (proposal.InteractionCapable(actor, agent) == InteractionCapability.Mandatory) {
+                    foreach (var interaction in proposal.GetInteractions(actor, agent)) {
+                        mandatoryInteractions.Add((actor, interaction, proposal));
+                    }
+                }
+            }
+
+            // Check global proposals
+            foreach (var proposal in Game.Instance.StoredProposals) {
+                if (proposal.InteractionCapable(agent, actor) == InteractionCapability.Mandatory) {
+                    foreach (var interaction in proposal.GetInteractions(agent, actor)) {
+                        mandatoryInteractions.Add((actor, interaction, proposal));
+                    }
+                }
+                if (proposal.InteractionCapable(actor, agent) == InteractionCapability.Mandatory) {
+                    foreach (var interaction in proposal.GetInteractions(actor, agent)) {
+                        mandatoryInteractions.Add((actor, interaction, proposal));
+                    }
+                }
+            }
+        }
+
+        // Display mandatory interactions at the top with highlighting
+        if (mandatoryInteractions.Any()) {
+            result.Add(new MenuItem("", Style.SegmentDestroyed.Format("!!! URGENT DEMANDS !!!")));
+            result.Add(MenuItem.Sep);
+
+            int mandatoryIndex = 0;
+            foreach (var (actor, interaction, proposal) in mandatoryInteractions) {
+                string shortcut = "U" + (char)('A' + mandatoryIndex++);
+
+                // Calculate time remaining
+                string timeRemaining = "";
+                if (actor is Crawler crawler) {
+                    var relation = crawler.To(agent);
+                    if (relation.UltimatumTime > 0) {
+                        long remaining = relation.UltimatumTime - Game.Instance.TimeSeconds;
+                        if (remaining > 0) {
+                            timeRemaining = $" [Time: {remaining}s]";
+                        }
+                    }
+                } else if (agent is Crawler agentCrawler) {
+                    var relation = agentCrawler.To(actor);
+                    if (relation.UltimatumTime > 0) {
+                        long remaining = relation.UltimatumTime - Game.Instance.TimeSeconds;
+                        if (remaining > 0) {
+                            timeRemaining = $" [Time: {remaining}s]";
+                        }
+                    }
+                }
+
+                result.Add(new ActionMenuItem(shortcut,
+                    Style.SegmentDestroyed.Format($">>> {proposal.Description}{timeRemaining}"),
+                    args => interaction.Perform(args),
+                    interaction.Enabled().Enable(),
+                    ShowArg.Show));
+            }
+
+            result.Add(MenuItem.Sep);
+        }
+
         result.AddRange(menuItems);
 
         foreach (var (index, actor) in ActorsExcept(agent)
@@ -66,9 +142,6 @@ public class Encounter {
                     enabled ? EnableArg.Enabled : EnableArg.Disabled));
                 result.Add(MenuItem.Sep);
             }
-            // if (actor is Crawler actorCrawler) {
-            //     result.AddRange(actorCrawler.ActionsFor(agent, index));
-            // }
         }
         if (result.Count() > 1) {
             return result;
@@ -182,17 +255,44 @@ public class Encounter {
 
     void CheckForcedInteractions(IActor actor) {
         foreach (var other in ActorsExcept(actor)) {
-            // Check if other has forced interactions for the new actor
-            var otherForced = other.ForcedInteractions(actor).ToList();
-            if (otherForced.Any()) {
-                PresentForcedInteractions(other, actor, otherForced);
+            // Set up ultimatums for mandatory interactions
+            if (other is Crawler otherCrawler) {
+                otherCrawler.CheckAndSetUltimatums(actor);
+            }
+            if (actor is Crawler actorCrawler) {
+                actorCrawler.CheckAndSetUltimatums(other);
             }
 
-            // Check if new actor has forced interactions for existing actors
-            var actorForced = actor.ForcedInteractions(other).ToList();
-            if (actorForced.Any()) {
-                PresentForcedInteractions(actor, other, actorForced);
+            // Check for any mandatory interactions that need to be presented immediately
+            CheckAndPresentMandatoryInteractions(actor, other);
+            CheckAndPresentMandatoryInteractions(other, actor);
+        }
+    }
+
+    void CheckAndPresentMandatoryInteractions(IActor agent, IActor subject) {
+        // Find all proposals with mandatory capability
+        var mandatoryInteractions = new List<IInteraction>();
+
+        foreach (var proposal in agent.Proposals()) {
+            if (proposal.InteractionCapable(agent, subject) == InteractionCapability.Mandatory) {
+                mandatoryInteractions.AddRange(proposal.GetInteractions(agent, subject));
             }
+        }
+
+        foreach (var proposal in subject.Proposals()) {
+            if (proposal.InteractionCapable(subject, agent) == InteractionCapability.Mandatory) {
+                mandatoryInteractions.AddRange(proposal.GetInteractions(subject, agent));
+            }
+        }
+
+        foreach (var proposal in Game.Instance.StoredProposals) {
+            if (proposal.InteractionCapable(agent, subject) == InteractionCapability.Mandatory) {
+                mandatoryInteractions.AddRange(proposal.GetInteractions(agent, subject));
+            }
+        }
+
+        if (mandatoryInteractions.Any()) {
+            PresentForcedInteractions(agent, subject, mandatoryInteractions);
         }
     }
 
@@ -508,10 +608,29 @@ public class Encounter {
         var actorList = actors.Keys.ToList();
         foreach (var actor in actorList) {
             foreach (var other in ActorsExcept(actor)) {
-                var forced = actor.ForcedInteractions(other).ToList();
-                if (forced.Any()) {
-                    PresentForcedInteractions(actor, other, forced);
+                // Check for expired ultimatums and trigger consequences
+                if (actor is Crawler actorCrawler) {
+                    var relation = actorCrawler.To(other);
+                    if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds >= relation.UltimatumTime) {
+                        // Ultimatum expired - find the proposal and trigger refuse consequence
+                        foreach (var proposal in actorCrawler.Proposals()) {
+                            if (proposal.InteractionCapable(actor, other) == InteractionCapability.Mandatory) {
+                                // Get the refuse interaction and execute it
+                                var interactions = proposal.GetInteractions(actor, other).ToList();
+                                var refuseInteraction = interactions.FirstOrDefault(i => i.OptionCode.Contains("DR"));
+                                if (refuseInteraction != null && refuseInteraction.Enabled()) {
+                                    actorCrawler.Message($"Time's up for {other.Name}'s ultimatum!");
+                                    other.Message($"You failed to respond to {actor.Name}'s demand in time!");
+                                    refuseInteraction.Perform();
+                                }
+                                break;
+                            }
+                        }
+                    }
                 }
+
+                // Check for any new mandatory interactions
+                CheckAndPresentMandatoryInteractions(actor, other);
             }
         }
     }

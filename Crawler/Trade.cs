@@ -1,9 +1,15 @@
 ﻿namespace Crawler;
 
+public enum InteractionCapability {
+    Disabled,
+    Possible,
+    Mandatory,
+}
+
 public interface IProposal {
     bool AgentCapable(IActor Agent);
     bool SubjectCapable(IActor Subject);
-    bool InteractionCapable(IActor Agent, IActor Subject);
+    InteractionCapability InteractionCapable(IActor Agent, IActor Subject);
     string Description { get; }
     // Assumes that all tests have passed.
     IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject);
@@ -20,7 +26,7 @@ public static class IProposalEx {
     public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) =>
         proposal.AgentCapable(Agent) &&
         proposal.SubjectCapable(Subject) &&
-        proposal.InteractionCapable(Agent, Subject);
+        proposal.InteractionCapable(Agent, Subject) != InteractionCapability.Disabled;
     public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) =>
         proposal.Test(Agent, Subject) ? proposal.GetInteractions(Agent, Subject) : [];
 }
@@ -111,8 +117,10 @@ public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"):
     public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Seller) => true;
     public bool SubjectCapable(IActor Buyer) => true;
-    public bool InteractionCapable(IActor Seller, IActor Buyer) => 
-        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
+    public InteractionCapability InteractionCapable(IActor Seller, IActor Buyer) =>
+        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer)
+            ? InteractionCapability.Possible
+            : InteractionCapability.Disabled;
     public IEnumerable<IInteraction> GetInteractions(IActor Seller, IActor Buyer) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;
@@ -127,8 +135,10 @@ public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"):
     public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Buyer) => true;
     public bool SubjectCapable(IActor Seller) => true;
-    public bool InteractionCapable(IActor Buyer, IActor Seller) =>
-        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
+    public InteractionCapability InteractionCapable(IActor Buyer, IActor Seller) =>
+        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer)
+            ? InteractionCapability.Possible
+            : InteractionCapability.Disabled;
     public IEnumerable<IInteraction> GetInteractions(IActor Buyer, IActor Seller) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;

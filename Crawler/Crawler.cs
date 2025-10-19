@@ -12,6 +12,13 @@ public class ActorToActor {
     public int DamageCreated = 0;
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
+
+    public long UltimatumTime = 0;
+
+    public int StandingPositive = 0;
+    public int StandingNegative = 0;
+    public int Standing => StandingPositive - StandingNegative;
+    public float Trust => 1 - (Math.Min(StandingPositive, StandingNegative)/(Math.Max(StandingPositive, StandingNegative) + 1e-12f));
 }
 
 public class Crawler: IActor {
@@ -100,6 +107,14 @@ public class Crawler: IActor {
     public List<IProposal> StoredProposals { get; private set; } = new();
     public virtual IEnumerable<IProposal> Proposals() => StoredProposals;
     public virtual IEnumerable<IInteraction> ForcedInteractions(IActor other) {
+        // Deprecated: Now using StoredProposals with InteractionCapability.Mandatory
+        // This method is kept for compatibility but should return empty
+        // All forced interactions are now triggered via CheckAndSetUltimatums
+        return [];
+    }
+
+    // Check and set ultimatums for mandatory interactions on encounter entry
+    public void CheckAndSetUltimatums(IActor other) {
         // Bandits demand cargo from players on encounter entry
         if (Faction == Faction.Bandit && other.Faction == Faction.Player) {
             float cargoValue = other.Inv.ValueAt(Location);
@@ -107,25 +122,28 @@ public class Crawler: IActor {
                 Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
                 !To(other).Hostile &&
                 !To(other).Surrendered &&
-                !IsDisarmed) {
+                !IsDisarmed &&
+                To(other).UltimatumTime == 0) { // Only set if not already set
 
                 var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction);
-                foreach (var interaction in extortion.GetInteractions(this, other)) {
-                    yield return interaction;
-                }
+                StoredProposals.Add(extortion);
+
+                // Set ultimatum timer (e.g., 5 minutes = 300 seconds)
+                To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
             }
         }
 
         // Settlements and civilian factions scan for contraband
         if ((Flags & EActorFlags.Settlement) != 0 || Faction.IsCivilian() || Faction == Faction.Independent) {
-            if (other.Faction == Faction.Player && !To(other).Hostile) {
+            if (other.Faction == Faction.Player && !To(other).Hostile && To(other).UltimatumTime == 0) {
                 var contraband = ScanForContraband(other);
                 if (!contraband.IsEmpty) {
                     float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
                     var seizure = new ProposeContrabandSeizure(contraband, penalty);
-                    foreach (var interaction in seizure.GetInteractions(this, other)) {
-                        yield return interaction;
-                    }
+                    StoredProposals.Add(seizure);
+
+                    // Set ultimatum timer
+                    To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
                 }
 
                 // Also check for taxes if this is a settlement in own territory
@@ -134,9 +152,10 @@ public class Crawler: IActor {
                     Location.Sector.ControllingFaction == Faction) {
 
                     var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
-                    foreach (var interaction in taxes.GetInteractions(this, other)) {
-                        yield return interaction;
-                    }
+                    StoredProposals.Add(taxes);
+
+                    // Set ultimatum timer
+                    To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
                 }
             }
         }
