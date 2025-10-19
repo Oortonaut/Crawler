@@ -106,12 +106,6 @@ public class Crawler: IActor {
     public int EvilPoints { get; set; } = 0;
     public List<IProposal> StoredProposals { get; private set; } = new();
     public virtual IEnumerable<IProposal> Proposals() => StoredProposals;
-    public virtual IEnumerable<IInteraction> ForcedInteractions(IActor other) {
-        // Deprecated: Now using StoredProposals with InteractionCapability.Mandatory
-        // This method is kept for compatibility but should return empty
-        // All forced interactions are now triggered via CheckAndSetUltimatums
-        return [];
-    }
 
     // Check and set ultimatums for mandatory interactions on encounter entry
     public void CheckAndSetUltimatums(IActor other) {
@@ -486,8 +480,15 @@ public class Crawler: IActor {
         ];
         string result = coloredSegments.TransposeJoinStyled();
         var Adjs = StateString(viewer);
-        result = Style.Name.Format(Name) + $": {Faction}{Adjs}\n{result}";
-        return result;
+        var nameString = Style.Name.Format(Name) + $": {Faction}{Adjs}";
+        if (Flags.HasFlag(EActorFlags.Settlement)) {
+            if (Location.Sector.ControllingFaction.Capital() == this) {
+                nameString += " Capital";
+            } else {
+                nameString += " Settlement";
+            }
+        }
+        return $"{nameString}\n{result}";
     }
 
     public float ScrapInv {

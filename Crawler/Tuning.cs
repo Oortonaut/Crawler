@@ -29,11 +29,11 @@ public static partial class Tuning {
         public static EArray<EncounterType, float> HourlyArrivals = [0, 0.125f, 0.4f, 0.08f, 0.04f];
         // Faction spawn weights by terrain type: Player, Bandit, Trade
         public static EArray<TerrainType, EArray<Faction, float>> crawlerSpawnWeight = [
-            [0, 1, 6],    // Flat - more trade
-            [0, 2, 4],    // Rough - balanced
-            [0, 3, 3],    // Broken - equal mix
-            [0, 4, 2],    // Shattered - more bandits
-            [0, 5, 1],    // Ruined - mostly bandits
+            [0, 2, 12],    // Flat - more trade
+            [0, 4, 8],    // Rough - balanced
+            [0, 6, 6],    // Broken - equal mix
+            [0, 8, 4],    // Shattered - more bandits
+            [0, 10, 2],    // Ruined - mostly bandits
         ];
         public static float DynamicCrawlerLifetimeExpectation = 3600.0f * 7.5f;
     }
@@ -152,6 +152,16 @@ public static partial class Tuning {
         public static float AirPerPerson = 1.0f; // liters of liquid air per person
         public static float AirRecyclingLossPerHour = 0.005f; // 0.5% per hour per damaged segment
 
+        public static EArray<Commodity, float> DefaultCommodityWeights => [
+            1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f, // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+            0.2f, 0.5f, 1.0f, // Air, Water, Rations
+            0.3f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Biomass, Ore, Silicates, Metal, Chemicals, Glass
+            0.4f, 0.4f, 0.6f, 0.7f, 0.4f, // Ceramics, Polymers, Alloys, Electronics, Explosives
+            0.6f, 0.4f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
+            0.2f, 0.1f, 0.1f, 0.05f, 0.3f, // Liquor, Stims, Downers, Trips, SmallArms
+            0.2f, 0.2f, 0.1f // Idols, Texts, Relics
+        ];
+
         // Commodity weights by faction for crawler inventory generation
         public static EArray<Faction, EArray<Commodity, float>> CommodityWeights = [
             // Player - balanced loadout
@@ -184,6 +194,26 @@ public static partial class Tuning {
                 0.7f, 0.3f, 0.2f, 0.1f, 0.4f,        // Liquor, Stims, Downers, Trips, SmallArms
                 0.6f, 0.7f, 0.4f                      // Idols, Texts, Relics
             ],
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
+            DefaultCommodityWeights,
         ];
     }
 

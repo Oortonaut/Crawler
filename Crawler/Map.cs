@@ -40,12 +40,15 @@ public record Location(
 
         // Adjust bandit weight by dividing by population (more pop = fewer bandits)
         var adjustedWeights = new EArray<Faction, float>();
-        for (int i = 0; i < baseWeights.Length; i++) {
-            var faction = (Faction)i;
+        foreach (var (faction, weight) in baseWeights.Pairs()) {
             if (faction == Faction.Bandit) {
                 adjustedWeights[faction] = baseWeights[faction] / (Population / 100);
-            } else {
+            } else if (baseWeights[faction] > 0) {
                 adjustedWeights[faction] = baseWeights[faction];
+            } else if (faction == Sector.ControllingFaction) {
+                adjustedWeights[faction] = 2;
+            } else {
+                adjustedWeights[faction] = 0.5f;
             }
         }
 
@@ -75,11 +78,11 @@ public class ActorLocation {
     public long ForgetTime = 0;
 }
 
-// Represents a faction's capital city/settlement
-public record FactionCapital(Faction Faction, string Name, Crawler Settlement, float Population) {
+public record FactionData(string Name, Color Color, Capital? Capital);
+
+public record Capital(Crawler Settlement, float Influence) {
+    public string Name => Settlement.Name;
     public Location Location => Settlement.Location;
-    public Sector Sector => Location.Sector;
-    public Vector2 Position => Location.Position;
 }
 
 public class Sector(Map map, string name, int x, int y) {
@@ -204,34 +207,38 @@ public class Map {
         }
 
         // Sort by population descending
-        settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).ToList();
+        settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).DistinctBy(loc => loc.Sector.Name).ToList();
 
-        // Take top N, skipping duplicate sectors
-        var usedSectors = new HashSet<Sector>();
-        int numFactions = Math.Min(Height, 20); // Max 20 civilian factions
+        int numFactions = Math.Min(Height * 3 / 4, 20);
+        Faction factionEnd = 1 + (Faction)Math.Min((int)Faction.Civilian19, (int)Faction.Civilian1 + numFactions - 1);
 
-        for (int i = 0; i < settlementLocations.Count && FactionCapitals.Count < numFactions; i++) {
+        FactionData[Faction.Player] = new ("Player", Color.White, null);
+        FactionData[Faction.Independent] = new ("Independent", Color.Blue, null);
+        FactionData[Faction.Bandit] = new ("Bandit", Color.Red, null);
+
+        Faction currFaction = Faction.Civilian0;
+        for (int i = 0; i < settlementLocations.Count && currFaction < factionEnd; i++) {
             var setLocation = settlementLocations[i];
             var sector = setLocation.Sector;
-            if (!usedSectors.Contains(sector)) {
-                var faction = FactionEx.FromCivilianIndex(FactionCapitals.Count);
-                sector.ControllingFaction = faction;
-                var encounter = setLocation.GetEncounter();
-                var name = setLocation.Name;
-                foreach (var crawler in encounter.Settlements.OfType<Crawler>()) {
-                    name = crawler.Name;
-                    FactionCapitals.Add(new FactionCapital(faction, name, crawler, setLocation.Population));
-                    break;
-                }
-                sector.Name = $"{name} Capital";
-                usedSectors.Add(sector);
+            var faction = currFaction;
+            sector.ControllingFaction = faction;
+            var encounter = setLocation.GetEncounter();
+            var name = setLocation.Name;
+            var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
+            foreach (var crawler in encounter.Settlements.OfType<Crawler>().Take(1)) {
+                name = crawler.Name;
+                float influence = 8 + ( float ) Math.Log2(sectorPopulation);
+                var capital = new Capital(crawler, influence);
+                FactionData[faction] = new (name, FactionEx._factionColors[faction], capital);
+                currFaction++;
             }
+            sector.Name = $"{name} Capital";
         }
 
         // Generate policies for each civilian faction
-        foreach (var capital in FactionCapitals) {
-            if (capital.Faction.IsCivilian()) {
-                Tuning.FactionPolicies.Policies[capital.Faction] = GenerateFactionPolicy(capital);
+        foreach (var (faction, data) in FactionData.Pairs()) {
+            if (data.Capital is {} capital) {
+                Tuning.FactionPolicies.Policies[faction] = GenerateFactionPolicy(capital);
             }
         }
     }
@@ -245,13 +252,15 @@ public class Map {
             float minWeightedDistance = float.MaxValue;
             Faction closestFaction = Faction.Independent;
 
-            foreach (var capital in FactionCapitals) {
-                float distance = sector.Offset(capital.Sector).Length();
-                float weightedDistance = distance / (8 + (float)Math.Log2(capital.Population));
+            foreach (var (faction, data) in FactionData.Pairs()) {
+                if (data.Capital is { } capital) {
+                    float distance = sector.Offset(capital.Location.Sector).Length();
+                    float weightedDistance = distance / capital.Influence;
 
-                if (weightedDistance < minWeightedDistance) {
-                    minWeightedDistance = weightedDistance;
-                    closestFaction = capital.Faction;
+                    if (weightedDistance < minWeightedDistance) {
+                        minWeightedDistance = weightedDistance;
+                        closestFaction = faction;
+                    }
                 }
             }
 
@@ -259,14 +268,14 @@ public class Map {
         }
     }
 
-    EArray<Commodity, TradePolicy> GenerateFactionPolicy(FactionCapital capital) {
+    EArray<Commodity, TradePolicy> GenerateFactionPolicy(Capital capital) {
         // Generate procedural policies based on capital characteristics
         var policy = Tuning.FactionPolicies.CreateDefaultPolicy(TradePolicy.Legal);
 
         // Use terrain and tech to influence policies
-        var terrain = capital.Location.Terrain;
-        var tech = capital.Location.TechLatitude;
-        var seed = capital.Location.Position.X + capital.Location.Position.Y * 1000;
+        //var terrain = capital.Location.Terrain;
+        //var tech = capital.Location.TechLatitude;
+        var seed = capital.Name.GetHashCode();
         var random = new Random((int)seed);
 
         // Determine faction archetype
@@ -396,7 +405,7 @@ public class Map {
     public int Height => Sectors.GetLength(0);
     public int Width => Sectors.GetLength(1);
     Sector[,] Sectors { get; }
-    public List<FactionCapital> FactionCapitals { get; } = new();
+    public EArray<Faction, FactionData> FactionData { get; } = new();
 
     public Sector GetSector(int x, int y) => Sectors[y, x];
     public IEnumerable<Location> FindLocationsInRadius(Vector2 center, float radius) {
@@ -512,35 +521,35 @@ public class Map {
             map2 += defaultStyle + "║";
 
             // Add civilian faction info for this row
-            if (y < FactionCapitals.Count) {
-                var capital = FactionCapitals[y];
-                var option = Style.MenuOption.Format($"{y + 1}");
-                var capitalString = capital.Faction.GetColor().On(Color.Black) + capital.Name + defaultStyle;
-                map += $" [{option}] {capitalString} ({capital.Faction})";
-                /* TODO: Move this policy text into a helper function
-                var policy = Tuning.FactionPolicies.Policies[capital.Faction];
-
-                // Get restricted/prohibited commodities
-                var restrictedList = policy.Pairs()
-                    .Where(p => p.Item2 == TradePolicy.Controlled || p.Item2 == TradePolicy.Prohibited)
-                    .Select(p => $"{p.Item1}:{(p.Item2 == TradePolicy.Controlled ? '-' : 'X')}")
-                    .ToList();
-
-                // Get subsidized commodities
-                var subsidizedList = policy.Pairs()
-                    .Where(p => p.Item2 == TradePolicy.Subsidized)
-                    .Select(p => $"{p.Item1}:+")
-                    .ToList();
-
-                int factionIndex = capital.Faction.CivilianIndex();
-                string factionName = factionIndex < 10 ? factionIndex.ToString() : ((char)('A' + (factionIndex - 10))).ToString();
-
-                var restrictions = restrictedList.Concat(subsidizedList).ToList();
-                factionInfo = restrictions.Any()
-                    ? $" [{factionName}] {string.Join(", ", restrictions)}"
-                    : $" [{factionName}] Open Trade";
-                    */
-            }
+            // if (y < FactionCapitals.Count) {
+            //     var capital = FactionCapitals[y];
+            //     var option = Style.MenuOption.Format($"{y + 1}");
+            //     var capitalString = capital.Faction.GetColor().On(Color.Black) + capital.Name + defaultStyle;
+            //     map += $" [{option}] {capitalString} ({capital.Faction})";
+            //     /* TODO: Move this policy text into a helper function
+            //     var policy = Tuning.FactionPolicies.Policies[capital.Faction];
+            //
+            //     // Get restricted/prohibited commodities
+            //     var restrictedList = policy.Pairs()
+            //         .Where(p => p.Item2 == TradePolicy.Controlled || p.Item2 == TradePolicy.Prohibited)
+            //         .Select(p => $"{p.Item1}:{(p.Item2 == TradePolicy.Controlled ? '-' : 'X')}")
+            //         .ToList();
+            //
+            //     // Get subsidized commodities
+            //     var subsidizedList = policy.Pairs()
+            //         .Where(p => p.Item2 == TradePolicy.Subsidized)
+            //         .Select(p => $"{p.Item1}:+")
+            //         .ToList();
+            //
+            //     int factionIndex = capital.Faction.CivilianIndex();
+            //     string factionName = factionIndex < 10 ? factionIndex.ToString() : ((char)('A' + (factionIndex - 10))).ToString();
+            //
+            //     var restrictions = restrictedList.Concat(subsidizedList).ToList();
+            //     factionInfo = restrictions.Any()
+            //         ? $" [{factionName}] {string.Join(", ", restrictions)}"
+            //         : $" [{factionName}] Open Trade";
+            //         */
+            // }
 
             result += $"{map}\n{map2}\n";
         }

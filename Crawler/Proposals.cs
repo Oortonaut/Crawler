@@ -363,7 +363,7 @@ public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
             Agent.To(Subject).Hostile = true;
             Subject.To(Agent).Hostile = true;
             Agent.Message($"{Subject.Name} {Reason}. You are now hostile.");
-            Subject.Message($"{Agent.Name} turns hostile because you {Reason}!");
+            Subject.Message($"{Agent.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
             Subject.Inv[Commodity.Morale] -= 2;
             return 1;
         }

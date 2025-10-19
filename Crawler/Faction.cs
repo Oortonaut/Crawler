@@ -47,14 +47,11 @@ public static class FactionEx {
 
     public static Color GetColor(this Faction faction) =>
         _factionColors[faction];
-    public static string Name(this Faction faction) => faction switch {
-        Faction.Player => "Player",
-        Faction.Bandit => "Bandit",
-        Faction.Independent => "Independent",
-        var civilian => Game.Instance.Map.FactionCapitals[civilian.CivilianIndex()].Name,
-    };
+    public static string Name(this Faction faction) => faction.GetData().Name;
+    public static Crawler? Capital(this Faction faction) => faction.GetData().Capital?.Settlement;
+    public static FactionData GetData(this Faction faction) => Game.Instance.Map.FactionData[faction];
 
-    static EArray<Faction, Color> _factionColors = [
+    public static EArray<Faction, Color> _factionColors = [
         Color.Red,
         Color.Blue,
         Color.White,

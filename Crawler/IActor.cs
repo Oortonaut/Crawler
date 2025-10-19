@@ -95,12 +95,6 @@ public interface IActor {
     /// </summary>
     IEnumerable<IProposal> Proposals();
 
-    /// <summary>
-    /// DEPRECATED: Forced interactions (now handled via Proposals with InteractionCapability.Mandatory).
-    /// Use Crawler.CheckAndSetUltimatums() instead.
-    /// </summary>
-    IEnumerable<IInteraction> ForcedInteractions(IActor other);
-
     // ===== Simulation =====
     /// <summary>Update this actor (called every game second)</summary>
     void Tick();
@@ -142,7 +136,6 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
     public List<IProposal> StoredProposals { get; private set; } = new();
     public IEnumerable<IProposal> Proposals() => StoredProposals;
-    public IEnumerable<IInteraction> ForcedInteractions(IActor other) => [];
     public void Tick() {
     }
     public void Tick(IEnumerable<IActor> other) { }

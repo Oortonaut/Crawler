@@ -1,5 +1,6 @@
 using YamlDotNet.Serialization;
 using System.Numerics;
+using System.Drawing;
 
 namespace Crawler;
 
@@ -115,16 +116,21 @@ public class SavedMap {
     public int Width { get; set; }
     public int Height { get; set; }
     public List<SavedSector> Sectors { get; set; } = new();
-    public List<SavedFactionCapital> FactionCapitals { get; set; } = new();
+    public List<SavedFactionData> FactionData { get; set; } = new();
 }
 
 [YamlSerializable]
-public class SavedFactionCapital {
+public class SavedFactionData {
     public Faction Faction { get; set; }
     public required string Name { get; set; }
-    public Vector2 LocationPos { get; set; }
-    public float Population { get; set; }
+    public required Color Color { get; set; }
+    public SavedCapital? Capital { get; set; }
+}
+
+[YamlSerializable]
+public class SavedCapital {
     public required SavedCrawler Settlement { get; set; }
+    public float Influence { get; set; }
 }
 
 [YamlSerializable]
@@ -296,17 +302,25 @@ public static class SaveLoadExtensions {
             Width = map.Width,
             Height = map.Height,
             Sectors = savedSectors,
-            FactionCapitals = map.FactionCapitals.Select(fc => fc.ToSaveData()).ToList()
+            FactionData = map.FactionData.Pairs()
+                .Select(kvp => kvp.Value.ToSaveData(kvp.Key))
+                .ToList()
         };
     }
 
-    public static SavedFactionCapital ToSaveData(this FactionCapital capital) {
-        return new SavedFactionCapital {
-            Faction = capital.Faction,
-            Name = capital.Name,
-            LocationPos = capital.Location.Position,
-            Population = capital.Population,
-            Settlement = capital.Settlement.ToSaveData()
+    public static SavedFactionData ToSaveData(this FactionData data, Faction faction) {
+        return new SavedFactionData {
+            Faction = faction,
+            Name = data.Name,
+            Color = data.Color,
+            Capital = data.Capital?.ToSaveData()
+        };
+    }
+
+    public static SavedCapital ToSaveData(this Capital capital) {
+        return new SavedCapital {
+            Settlement = capital.Settlement.ToSaveData(),
+            Influence = capital.Influence
         };
     }
 
@@ -361,20 +375,22 @@ public static class SaveLoadExtensions {
             }
         }
 
-        // Restore faction capitals - must be done after encounters are loaded
-        map.FactionCapitals.Clear();
-        foreach (var savedCapital in savedMap.FactionCapitals) {
-            var location = map.FindLocationByPosition(savedCapital.LocationPos);
-            var settlement = savedCapital.Settlement.ToGameCrawler(map);
-            map.FactionCapitals.Add(new FactionCapital(
-                savedCapital.Faction,
-                savedCapital.Name,
-                settlement,
-                savedCapital.Population
-            ));
+        // Restore faction data
+        foreach (var savedFactionData in savedMap.FactionData) {
+            var capital = savedFactionData.Capital?.ToGameCapital(map);
+            map.FactionData[savedFactionData.Faction] = new FactionData(
+                savedFactionData.Name,
+                savedFactionData.Color,
+                capital
+            );
         }
 
         return map;
+    }
+
+    public static Capital ToGameCapital(this SavedCapital savedCapital, Map map) {
+        var settlement = savedCapital.Settlement.ToGameCrawler(map);
+        return new Capital(settlement, savedCapital.Influence);
     }
 
     public static Location FindLocationByPosition(this Map map, Vector2 position) {

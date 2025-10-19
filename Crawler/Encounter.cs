@@ -20,6 +20,7 @@ public class Encounter {
             location.ChooseRandomFaction()) {
     }
     public Encounter(Location location, Faction faction) {
+        Console.WriteLine($"Creating encounter at {location} with faction {faction}");
         this.location = location;
         Faction = faction;
         Generate();
@@ -193,9 +194,34 @@ public class Encounter {
         }
     }
 
+    // Choose faction for dynamic visitor in settlement
+    // Returns traders (Independent or civilian) ~75%, bandits ~25%
+    Faction ChooseFactionForSettlementVisitor() {
+        float roll = Random.Shared.NextSingle();
+
+        // 25% chance of bandit
+        if (roll < 0.25f) {
+            return Faction.Bandit;
+        }
+
+        // 50% chance of independent trader
+        if (roll < 0.75f) {
+            return Faction.Independent;
+        }
+
+        // 25% chance of civilian faction trader
+        // Use settlement's controlling faction if civilian, otherwise Independent
+        var controllingFaction = Location.Sector.ControllingFaction;
+        return controllingFaction.IsCivilian() ? controllingFaction : Faction.Independent;
+    }
+
     // Modified to accept optional lifetime parameter
     void AddDynamicCrawler(int lifetime) {
-        var faction = Location.ChooseRandomFaction();
+        // Use settlement-specific faction selection for Settlement encounters
+        var faction = Location.Type == EncounterType.Settlement
+            ? ChooseFactionForSettlementVisitor()
+            : Location.ChooseRandomFaction();
+
         var crawler = GenerateFactionActor(faction, lifetime);
     }
     void AddDynamicCrawler() {
@@ -249,11 +275,14 @@ public class Encounter {
         }
         actor.Message($"You enter {Name}");
 
+        Console.WriteLine($"Added {actor.Name} to Encounter '{Name}' until {exitTime}");
+
         // Check for forced interactions triggered by entry
         CheckForcedInteractions(actor);
     }
 
     void CheckForcedInteractions(IActor actor) {
+        Console.WriteLine($"Checking forced interactions for {actor.Name}");
         foreach (var other in ActorsExcept(actor)) {
             // Set up ultimatums for mandatory interactions
             if (other is Crawler otherCrawler) {
@@ -410,7 +439,7 @@ public class Encounter {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.NightSettlementNames];
         }
         Name = EncounterNames.ChooseRandom() ?? "Settlement";
-        settlement.Name = $"{Name} Settlement ({domes:F0} Domes)";
+        settlement.Name = Name;
         AddActor(settlement);
     }
     public void GenerateResource() {
@@ -557,7 +586,11 @@ public class Encounter {
     }
     public void Generate() {
         switch (Location.Type) {
-        case EncounterType.Crossroads: GenerateFactionActor(Faction, null); break;
+        case EncounterType.Crossroads:
+        {
+            Name = $"{Faction} Crossroads";
+            GenerateFactionActor(Faction, null);
+        } break;
         case EncounterType.Settlement: GenerateSettlement(); break;
         case EncounterType.Resource: GenerateResource(); break;
         case EncounterType.Hazard: GenerateHazard(); break;
@@ -565,19 +598,15 @@ public class Encounter {
         InitDynamicCrawlers();
     }
     public IActor GenerateFactionActor(Faction faction, int? lifetime) {
-        Name = $"{faction} Crossroads";
         Crawler result;
 
-        if (faction.IsCivilian()) {
-            result = GenerateCivilianActor(faction);
-        } else {
-            result = faction switch {
-                Faction.Bandit => GenerateBanditActor(),
-                Faction.Player => GeneratePlayerActor(),
-                Faction.Independent => GenerateTradeActor(),
-                _ => throw new ArgumentException($"Unexpected faction: {faction}")
-            };
-        }
+        result = faction switch {
+            Faction.Bandit => GenerateBanditActor(),
+            Faction.Player => GeneratePlayerActor(),
+            Faction.Independent => GenerateTradeActor(),
+            _ => GenerateCivilianActor(faction),
+        };
+        Console.WriteLine($"Generated {faction} actor {result.Name}");
         result.Recharge(20);
         AddActor(result, lifetime);
         return result;
@@ -609,7 +638,8 @@ public class Encounter {
         foreach (var actor in actorList) {
             foreach (var other in ActorsExcept(actor)) {
                 // Check for expired ultimatums and trigger consequences
-                if (actor is Crawler actorCrawler) {
+                // ONLY if both actors are in THIS encounter
+                if (actor is Crawler actorCrawler && other.Location == actor.Location) {
                     var relation = actorCrawler.To(other);
                     if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds >= relation.UltimatumTime) {
                         // Ultimatum expired - find the proposal and trigger refuse consequence

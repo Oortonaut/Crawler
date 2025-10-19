@@ -25,7 +25,7 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
             this[key] = value;
         }
     }
-    public T this[ENUM key] {
+    T IDictionary<ENUM, T>.this[ENUM key] {
         get {
             return _items[(int)(object)key];
         }
@@ -33,6 +33,12 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
             _items[(int)(object)key] = value;
         }
     }
+    T IReadOnlyDictionary<ENUM, T>.this[ENUM key] {
+        get {
+            return _items[( int ) ( object ) key];
+        }
+    }
+    public ref T this[ENUM key] => ref _items[(int)(object)key];
     public void Initialize() {
         _items.Initialize();
     }

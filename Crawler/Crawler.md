@@ -54,10 +54,7 @@ New to the codebase? Read in this order:
 2. docs/SYSTEMS.md (20 min) - Understand key systems
 3. Relevant section in docs/DATA-MODEL.md or docs/EXTENDING.md as needed
 
-### Legacy Documentation
-
-The old comprehensive Architecture.md still exists at `Crawler/Architecture.md` but is deprecated. It's kept for reference but should not be updated. Use the docs/ directory instead.
-
 ## Code Organization
 
 See docs/ARCHITECTURE.md for the system map and component relationships.
+~~~~
