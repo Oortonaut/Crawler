@@ -1045,8 +1045,6 @@ baxter
 bay
 baylee
 baylor
-bcs
-bcspatch
 bea
 beana
 bear
@@ -1255,7 +1253,6 @@ binh
 binni
 binnie
 binny
-biplab
 birchard
 bird
 birdie
@@ -1848,7 +1845,7 @@ chadwick
 chahram
 chai
 chak-hong
-champathon
+champ
 chan
 chance
 chand
@@ -2862,9 +2859,6 @@ douglas
 douglass
 dowell
 doyle
-dpn
-dpnis
-dpnlab
 drago
 drake
 draven
@@ -5835,7 +5829,6 @@ kyson
 la
 la verne
 lab
-labfive
 lac
 lacee
 lacey
@@ -6519,9 +6512,6 @@ maible
 maica
 maid
 maidisn
-maidlab
-maidsir
-maidxpm
 maier
 maiga
 maighdiln
@@ -7697,7 +7687,6 @@ norry
 norstar
 norton
 norvie
-noslab
 notley
 noubar
 nova
@@ -8369,9 +8358,6 @@ rayne
 raynell
 rayshell
 raz
-rch
-rchisn
-rchlab
 rea
 reagan
 real
