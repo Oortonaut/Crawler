@@ -620,9 +620,7 @@ public static partial class CrawlerEx {
             yield return $"{leftString} {rightString}";
         }
     }
-    public static bool HasAny(this IActor agent, EActorFlags flags) => (agent.Flags & flags) != 0;
-    public static bool Has(this IActor agent, EActorFlags flags) => (agent.Flags & flags) == flags;
-    public static bool Hasnt(this IActor agent, EActorFlags flags) => (agent.Flags & flags) == 0;
+    public static bool HasFlag(this IActor agent, EActorFlags flags) => agent.Flags.HasFlag(flags);
     public static bool SurrenderedTo(this IActor agent, IActor other) => agent.To(other).Surrendered;
     public static int Attack(this Crawler attacker, IActor defender) {
         var fire = attacker.CreateFire();
@@ -663,36 +661,36 @@ public static partial class CrawlerEx {
         ( byte ) Math.Clamp(c.G* s, 0, 255),
         ( byte ) Math.Clamp(c.B * s, 0, 255));
     public static float Length(this Point point) => MathF.Sqrt(point.X * point.X + point.Y * point.Y);
-    public static TEnum ClearFlag<TEnum>(this TEnum e, TEnum flags) where TEnum : struct, Enum => SetFlag(e, flags, false);
-    public static TEnum SetFlag<TEnum>(this TEnum e, TEnum flags, bool p = true)
+    public static bool ClearFlag<TEnum>(this TEnum e, TEnum flags) where TEnum : struct, Enum => e.SetFlag(flags, false);
+    public static bool SetFlag<TEnum>(this ref TEnum e, TEnum flags, bool p = true)
         where TEnum : struct, Enum
     {
         var underlyingType = Enum.GetUnderlyingType(typeof(TEnum));
 
-        TEnum? TryUnderlying<T>() where T : unmanaged {
+        bool TryUnderlying<T>(ref TEnum e) where T : unmanaged {
             if (underlyingType == typeof(T)) {
-                int eVal = Unsafe.As<TEnum, int>(ref e);
-                int flagsVal = Unsafe.As<TEnum, int>(ref flags);
-                int result = p ? eVal | flagsVal : eVal & ~flagsVal;
-                return Unsafe.As<int, TEnum>(ref result);
+                ref int eVal = ref Unsafe.As<TEnum, int>(ref e);
+                ref int flagsVal = ref Unsafe.As<TEnum, int>(ref flags);
+                if (p) {
+                    eVal |= flagsVal;
+                } else {
+                    eVal &= ~flagsVal;
+                }
+                return true;
             }
-            return null;
+            return false;
         }
 
-        TEnum? result = TryUnderlying<int>() ??
-                        TryUnderlying<uint>() ??
-                        TryUnderlying<long>() ??
-                        TryUnderlying<ulong>() ??
-                        TryUnderlying<byte>() ??
-                        TryUnderlying<sbyte>() ??
-                        TryUnderlying<short>() ??
-                        TryUnderlying<ushort>();
+        bool result = TryUnderlying<int>(ref e) ||
+                        TryUnderlying<uint>(ref e) ||
+                        TryUnderlying<long>(ref e) ||
+                        TryUnderlying<ulong>(ref e) ||
+                        TryUnderlying<byte>(ref e) ||
+                        TryUnderlying<sbyte>(ref e) ||
+                        TryUnderlying<short>(ref e) ||
+                        TryUnderlying<ushort>(ref e);
 
-        if (result.HasValue) {
-            return result.Value;
-        }
-
-        throw new NotSupportedException($"Enum underlying type {underlyingType} is not supported");
+        return result;
     }
 
     public static int TickInteractions(this List<IInteraction> interactions, IActor agent, string prefix) {
@@ -752,4 +750,16 @@ public static partial class CrawlerEx {
 
         return MenuRun($"{Name}", interactionsMenu.ToArray());
     }
+    public static Inventory Loot(this Inventory from, float? lootReturn) {
+        var loot = new Inventory();
+        foreach (var commodity in Enum.GetValues<Commodity>()) {
+            float x = Random.Shared.NextSingle();
+            loot[commodity] += from[commodity] * x * (lootReturn ?? Tuning.Game.LootReturn);
+        }
+        var lootableSegments = from.Segments.Where(s => s.Health > 0).ToArray();
+        loot.Segments.AddRange(lootableSegments
+            .Where(s => Random.Shared.NextDouble() < lootReturn));
+        return loot;
+    }
+
 }

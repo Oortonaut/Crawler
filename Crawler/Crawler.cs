@@ -203,7 +203,7 @@ public class Crawler: IActor {
                 !To(other).Surrendered &&
                 !IsDisarmed) {
 
-                var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction) {
+                var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction) {
                     ExpirationTime = Game.Instance.TimeSeconds + 300
                 };
                 StoredProposals.Add(extortion);
@@ -883,7 +883,7 @@ public class Crawler: IActor {
             !To(target).Surrendered &&
             !IsDisarmed) {
 
-            var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction) {
+            var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction) {
                 ExpirationTime = Game.Instance.TimeSeconds + 300
             };
             To(target).AddProposal(extortion);
@@ -933,8 +933,9 @@ public class Crawler: IActor {
     /// Called when this actor enters an encounter with existing actors
     /// </summary>
     public void Meet(IEnumerable<IActor> encounterActors) {
-        foreach (var actor in encounterActors) {
-            Greet(actor);
+        foreach (var actor in encounterActors.OfType<Crawler>()) {
+            actor.SetupBanditExtortion(this);
+            actor.SetupContrabandAndTaxes(this);
         }
     }
 
@@ -951,8 +952,8 @@ public class Crawler: IActor {
     /// Called when this actor leaves an encounter with remaining actors
     /// </summary>
     public void Leave(IEnumerable<IActor> encounterActors) {
-        foreach (var actor in encounterActors) {
-            Part(actor);
+        foreach (var actor in encounterActors.OfType<Crawler>()) {
+            actor.ExpireProposals(this);
         }
     }
 

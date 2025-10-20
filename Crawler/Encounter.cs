@@ -345,7 +345,7 @@ public class Encounter {
         Inv.Add(resource, amt);
 
         var resourceActor = new StaticActor(name, giftDesc, Faction.Independent, Inv, Location);
-        resourceActor.StoredProposals.Add(new ProposeHarvestFree(resourceActor, Inv, "H", verb));
+        resourceActor.StoredProposals.Add(new ProposeHarvestTake(resourceActor, Inv, "H", verb));
         AddActor(resourceActor);
     }
     public void GenerateHazard() {
@@ -424,7 +424,7 @@ public class Encounter {
         Risked.Add(penaltyType, penaltyAmt);
 
         var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent,  Promised, Location);
-        hazardActor.StoredProposals.Add(new ProposeLootRisk(
+        hazardActor.StoredProposals.Add(new ProposeLootPay(
             hazardActor,
             Risked,
             Tuning.Game.hazardNegativePayoffChance));

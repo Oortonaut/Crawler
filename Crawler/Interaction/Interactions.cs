@@ -37,19 +37,19 @@ public record HostilityInteraction(IActor Agent, IActor Subject, string Reason):
         Subject.Inv[Commodity.Morale] -= 2;
         return 1;
     }
-    public string? MessageFor(IActor viewer) => "";
+    public string? MessageFor(IActor viewer) => null;
     public string Description => $"Turn hostile against {Subject.Name}";
     public string OptionCode => "H";
 }
 
-public record AttackInteraction(IActor _attacker, IActor Defender): IInteraction {
+public record AttackDefendInteraction(IActor _attacker, IActor Defender): IInteraction {
     public InteractionMode Enabled(string args = "") => InteractionMode.Menu;
     public int Perform(string args = "") {
         var attacker = _attacker as Crawler;
         attacker!.Attack(Defender);
         return 1;
     }
-    public string? MessageFor(IActor viewer) => "";
+    public string? MessageFor(IActor viewer) => null;
     public string Description => $"Attack {Defender}";
     public string OptionCode => "A";
 }
@@ -121,10 +121,10 @@ public record ExchangeInteraction: IInteraction {
         return $"Give {sellerDesc} for {buyerDesc}";
     }
 
-    public string? MessageFor(IActor viewer) => "";
+    public string? MessageFor(IActor viewer) => null;
 }
 
-public record AcceptDemandInteraction(
+public record CooperateInteraction(
     IActor Agent,
     IActor Subject,
     IOffer Demand,
@@ -140,14 +140,14 @@ public record AcceptDemandInteraction(
         Agent.Message($"{Subject.Name} complies with your demand.");
 
         // Expire the proposal
-        if (Proposal is ProposeExtortion pe) pe.ExpirationTime = -1;
+        if (Proposal is ProposeAttackOrLoot pe) pe.ExpirationTime = -1;
         else if (Proposal is ProposeTaxes pt) pt.ExpirationTime = -1;
         else if (Proposal is ProposeContrabandSeizure pcs) pcs.ExpirationTime = -1;
         return 1;
     }
 
     public string? MessageFor(IActor viewer) =>
-        viewer == Subject ? Ultimatum : "";
+        viewer == Subject ? Ultimatum : null;
 
     public string Description => $"Accept: {Ultimatum}";
     public string OptionCode => "DA";
@@ -167,7 +167,7 @@ public record RefuseDemandInteraction(
         Agent.Message($"{Subject.Name} refuses your demand!");
 
         // Expire the proposal
-        if (Proposal is ProposeExtortion pe) pe.ExpirationTime = -1;
+        if (Proposal is ProposeAttackOrLoot pe) pe.ExpirationTime = -1;
         else if (Proposal is ProposeTaxes pt) pt.ExpirationTime = -1;
         else if (Proposal is ProposeContrabandSeizure pcs) pcs.ExpirationTime = -1;
 
@@ -178,7 +178,7 @@ public record RefuseDemandInteraction(
     }
 
     public string? MessageFor(IActor viewer) =>
-        viewer == Subject ? Ultimatum : "";
+        viewer == Subject ? Ultimatum : null;
 
     public string Description => $"Refuse: {Ultimatum}";
     public string OptionCode => "DR";
@@ -227,7 +227,7 @@ public record ContrabandInteraction(
     }
 
     public string? MessageFor(IActor viewer) =>
-        viewer == Subject ? Ultimatum : "";
+        viewer == Subject ? Ultimatum : null;
 
     public string Description => $"{Ultimatum}";
     public string OptionCode => "C";

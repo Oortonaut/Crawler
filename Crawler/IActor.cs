@@ -62,6 +62,9 @@ public interface IActor {
     Location Location { get; set; }
 
     // ===== Resources =====
+    /// <summary>Commodities and segments this actor is willing to trade</summary>
+    Inventory TradeInv { get; }
+
     /// <summary>Commodities and segments owned by this actor</summary>
     Inventory Inv { get; }
 
@@ -159,6 +162,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public string Name => name;
     public Faction Faction => faction;
     public Inventory Inv { get; } = inv;
+    public Inventory TradeInv => Inv;
     public EActorFlags Flags { get; set; } = EActorFlags.None;
     public Location Location { get; set; } = location;
     public bool Harvested => (Flags & EActorFlags.Looted) != 0;

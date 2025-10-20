@@ -687,7 +687,7 @@ public class Game {
     Crawler? _player;
     public Crawler Player => _player!;
     public List<IProposal> StoredProposals { get; } = [
-        new ProposeLootFree("L"),
+        new ProposeLootTake("L"),
         new ProposeAttackDefend("A"),
         new ProposeAcceptSurrender("S"),
         new ProposeRepairBuy("R"),

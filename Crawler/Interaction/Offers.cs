@@ -19,6 +19,28 @@ public interface IOffer {
     string Description { get; }
 }
 
+public record CompoundOffer(params IOffer[] subs): IOffer {
+    public virtual string Description => string.Join(", ", subs.Select(s => s.Description));
+    public override string ToString() => Description;
+    public virtual bool EnabledFor(IActor Agent, IActor Subject) => subs.All(s => s.EnabledFor(Agent, Subject));
+    public virtual void PerformOn(IActor Agent, IActor Subject) {
+        foreach (var sub in subs) {
+            sub.PerformOn(Agent, Subject);
+        }
+    }
+    public float ValueFor(IActor Agent) => subs.Sum(s => s.ValueFor(Agent));
+}
+
+public record LootOfferWrapper(IOffer offer): IOffer {
+    public virtual string Description => offer.Description;
+    public override string ToString() => $"{offer} (Loot)";
+    public virtual bool EnabledFor(IActor Agent, IActor Subject) => !Agent.HasFlag(EActorFlags.Looted) && offer.EnabledFor(Agent, Subject);
+    public virtual void PerformOn(IActor Agent, IActor Subject) {
+        offer.PerformOn(Agent, Subject);
+        Agent.Flags |= EActorFlags.Looted;
+    }
+    public float ValueFor(IActor Agent) => offer.ValueFor(Agent);
+}
 
 public record RepairOffer(
     IActor _agent,
@@ -96,7 +118,7 @@ public record SegmentOffer(Segment Segment): IOffer {
     public float ValueFor(IActor Agent) => Segment.Cost * Tuning.Economy.LocalMarkup(Segment.SegmentKind, Agent.Location);
 }
 
-// This offer moves the Delivered inventory from the agent to the subject.
+// This offer moves the Delivered inventory from the agent's trade inventory to the subjects main inventory.
 public record InventoryOffer(
     Inventory Delivered,
     Inventory? _promised = null) : IOffer {
@@ -104,10 +126,10 @@ public record InventoryOffer(
     public virtual string Description => Promised.ToString();
     public override string ToString() => Description;
     public Inventory Promised => _promised ?? Delivered;
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) => Agent.Inv.Contains(Delivered);
+    public virtual bool EnabledFor(IActor Agent, IActor Subject) => Agent.TradeInv.Contains(Delivered);
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         Subject.Inv.Add(Delivered);
-        Agent.Inv.Remove(Delivered);
+        Agent.TradeInv.Remove(Delivered);
         foreach (var segment in Delivered.Segments) {
             segment.Packaged = false;
         }
@@ -115,35 +137,8 @@ public record InventoryOffer(
     public float ValueFor(IActor Agent) => Promised.ValueAt(Agent.Location);
 }
 
-public record CompoundOffer(params IOffer[] subs): IOffer {
-    public virtual string Description => string.Join(", ", subs.Select(s => s.Description));
-    public override string ToString() => Description;
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) => subs.All(s => s.EnabledFor(Agent, Subject));
-    public virtual void PerformOn(IActor Agent, IActor Subject) {
-        foreach (var sub in subs) {
-            sub.PerformOn(Agent, Subject);
-        }
-    }
-    public float ValueFor(IActor Agent) => subs.Sum(s => s.ValueFor(Agent));
-}
-
-public record LootOffer(IActor Wreck, Inventory LootInv, string _description): InventoryOffer(LootInv) {
-    public LootOffer(IActor Wreck, float lootReturn, string _description): this(Wreck, MakeLootInv(Wreck.Inv, lootReturn), _description) {
-    }
-    public override void PerformOn(IActor Agent, IActor Subject) {
-        base.PerformOn(Agent, Subject);
-        Agent.Flags |= EActorFlags.Looted;
-    }
-    public static Inventory MakeLootInv(Inventory from, float? lootReturn) {
-        var loot = new Inventory();
-        foreach (var commodity in Enum.GetValues<Commodity>()) {
-            float x = Random.Shared.NextSingle();
-            loot[commodity] += from[commodity] * x * (lootReturn ?? Tuning.Game.LootReturn);
-        }
-        var lootableSegments = from.Segments.Where(s => s.Health > 0).ToArray();
-        loot.Segments.AddRange(lootableSegments
-            .Where(s => Random.Shared.NextDouble() < lootReturn));
-        return loot;
-    }
-    public override string Description => _description;
+public record LootOffer(IActor Wreck, Inventory LootInv)
+    : LootOfferWrapper(new InventoryOffer(LootInv)) {
+    public LootOffer(IActor Wreck, float lootReturn): this(Wreck, Wreck.Inv.Loot(lootReturn)) { }
+    public override string Description => $"{base.Description} from {Wreck.Name}";
 }

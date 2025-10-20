@@ -7,7 +7,7 @@
 public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"): IProposal {
     public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Seller) => true;
-    public bool SubjectCapable(IActor Buyer) => true;
+    public bool SubjectCapable(IActor subject) => true;
     public bool InteractionCapable(IActor Seller, IActor Buyer) =>
         Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
     public IEnumerable<IInteraction> GetInteractions(IActor Seller, IActor Buyer) {
@@ -24,7 +24,7 @@ public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"):
 public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"): IProposal {
     public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Buyer) => true;
-    public bool SubjectCapable(IActor Seller) => true;
+    public bool SubjectCapable(IActor subject) => true;
     public bool InteractionCapable(IActor Buyer, IActor Seller) =>
         Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
     public IEnumerable<IInteraction> GetInteractions(IActor Buyer, IActor Seller) {
