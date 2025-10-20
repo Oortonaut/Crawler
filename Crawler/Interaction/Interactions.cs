@@ -124,7 +124,7 @@ public record AcceptDemandInteraction(
         Agent.Message($"{Subject.Name} complies with your demand.");
 
         // Clear ultimatum timer
-        Agent.To(Subject).UltimatumTime = 0;
+        //Agent.To(Subject).UltimatumTime = 0;
         return 1;
     }
 
@@ -145,7 +145,7 @@ public record RefuseDemandInteraction(
         Agent.Message($"{Subject.Name} refuses your demand!");
 
         // Clear ultimatum timer
-        Agent.To(Subject).UltimatumTime = 0;
+        //Agent.To(Subject).UltimatumTime = 0;
 
         if (Consequence.Enabled()) {
             Consequence.Perform();

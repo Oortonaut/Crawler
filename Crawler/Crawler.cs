@@ -4,17 +4,37 @@ using System.Runtime.CompilerServices;
 
 namespace Crawler;
 
+
 public class ActorToActor {
+    [Flags]
+    public enum EFlags {
+        Hostile = 1 << 0,
+        Surrendered = 1 << 1,
+        Spared = 1 << 2,
+        Betrayed = 1 << 3,
+    }
+    public EFlags Flags;
     public bool WasHostile => DamageCreated > 0;
     public bool WasDamaged => DamageTaken > 0; // Track if we've taken any damage from them
-    public bool Hostile = false; // Are we hostile
-    public bool Surrendered = false;
+    public bool Hostile {
+        get => Flags.HasFlag(EFlags.Hostile);
+        set => Flags.SetFlag(EFlags.Hostile, value);
+    }
+    public bool Surrendered {
+        get => Flags.HasFlag(EFlags.Surrendered);
+        set => Flags.SetFlag(EFlags.Surrendered, value);
+    }
+    public bool Spared {
+        get => Flags.HasFlag(EFlags.Spared);
+        set => Flags.SetFlag(EFlags.Spared, value);
+    }
+    public bool Betrayed {
+        get => Flags.HasFlag(EFlags.Betrayed);
+        set => Flags.SetFlag(EFlags.Betrayed, value);
+    }
     public int DamageCreated = 0;
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
-
-
-    public long UltimatumTime = 0;
 
     public int StandingPositive = 0;
     public int StandingNegative = 0;
@@ -32,8 +52,8 @@ public class Crawler: IActor {
         float fuelPerHr = crawler.FuelPerHr;
         float hoursOfFuel = supplyDays * 24;
         float initialFuel = fuelPerHr * hoursOfFuel;
-        float mileageFuel = 10 * supplyDays * crawler.FuelPerHr;
-        crawler.Inv[Commodity.Fuel] += initialFuel;
+        float mileageFuel = 25 * supplyDays * crawler.FuelPerKm; // 25 km per day
+        crawler.Inv[Commodity.Fuel] += initialFuel + mileageFuel;
 
         return crawler;
     }
@@ -124,20 +144,20 @@ public class Crawler: IActor {
                 Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
                 !To(other).Hostile &&
                 !To(other).Surrendered &&
-                !IsDisarmed &&
-                To(other).UltimatumTime == 0) { // Only set if not already set
+                !IsDisarmed) {
+                //&& To(other).UltimatumTime == 0) { // Only set if not already set
 
                 var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction);
                 StoredProposals.Add(extortion);
 
                 // Set ultimatum timer (e.g., 5 minutes = 300 seconds)
-                To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
+                //To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
             }
         }
 
         // Settlements and civilian factions scan for contraband
         if ((Flags & EActorFlags.Settlement) != 0 || Faction.IsCivilian() || Faction == Faction.Independent) {
-            if (other.Faction == Faction.Player && !To(other).Hostile && To(other).UltimatumTime == 0) {
+            if (other.Faction == Faction.Player && !To(other).Hostile) { ///} && To(other).UltimatumTime == 0) {
                 var contraband = ScanForContraband(other);
                 if (!contraband.IsEmpty) {
                     float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
@@ -145,7 +165,7 @@ public class Crawler: IActor {
                     StoredProposals.Add(seizure);
 
                     // Set ultimatum timer
-                    To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
+                    //To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
                 }
 
                 // Also check for taxes if this is a settlement in own territory
@@ -157,7 +177,7 @@ public class Crawler: IActor {
                     StoredProposals.Add(taxes);
 
                     // Set ultimatum timer
-                    To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
+                    //To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
                 }
             }
         }
@@ -473,6 +493,9 @@ public class Crawler: IActor {
         }
         if (relation.Surrendered) {
             Adjs.Add("Surrendered");
+        }
+        if (relation.Spared) {
+            Adjs.Add("Spared");
         }
         var result = StateString();
         if (Adjs.Any()) {

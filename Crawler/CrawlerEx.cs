@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Crawler;
 using System.Drawing;
@@ -629,8 +630,13 @@ public static partial class CrawlerEx {
             attacker.Message($"{attacker.Name} attacks {defender.Name}:");
             attacker.To(defender).Hostile = true;
 
-            if (defender.SurrenderedTo(attacker)) {
-                ++attacker.EvilPoints;
+            if (attacker.To(defender).Spared) {
+                if (!attacker.To(defender).Betrayed) {
+                    attacker.To(defender).Betrayed = true;
+                    ++attacker.EvilPoints;
+                    attacker.Message($"You betrayed {defender.Name}");
+                    defender.Message($"You were betrayed by {attacker.Name}");
+                }
             }
 
             defender.ReceiveFire(attacker, fire);
@@ -658,4 +664,35 @@ public static partial class CrawlerEx {
         ( byte ) Math.Clamp(c.G* s, 0, 255),
         ( byte ) Math.Clamp(c.B * s, 0, 255));
     public static float Length(this Point point) => MathF.Sqrt(point.X * point.X + point.Y * point.Y);
+    public static TEnum ClearFlag<TEnum>(this TEnum e, TEnum flags) where TEnum : struct, Enum => SetFlag(e, flags, false);
+    public static TEnum SetFlag<TEnum>(this TEnum e, TEnum flags, bool p = true)
+        where TEnum : struct, Enum
+    {
+        var underlyingType = Enum.GetUnderlyingType(typeof(TEnum));
+
+        TEnum? TryUnderlying<T>() where T : unmanaged {
+            if (underlyingType == typeof(T)) {
+                int eVal = Unsafe.As<TEnum, int>(ref e);
+                int flagsVal = Unsafe.As<TEnum, int>(ref flags);
+                int result = p ? eVal | flagsVal : eVal & ~flagsVal;
+                return Unsafe.As<int, TEnum>(ref result);
+            }
+            return null;
+        }
+
+        TEnum? result = TryUnderlying<int>() ??
+                        TryUnderlying<uint>() ??
+                        TryUnderlying<long>() ??
+                        TryUnderlying<ulong>() ??
+                        TryUnderlying<byte>() ??
+                        TryUnderlying<sbyte>() ??
+                        TryUnderlying<short>() ??
+                        TryUnderlying<ushort>();
+
+        if (result.HasValue) {
+            return result.Value;
+        }
+
+        throw new NotSupportedException($"Enum underlying type {underlyingType} is not supported");
+    }
 }

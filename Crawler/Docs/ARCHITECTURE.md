@@ -9,6 +9,7 @@
 - **Need the old comprehensive doc?** → [../Architecture.md](../Architecture.md) (deprecated, kept for reference)
 
 ## Recent Changes
+- **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed) using SetFlag/HasFlag pattern
 - **2025-10-19**: Replaced InteractionCapability enum with bool across proposals - simplified from three-state (Disabled, Possible, Mandatory) to two-state (enabled/disabled)
 - **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
 - **2025-01-19**: Mandatory interactions now use ultimatum timers

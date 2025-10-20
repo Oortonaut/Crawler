@@ -39,6 +39,7 @@ public record AcceptSurrenderOffer(float value, string _description): IOffer {
         Winner.Message($"{Loser.Name} has surrendered to you . {Tuning.Crawler.MoraleSurrenderedTo} Morale");
         Loser.Message($"You have surrendered to {Winner.Name}. {Tuning.Crawler.MoraleSurrendered} Morale");
         Loser.To(Winner).Surrendered = true;
+        Winner.To(Loser).Spared = true;
         Loser.To(Winner).Hostile = false;
         Winner.To(Loser).Hostile = false;
         Winner.Inv[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;

@@ -13,6 +13,7 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed)
 - **2025-01-19**: Added UltimatumTime to ActorToActor for mandatory interactions
 
 ---
@@ -76,14 +77,26 @@ interface IActor {
 
 ## ActorToActor (Relationship State)
 
-**File:** `Crawler.cs:7-22`
+**File:** `Crawler.cs:8-43`
 **Purpose:** Track relationship between two actors
 
 ```csharp
 class ActorToActor {
-    // ===== Relationship Status =====
-    bool Hostile = false;           // Currently hostile to each other
-    bool Surrendered = false;       // This actor surrendered to other
+    // ===== Flags Enum =====
+    [Flags]
+    enum EFlags {
+        Hostile = 1 << 0,       // Currently hostile to each other
+        Surrendered = 1 << 1,   // This actor surrendered to other
+        Spared = 1 << 2,        // This actor was spared by other
+        Betrayed = 1 << 3,      // Trust was betrayed
+    }
+    EFlags Flags;
+
+    // ===== Flag-based Properties =====
+    bool Hostile { get; set; }      // Uses HasFlag/SetFlag pattern
+    bool Surrendered { get; set; }  // Uses HasFlag/SetFlag pattern
+    bool Spared { get; set; }       // Uses HasFlag/SetFlag pattern
+    bool Betrayed { get; set; }     // Uses HasFlag/SetFlag pattern
 
     // ===== Damage History =====
     bool WasHostile => DamageCreated > 0;   // Ever attacked them
@@ -92,9 +105,6 @@ class ActorToActor {
     int DamageCreated = 0;          // Total potential damage sent
     int DamageInflicted = 0;        // Total damage that hit
     int DamageTaken = 0;            // Total damage received
-
-    // ===== Ultimatum Tracking =====
-    long UltimatumTime = 0;         // When ultimatum expires (0 = none)
 
     // ===== Trust Calculation =====
     int StandingPositive = 0;       // Positive interaction points
@@ -132,19 +142,20 @@ if (Faction == Bandit && to.Faction == Player) {
 }
 ```
 
-**Ultimatum Tracking:**
+**Flag Usage:**
 ```csharp
-// Set ultimatum (5 minutes)
-To(player).UltimatumTime = Game.Instance.TimeSeconds + 300;
+// Set flags
+relation.Hostile = true;
+relation.Surrendered = true;
+relation.Spared = true;
 
-// Check if active
-if (To(player).UltimatumTime > 0 &&
-    Game.Instance.TimeSeconds < To(player).UltimatumTime) {
-    // Ultimatum still active
+// Check flags
+if (relation.Hostile) {
+    // Combat logic
 }
-
-// Clear ultimatum
-To(player).UltimatumTime = 0;
+if (relation.Surrendered && relation.Betrayed) {
+    // Trust penalty
+}
 ```
 
 ---

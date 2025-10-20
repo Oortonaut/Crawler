@@ -96,20 +96,20 @@ public class Encounter {
                 string timeRemaining = "";
                 if (actor is Crawler crawler) {
                     var relation = crawler.To(agent);
-                    if (relation.UltimatumTime > 0) {
-                        long remaining = relation.UltimatumTime - Game.Instance.TimeSeconds;
-                        if (remaining > 0) {
-                            timeRemaining = $" [Time: {remaining}s]";
-                        }
-                    }
+                    // if (relation.UltimatumTime > 0) {
+                    //     long remaining = relation.UltimatumTime - Game.Instance.TimeSeconds;
+                    //     if (remaining > 0) {
+                    //         timeRemaining = $" [Time: {remaining}s]";
+                    //     }
+                    // }
                 } else if (agent is Crawler agentCrawler) {
                     var relation = agentCrawler.To(actor);
-                    if (relation.UltimatumTime > 0) {
-                        long remaining = relation.UltimatumTime - Game.Instance.TimeSeconds;
-                        if (remaining > 0) {
-                            timeRemaining = $" [Time: {remaining}s]";
-                        }
-                    }
+                    //if (relation.UltimatumTime > 0) {
+//                        long remaining = relation.UltimatumTime - Game.Instance.TimeSeconds;
+//                        if (remaining > 0) {
+//                            timeRemaining = $" [Time: {remaining}s]";
+//                        }
+                    //}
                 }
 
                 result.Add(new ActionMenuItem(shortcut,
@@ -659,7 +659,8 @@ public class Encounter {
                 // ONLY if both actors are in THIS encounter
                 if (actor is Crawler actorCrawler && other.Location == actor.Location) {
                     var relation = actorCrawler.To(other);
-                    if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds >= relation.UltimatumTime) {
+                    //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds >= relation.UltimatumTime) {
+                    {
                         // Ultimatum expired - find the proposal and trigger refuse consequence
                         foreach (var proposal in actorCrawler.Proposals()) {
                             if (proposal.InteractionCapable(actor, other)) {

@@ -176,9 +176,9 @@ public record ProposeDemand(
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
-        if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return true;
-        }
+        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
+          //  return true;
+        //}
 
         return false;
     }
@@ -209,9 +209,9 @@ public record ProposeExtortion(float DemandFraction = 0.5f): IProposal {
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
-        if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return true;
-        }
+        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
+//            return true;
+  //      }
 
         return false; // Not active unless ultimatum is set
     }
@@ -271,9 +271,9 @@ public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
-        if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return true;
-        }
+        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
+          //  return true;
+        //}
 
         return false; // Not active unless ultimatum is set
     }
@@ -317,9 +317,9 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
-        if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return true;
-        }
+        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
+        //    return true;
+        //}
 
         return false; // Not active unless ultimatum is set
     }
