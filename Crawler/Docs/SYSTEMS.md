@@ -13,6 +13,7 @@
 - [Tick System](#tick-system)
 
 ## Recent Changes
+- **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
 - **2025-01-19**: Refactored InteractionCapability to use enum (Disabled/Possible/Mandatory)
 - **2025-01-19**: ProposeDemand now yields separate Accept/Refuse interactions
 
@@ -20,7 +21,7 @@
 
 ## Proposal/Interaction System
 
-**Files:** `Trade.cs`, `Proposals.cs`
+**Files:** `Interaction/Interactions.cs`, `Interaction/Offers.cs`, `Interaction/Proposals.cs`, `Interaction/Trade.cs`
 **Key Innovation:** Zero coupling between actors and interaction implementations
 
 ### Three-Level Design

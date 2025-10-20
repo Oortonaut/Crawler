@@ -1,6 +1,6 @@
 # Crawler Architecture
 
-**Last Updated:** 2025-01-19
+**Last Updated:** 2025-10-19
 
 ## Quick Navigation
 - **Looking for system details?** → [SYSTEMS.md](SYSTEMS.md)
@@ -9,6 +9,7 @@
 - **Need the old comprehensive doc?** → [../Architecture.md](../Architecture.md) (deprecated, kept for reference)
 
 ## Recent Changes
+- **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
 - **2025-01-19**: InteractionCapability system refactored - mandatory interactions now use enum and ultimatum timers
 - **2025-01-19**: Documentation split into focused files for easier maintenance
 

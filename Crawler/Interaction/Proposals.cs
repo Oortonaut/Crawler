@@ -1,25 +1,55 @@
 ﻿namespace Crawler;
 
-public record LootOffer(IActor Wreck, Inventory LootInv, string _description): InventoryOffer(LootInv) {
-    public LootOffer(IActor Wreck, float lootReturn, string _description): this(Wreck, MakeLootInv(Wreck.Inv, lootReturn), _description) {
-    }
-    public override void PerformOn(IActor Agent, IActor Subject) {
-        base.PerformOn(Agent, Subject);
-        Agent.Flags |= EActorFlags.Looted;
-    }
-    public static Inventory MakeLootInv(Inventory from, float? lootReturn) {
-        var loot = new Inventory();
-        foreach (var commodity in Enum.GetValues<Commodity>()) {
-            float x = Random.Shared.NextSingle();
-            loot[commodity] += from[commodity] * x * (lootReturn ?? Tuning.Game.LootReturn);
-        }
-        var lootableSegments = from.Segments.Where(s => s.Health > 0).ToArray();
-        loot.Segments.AddRange(lootableSegments
-            .Where(s => Random.Shared.NextDouble() < lootReturn));
-        return loot;
-    }
-    public override string Description => _description;
+/// <summary>
+/// Indicates availability and urgency of an interaction.
+/// See: docs/SYSTEMS.md#interaction-capability-enum
+/// </summary>
+public enum InteractionCapability {
+    /// <summary>Not available (conditions not met)</summary>
+    Disabled,
+    /// <summary>Available but optional</summary>
+    Possible,
+    /// <summary>Time-limited demand requiring immediate response (uses ActorToActor.UltimatumTime)</summary>
+    Mandatory,
 }
+
+/// <summary>
+/// Three-level interaction system for actor interactions.
+/// Proposals check capabilities and generate IInteractions.
+/// See: docs/SYSTEMS.md#proposalinteraction-system
+/// </summary>
+public interface IProposal {
+    /// <summary>Can the agent make this proposal?</summary>
+    bool AgentCapable(IActor Agent);
+
+    /// <summary>Can the subject receive this proposal?</summary>
+    bool SubjectCapable(IActor Subject);
+
+    /// <summary>
+    /// Returns interaction availability: Disabled, Possible, or Mandatory.
+    /// Mandatory interactions are shown prominently with countdown timers.
+    /// </summary>
+    InteractionCapability InteractionCapable(IActor Agent, IActor Subject);
+
+    /// <summary>Display description for menus</summary>
+    string Description { get; }
+
+    /// <summary>
+    /// Generate concrete interactions (assumes all capability checks passed).
+    /// May yield multiple interactions (e.g., Accept and Refuse for demands).
+    /// </summary>
+    IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject);
+}
+
+public static class IProposalEx {
+    public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) =>
+        proposal.AgentCapable(Agent) &&
+        proposal.SubjectCapable(Subject) &&
+        proposal.InteractionCapable(Agent, Subject) != InteractionCapability.Disabled;
+    public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) =>
+        proposal.Test(Agent, Subject) ? proposal.GetInteractions(Agent, Subject) : [];
+}
+
 // I propose that I give you my loot
 record ProposeLootFree(string OptionCode, string verb = "Loot"): IProposal {
     public bool AgentCapable(IActor Agent) =>
@@ -83,16 +113,6 @@ public record ProposeAttackDefend(string Description): IProposal {
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new AttackInteraction(Agent, Subject);
     }
-    public record AttackInteraction(IActor _attacker, IActor Defender) : IInteraction {
-        public bool Enabled(string args = "") => true;
-        public int Perform(string args = "") {
-            var attacker = _attacker as Crawler;
-            attacker!.Attack(Defender);
-            return 1;
-        }
-        public string Description => $"Attack {Defender}";
-        public string OptionCode => "A";
-    }
 }
 
 // I propose that I surrender to you
@@ -149,20 +169,6 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
             Winner, new AcceptSurrenderOffer(value, Description),
             Loser, new InventoryOffer(surrenderInv), OptionCode, Description);
     }
-    public record AcceptSurrenderOffer(float value, string _description): IOffer {
-        public string Description => _description;
-        public bool EnabledFor(IActor Agent, IActor Subject) => true;
-        public void PerformOn(IActor Winner, IActor Loser) {
-            Winner.Message($"{Loser.Name} has surrendered to you and a mutual cease fire is in effect. {Tuning.Crawler.MoraleSurrenderedTo} Morale");
-            Loser.Message($"You have surrendered to {Winner.Name} and a mutual cease fire is in effect. {Tuning.Crawler.MoraleSurrendered} Morale");
-            Loser.To(Winner).Surrendered = true;
-            Loser.To(Winner).Hostile = false;
-            Winner.To(Loser).Hostile = false;
-            Winner.Inv[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
-            Loser.Inv[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
-        }
-        public float ValueFor(IActor Agent) => value;
-    }
     public string Description => $"SurrenderAccept";
     public override string ToString() => Description;
 }
@@ -201,52 +207,6 @@ public record ProposeDemand(
     public string Description => Ultimatum;
     public override string ToString() => Description;
 
-    public record AcceptDemandInteraction(
-        IActor Agent,
-        IActor Subject,
-        IOffer Demand,
-        string Ultimatum): IInteraction {
-
-        public bool Enabled(string args = "") => Demand.EnabledFor(Subject, Agent);
-
-        public int Perform(string args = "") {
-            Demand.PerformOn(Subject, Agent);
-            Subject.Message($"You comply with {Agent.Name}'s demand and give {Demand.Description}.");
-            Agent.Message($"{Subject.Name} complies with your demand.");
-
-            // Clear ultimatum timer
-            Agent.To(Subject).UltimatumTime = 0;
-            return 1;
-        }
-
-        public string Description => $"Accept: {Ultimatum}";
-        public string OptionCode => "DA";
-    }
-
-    public record RefuseDemandInteraction(
-        IActor Agent,
-        IActor Subject,
-        IInteraction Consequence,
-        string Ultimatum): IInteraction {
-
-        public bool Enabled(string args = "") => true;
-
-        public int Perform(string args = "") {
-            Subject.Message($"You refuse {Agent.Name}'s demand!");
-            Agent.Message($"{Subject.Name} refuses your demand!");
-
-            // Clear ultimatum timer
-            Agent.To(Subject).UltimatumTime = 0;
-
-            if (Consequence.Enabled()) {
-                Consequence.Perform();
-            }
-            return 1;
-        }
-
-        public string Description => $"Refuse: {Ultimatum}";
-        public string OptionCode => "DR";
-    }
 }
 
 // Bandit extortion: "Hand over cargo or I attack"
@@ -290,7 +250,7 @@ public record ProposeExtortion(float DemandFraction = 0.5f): IProposal {
         // Create ProposeDemand interactions
         var demandProposal = new ProposeDemand(
             new InventoryOffer(demand),
-            (agent, subject) => new ProposeAttackDefend.AttackInteraction(agent, subject),
+            (agent, subject) => new AttackInteraction(agent, subject),
             ultimatum,
             (agent, subject) => true
         );
@@ -356,20 +316,6 @@ public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
     public string Description => "Demand taxes";
     public override string ToString() => Description;
 
-    // Simple consequence: mark as hostile
-    public record HostilityInteraction(IActor Agent, IActor Subject, string Reason): IInteraction {
-        public bool Enabled(string args = "") => true;
-        public int Perform(string args = "") {
-            Agent.To(Subject).Hostile = true;
-            Subject.To(Agent).Hostile = true;
-            Agent.Message($"{Subject.Name} {Reason}. You are now hostile.");
-            Subject.Message($"{Agent.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
-            Subject.Inv[Commodity.Morale] -= 2;
-            return 1;
-        }
-        public string Description => $"Turn hostile against {Subject.Name}";
-        public string OptionCode => "H";
-    }
 }
 
 // Contraband seizure: "Surrender prohibited goods or pay fine"
@@ -406,48 +352,6 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
 
     public string Description => "Seize contraband";
     public override string ToString() => Description;
-
-    public record ContrabandInteraction(
-        IActor Agent,
-        IActor Subject,
-        Inventory Contraband,
-        float PenaltyAmount,
-        string Ultimatum): IInteraction {
-
-        public bool Enabled(string args = "") => true;
-
-        public int Perform(string args = "") {
-            // "pay" means pay the fine, otherwise surrender contraband
-            bool payFine = args.Equals("pay", StringComparison.OrdinalIgnoreCase);
-
-            if (payFine && Subject.Inv[Commodity.Scrap] >= PenaltyAmount) {
-                // Pay the fine
-                Subject.Inv[Commodity.Scrap] -= PenaltyAmount;
-                Agent.Inv[Commodity.Scrap] += PenaltyAmount;
-                Subject.Message($"You pay {PenaltyAmount:F0}¢¢ fine to {Agent.Name} and keep your contraband.");
-                Agent.Message($"{Subject.Name} pays the fine.");
-                return 1;
-            } else if (!payFine && Subject.Inv.Contains(Contraband)) {
-                // Surrender contraband
-                Subject.Inv.Remove(Contraband);
-                Agent.Inv.Add(Contraband);
-                Subject.Message($"You surrender {Contraband} to {Agent.Name}.");
-                Agent.Message($"{Subject.Name} surrenders contraband.");
-                return 1;
-            } else {
-                // Can't comply - turn hostile
-                Subject.Message($"You can't comply with {Agent.Name}'s demands! They turn hostile.");
-                Agent.Message($"{Subject.Name} can't comply. Turning hostile.");
-                Agent.To(Subject).Hostile = true;
-                Subject.To(Agent).Hostile = true;
-                Subject.Inv[Commodity.Morale] -= 3;
-                return 1;
-            }
-        }
-
-        public string Description => $"{Ultimatum}";
-        public string OptionCode => "C";
-    }
 }
 
 // Player demands: Let player threaten vulnerable NPCs
@@ -483,7 +387,7 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
 
         var demandProposal = new ProposeDemand(
             new InventoryOffer(demand),
-            (agent, subject) => new ProposeAttackDefend.AttackInteraction(agent, subject),
+            (agent, subject) => new AttackInteraction(agent, subject),
             ultimatum,
             (agent, subject) => true
         );
@@ -522,17 +426,6 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
         }
     }
 
-    public record RepairOffer(
-        IActor _agent,
-        Segment SubjectSegment,
-        float price): IOffer {
-        public virtual string Description => $"Repair {SubjectSegment.StatusLine(_agent.Location)} ({SubjectSegment.Name})";
-        public virtual bool EnabledFor(IActor Agent, IActor Subject) =>
-            Subject.Inv.Segments.Contains(SubjectSegment) && SubjectSegment.Hits > 0;
-        public virtual void PerformOn(IActor Agent, IActor Subject) =>
-            --SubjectSegment.Hits;
-        public float ValueFor(IActor Agent) => price;
-    }
     public float Markup = Tuning.Trade.RepairMarkup();
     public override string ToString() => Description;
 }
