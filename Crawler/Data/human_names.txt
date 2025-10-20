@@ -6950,7 +6950,6 @@ medria
 meena
 meer
 meera
-meeting
 meg
 megan
 megen
@@ -7936,7 +7935,6 @@ pat
 patadm
 patch
 patches
-patching
 patchit
 patience
 patra
@@ -7975,8 +7973,6 @@ paxton
 payroll
 payton
 paz
-pcta
-pde
 peace
 peach
 pearce
@@ -8161,7 +8157,6 @@ presley
 preslie
 preston
 previn
-pricing
 primavera
 primitiva
 primo
@@ -10381,7 +10376,6 @@ wilow
 wilson
 wilton
 win
-windowing
 windy
 wing
 wing-ki
