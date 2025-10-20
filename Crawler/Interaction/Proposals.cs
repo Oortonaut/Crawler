@@ -1,19 +1,6 @@
 ﻿namespace Crawler;
 
 /// <summary>
-/// Indicates availability and urgency of an interaction.
-/// See: docs/SYSTEMS.md#interaction-capability-enum
-/// </summary>
-public enum InteractionCapability {
-    /// <summary>Not available (conditions not met)</summary>
-    Disabled,
-    /// <summary>Available but optional</summary>
-    Possible,
-    /// <summary>Time-limited demand requiring immediate response (uses ActorToActor.UltimatumTime)</summary>
-    Mandatory,
-}
-
-/// <summary>
 /// Three-level interaction system for actor interactions.
 /// Proposals check capabilities and generate IInteractions.
 /// See: docs/SYSTEMS.md#proposalinteraction-system
@@ -25,17 +12,15 @@ public interface IProposal {
     /// <summary>Can the subject receive this proposal?</summary>
     bool SubjectCapable(IActor Subject);
 
-    /// <summary>
-    /// Returns interaction availability: Disabled, Possible, or Mandatory.
-    /// Mandatory interactions are shown prominently with countdown timers.
-    /// </summary>
-    InteractionCapability InteractionCapable(IActor Agent, IActor Subject);
+    /// <summary>Can the combo interact? For performance, if no interaction is possible
+    /// then GetInteractions() shouldn't yield any.</summary>
+    bool InteractionCapable(IActor Agent, IActor Subject);
 
     /// <summary>Display description for menus</summary>
     string Description { get; }
 
     /// <summary>
-    /// Generate concrete interactions (assumes all capability checks passed).
+    /// Generate concrete interactions.
     /// May yield multiple interactions (e.g., Accept and Refuse for demands).
     /// </summary>
     IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject);
@@ -45,7 +30,7 @@ public static class IProposalEx {
     public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) =>
         proposal.AgentCapable(Agent) &&
         proposal.SubjectCapable(Subject) &&
-        proposal.InteractionCapable(Agent, Subject) != InteractionCapability.Disabled;
+        proposal.InteractionCapable(Agent, Subject);
     public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) =>
         proposal.Test(Agent, Subject) ? proposal.GetInteractions(Agent, Subject) : [];
 }
@@ -57,7 +42,7 @@ record ProposeLootFree(string OptionCode, string verb = "Loot"): IProposal {
         wreck.EndState != null &&
         wreck.Hasnt(EActorFlags.Looted);
     public bool SubjectCapable(IActor Subject) => true;
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) => InteractionCapability.Possible;
+    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{verb} {Agent.Name}";
         yield return new ExchangeInteraction(Agent, new LootOffer(Agent, Tuning.Game.LootReturn, description), Subject, new EmptyOffer(), OptionCode, description);
@@ -70,7 +55,7 @@ record ProposeLootFree(string OptionCode, string verb = "Loot"): IProposal {
 record ProposeHarvestFree(IActor Resource, Inventory Amount, string OptionCode, string verb): IProposal {
     public bool AgentCapable(IActor Agent) => Agent == Resource && (Agent.Flags & EActorFlags.Looted) == 0;
     public bool SubjectCapable(IActor Subject) => Subject != Resource;
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) => InteractionCapability.Possible;
+    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{verb} {Agent.Name}";
         yield return new ExchangeInteraction(Agent, new LootOffer(Agent, Agent.Inv, description), Subject, new EmptyOffer(), OptionCode, description);
@@ -89,7 +74,7 @@ record ProposeHarvestFree(IActor Resource, Inventory Amount, string OptionCode, 
 record ProposeLootRisk(IActor Resource, Inventory Risk, float Chance): IProposal {
     public bool AgentCapable(IActor Agent) => Agent == Resource && Agent.Hasnt(EActorFlags.Looted);
     public bool SubjectCapable(IActor Subject) => Subject != Resource;
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) => InteractionCapability.Possible;
+    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var impact = LootOffer.MakeLootInv(Risk, Chance);
         string description = impact.ToString();
@@ -106,10 +91,10 @@ record ProposeLootRisk(IActor Resource, Inventory Risk, float Chance): IProposal
 public record ProposeAttackDefend(string Description): IProposal {
     public bool AgentCapable(IActor Agent) => Agent is Crawler;
     public bool SubjectCapable(IActor Subject) => Subject.Faction is not Faction.Independent;
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) =>
+    public bool InteractionCapable(IActor Agent, IActor Subject) =>
         Agent.Faction is Faction.Player
-            ? InteractionCapability.Possible
-            : InteractionCapability.Disabled;
+            ? true
+            : false;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new AttackInteraction(Agent, Subject);
     }
@@ -155,12 +140,12 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
     public bool AgentCapable(IActor Winner) => true;
     public bool SubjectCapable(IActor Loser) =>
         Loser is Crawler loser && loser.IsVulnerable;
-    public InteractionCapability InteractionCapable(IActor Winner, IActor Loser) =>
+    public bool InteractionCapable(IActor Winner, IActor Loser) =>
         Winner != Loser &&
         Winner.To(Loser).Hostile &&
         !Loser.To(Winner).Surrendered
-            ? InteractionCapability.Possible
-            : InteractionCapability.Disabled;
+            ? true
+            : false;
     public IEnumerable<IInteraction> GetInteractions(IActor Winner, IActor Loser) {
         var surrenderInv = MakeSurrenderInv(Loser);
         string Description = $"{Loser.Name} Surrender";
@@ -185,17 +170,17 @@ public record ProposeDemand(
 
     public bool AgentCapable(IActor Agent) => true;
     public bool SubjectCapable(IActor Subject) => true;
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
-        if (Agent == Subject) return InteractionCapability.Disabled;
-        if (!(Condition?.Invoke(Agent, Subject) ?? true)) return InteractionCapability.Disabled;
+    public bool InteractionCapable(IActor Agent, IActor Subject) {
+        if (Agent == Subject) return false;
+        if (!(Condition?.Invoke(Agent, Subject) ?? true)) return false;
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
         if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return InteractionCapability.Mandatory;
+            return true;
         }
 
-        return InteractionCapability.Disabled;
+        return false;
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -217,18 +202,18 @@ public record ProposeExtortion(float DemandFraction = 0.5f): IProposal {
     public bool SubjectCapable(IActor Subject) =>
         Subject.Faction == Faction.Player;
 
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
-        if (Agent.To(Subject).Hostile) return InteractionCapability.Disabled; // Already hostile
-        if (Agent.To(Subject).Surrendered) return InteractionCapability.Disabled; // Surrendered
-        if (Subject.Inv.ValueAt(Subject.Location) <= 0) return InteractionCapability.Disabled; // No valuable cargo
+    public bool InteractionCapable(IActor Agent, IActor Subject) {
+        if (Agent.To(Subject).Hostile) return false; // Already hostile
+        if (Agent.To(Subject).Surrendered) return false; // Surrendered
+        if (Subject.Inv.ValueAt(Subject.Location) <= 0) return false; // No valuable cargo
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
         if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return InteractionCapability.Mandatory;
+            return true;
         }
 
-        return InteractionCapability.Disabled; // Not active unless ultimatum is set
+        return false; // Not active unless ultimatum is set
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -272,25 +257,25 @@ public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
     public bool SubjectCapable(IActor Subject) =>
         Subject.Faction == Faction.Player;
 
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
+    public bool InteractionCapable(IActor Agent, IActor Subject) {
         // Only tax if player is in the faction's territory
-        if (Agent.Location.Sector.ControllingFaction != Agent.Faction) return InteractionCapability.Disabled;
+        if (Agent.Location.Sector.ControllingFaction != Agent.Faction) return false;
 
         // Only tax if not already paid or hostile
-        if (Agent.To(Subject).Hostile) return InteractionCapability.Disabled;
+        if (Agent.To(Subject).Hostile) return false;
 
         // Only tax if player has cargo/scrap
         if (!(Subject.Inv.ValueAt(Subject.Location) > 0 || Subject.Inv[Commodity.Scrap] > 0)) {
-            return InteractionCapability.Disabled;
+            return false;
         }
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
         if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return InteractionCapability.Mandatory;
+            return true;
         }
 
-        return InteractionCapability.Disabled; // Not active unless ultimatum is set
+        return false; // Not active unless ultimatum is set
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -327,16 +312,16 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
     public bool SubjectCapable(IActor Subject) =>
         Subject.Faction == Faction.Player && Subject.Inv.Contains(Contraband);
 
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
-        if (Agent.To(Subject).Hostile) return InteractionCapability.Disabled;
+    public bool InteractionCapable(IActor Agent, IActor Subject) {
+        if (Agent.To(Subject).Hostile) return false;
 
         // Check if there's an active ultimatum
         var relation = Agent.To(Subject);
         if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-            return InteractionCapability.Mandatory;
+            return true;
         }
 
-        return InteractionCapability.Disabled; // Not active unless ultimatum is set
+        return false; // Not active unless ultimatum is set
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -362,12 +347,12 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
     public bool SubjectCapable(IActor Subject) =>
         Subject is Crawler target && target.IsVulnerable && Subject.Faction != Faction.Player;
 
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) =>
+    public bool InteractionCapable(IActor Agent, IActor Subject) =>
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Surrendered &&
         Subject.Inv.ValueAt(Subject.Location) > 0
-            ? InteractionCapability.Possible
-            : InteractionCapability.Disabled;
+            ? true
+            : false;
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         // Calculate demand: fraction of subject's valuable commodities
@@ -407,11 +392,11 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
     public bool SubjectCapable(IActor Subject) =>
         Subject is Crawler damaged &&
         damaged.Segments.Any(IsRepairable);
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) =>
+    public bool InteractionCapable(IActor Agent, IActor Subject) =>
         Agent.Faction == Faction.Independent ||
         Agent.Faction == Subject.Faction
-            ? InteractionCapability.Possible
-            : InteractionCapability.Disabled;
+            ? true
+            : false;
     public string Description => $"Repair subject segments";
     static bool IsRepairable(Segment segment) => segment.Hits > 0;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {

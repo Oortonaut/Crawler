@@ -8,10 +8,8 @@ public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"):
     public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Seller) => true;
     public bool SubjectCapable(IActor Buyer) => true;
-    public InteractionCapability InteractionCapable(IActor Seller, IActor Buyer) =>
-        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer)
-            ? InteractionCapability.Possible
-            : InteractionCapability.Disabled;
+    public bool InteractionCapable(IActor Seller, IActor Buyer) =>
+        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
     public IEnumerable<IInteraction> GetInteractions(IActor Seller, IActor Buyer) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;
@@ -26,10 +24,8 @@ public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"):
     public readonly float Cash = Commodity.Scrap.Round(cash);
     public bool AgentCapable(IActor Buyer) => true;
     public bool SubjectCapable(IActor Seller) => true;
-    public InteractionCapability InteractionCapable(IActor Buyer, IActor Seller) =>
-        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer)
-            ? InteractionCapability.Possible
-            : InteractionCapability.Disabled;
+    public bool InteractionCapable(IActor Buyer, IActor Seller) =>
+        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
     public IEnumerable<IInteraction> GetInteractions(IActor Buyer, IActor Seller) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;

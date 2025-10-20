@@ -52,7 +52,7 @@ public class Encounter {
         foreach (var actor in ActorsExcept(agent)) {
             // Check agent's proposals
             foreach (var proposal in agent.Proposals()) {
-                if (proposal.InteractionCapable(agent, actor) == InteractionCapability.Mandatory) {
+                if (proposal.InteractionCapable(agent, actor)) {
                     foreach (var interaction in proposal.GetInteractions(agent, actor)) {
                         mandatoryInteractions.Add((actor, interaction, proposal));
                     }
@@ -61,7 +61,7 @@ public class Encounter {
 
             // Check other actor's proposals
             foreach (var proposal in actor.Proposals()) {
-                if (proposal.InteractionCapable(actor, agent) == InteractionCapability.Mandatory) {
+                if (proposal.InteractionCapable(actor, agent)) {
                     foreach (var interaction in proposal.GetInteractions(actor, agent)) {
                         mandatoryInteractions.Add((actor, interaction, proposal));
                     }
@@ -70,12 +70,12 @@ public class Encounter {
 
             // Check global proposals
             foreach (var proposal in Game.Instance.StoredProposals) {
-                if (proposal.InteractionCapable(agent, actor) == InteractionCapability.Mandatory) {
+                if (proposal.InteractionCapable(agent, actor)) {
                     foreach (var interaction in proposal.GetInteractions(agent, actor)) {
                         mandatoryInteractions.Add((actor, interaction, proposal));
                     }
                 }
-                if (proposal.InteractionCapable(actor, agent) == InteractionCapability.Mandatory) {
+                if (proposal.InteractionCapable(actor, agent)) {
                     foreach (var interaction in proposal.GetInteractions(actor, agent)) {
                         mandatoryInteractions.Add((actor, interaction, proposal));
                     }
@@ -321,19 +321,19 @@ public class Encounter {
         var mandatoryInteractions = new List<IInteraction>();
 
         foreach (var proposal in agent.Proposals()) {
-            if (proposal.InteractionCapable(agent, subject) == InteractionCapability.Mandatory) {
+            if (proposal.InteractionCapable(agent, subject)) {
                 mandatoryInteractions.AddRange(proposal.GetInteractions(agent, subject));
             }
         }
 
         foreach (var proposal in subject.Proposals()) {
-            if (proposal.InteractionCapable(subject, agent) == InteractionCapability.Mandatory) {
+            if (proposal.InteractionCapable(subject, agent)) {
                 mandatoryInteractions.AddRange(proposal.GetInteractions(subject, agent));
             }
         }
 
         foreach (var proposal in Game.Instance.StoredProposals) {
-            if (proposal.InteractionCapable(agent, subject) == InteractionCapability.Mandatory) {
+            if (proposal.InteractionCapable(agent, subject)) {
                 mandatoryInteractions.AddRange(proposal.GetInteractions(agent, subject));
             }
         }
@@ -662,7 +662,7 @@ public class Encounter {
                     if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds >= relation.UltimatumTime) {
                         // Ultimatum expired - find the proposal and trigger refuse consequence
                         foreach (var proposal in actorCrawler.Proposals()) {
-                            if (proposal.InteractionCapable(actor, other) == InteractionCapability.Mandatory) {
+                            if (proposal.InteractionCapable(actor, other)) {
                                 // Get the refuse interaction and execute it
                                 var interactions = proposal.GetInteractions(actor, other).ToList();
                                 var refuseInteraction = interactions.FirstOrDefault(i => i.OptionCode.Contains("DR"));

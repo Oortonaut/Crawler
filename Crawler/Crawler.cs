@@ -13,6 +13,7 @@ public class ActorToActor {
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
 
+
     public long UltimatumTime = 0;
 
     public int StandingPositive = 0;

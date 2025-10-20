@@ -9,8 +9,9 @@
 - **Need the old comprehensive doc?** → [../Architecture.md](../Architecture.md) (deprecated, kept for reference)
 
 ## Recent Changes
+- **2025-10-19**: Replaced InteractionCapability enum with bool across proposals - simplified from three-state (Disabled, Possible, Mandatory) to two-state (enabled/disabled)
 - **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
-- **2025-01-19**: InteractionCapability system refactored - mandatory interactions now use enum and ultimatum timers
+- **2025-01-19**: Mandatory interactions now use ultimatum timers
 - **2025-01-19**: Documentation split into focused files for easier maintenance
 
 ---
@@ -152,8 +153,8 @@ IProposal (capability check) → IInteraction (action) → IOffer (exchange)
 ```
 
 **Key Innovation:**
-- `InteractionCapability` enum: Disabled, Possible, Mandatory
-- Mandatory interactions display with countdown timers
+- Boolean capability checks determine if proposals are available
+- Mandatory interactions managed via ultimatum timers
 - Ultimatum system for time-limited demands
 
 **Benefits:**
