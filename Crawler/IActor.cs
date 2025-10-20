@@ -88,6 +88,38 @@ public interface IActor {
     /// <summary>Get visit tracking for a location</summary>
     ActorLocation To(Location loc);
 
+    /// <summary>
+    /// Initialize relationship when actors first meet (called once per side per actor pair).
+    /// Creates ActorToActor relation and sets initial faction-based state and proposals.
+    /// </summary>
+    ActorToActor NewRelation(IActor other);
+
+    /// <summary>
+    /// Initialize actor/location relationship on first visit. The Encounter will
+    /// have been created.
+    /// </summary>
+    ActorLocation NewRelation(Location other);
+
+    /// <summary>
+    /// Called when this actor enters an encounter with existing actors.
+    /// </summary>
+    void Meet(IEnumerable<IActor> encounterActors);
+
+    /// <summary>
+    /// Called when a new actor joins the encounter.
+    /// </summary>
+    void Greet(IActor newActor);
+
+    /// <summary>
+    /// Called when this actor leaves an encounter with remaining actors.
+    /// </summary>
+    void Leave(IEnumerable<IActor> encounterActors);
+
+    /// <summary>
+    /// Called when another actor leaves the encounter.
+    /// </summary>
+    void Part(IActor leavingActor);
+
     // ===== Interactions =====
     /// <summary>
     /// Available proposals this actor can make.
@@ -159,4 +191,10 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public EEndState? EndState => _endState;
     public bool Knows(IActor other) => false;
     public ActorToActor To(IActor other) => new();
+    public ActorToActor NewRelation(IActor other) => new();
+    public ActorLocation NewRelation(Location other) => new();
+    public void Meet(IEnumerable<IActor> encounterActors) { }
+    public void Greet(IActor newActor) { }
+    public void Leave(IEnumerable<IActor> encounterActors) { }
+    public void Part(IActor leavingActor) { }
 }

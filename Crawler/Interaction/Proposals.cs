@@ -1,4 +1,11 @@
-﻿namespace Crawler;
+namespace Crawler;
+
+/// <summary>
+/// Cached commodity enumeration to avoid repeated Enum.GetValues calls in hot paths
+/// </summary>
+static file class CommodityCache {
+    public static readonly Commodity[] AllCommodities = Enum.GetValues<Commodity>();
+}
 
 /// <summary>
 /// Three-level interaction system for actor interactions.
@@ -18,6 +25,12 @@ public interface IProposal {
 
     /// <summary>Display description for menus</summary>
     string Description { get; }
+
+    /// <summary>Expiration time for proposals</summary>
+    ///  0 for no expiration
+    ///  -1 or t < Game.Instance.Time for immediate expiration.
+    ///  t >= Game.Instance.Time for future termination.
+    long ExpirationTime { get; }
 
     /// <summary>
     /// Generate concrete interactions.
@@ -48,6 +61,7 @@ record ProposeLootFree(string OptionCode, string verb = "Loot"): IProposal {
         yield return new ExchangeInteraction(Agent, new LootOffer(Agent, Tuning.Game.LootReturn, description), Subject, new EmptyOffer(), OptionCode, description);
     }
     public string Description => $"Offer {verb}";
+    public long ExpirationTime => 0;
     public override string ToString() => Description;
 }
 
@@ -61,6 +75,7 @@ record ProposeHarvestFree(IActor Resource, Inventory Amount, string OptionCode, 
         yield return new ExchangeInteraction(Agent, new LootOffer(Agent, Agent.Inv, description), Subject, new EmptyOffer(), OptionCode, description);
     }
     public string Description => $"Propose {verb}";
+    public long ExpirationTime => 0;
     public override string ToString() => Description;
     // public record HarvestOffer(IActor Resource, Inventory Amount): InventoryOffer(Resource, Amount) {
     //     public override void PerformOn(IActor Subject) {
@@ -85,6 +100,7 @@ record ProposeLootRisk(IActor Resource, Inventory Risk, float Chance): IProposal
             Description);
     }
     public string Description => $"Explore {Resource.Name}";
+    public long ExpirationTime => 0;
     public override string ToString() => Description;
 }
 
@@ -98,6 +114,7 @@ public record ProposeAttackDefend(string Description): IProposal {
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new AttackInteraction(Agent, Subject);
     }
+    public long ExpirationTime => 0;
 }
 
 // I propose that I surrender to you
@@ -128,7 +145,7 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
         }
         if (surrenderInv.IsEmpty) {
             // Fallback - just offer half of everything
-            foreach (var commodity in Enum.GetValues<Commodity>()) {
+            foreach (var commodity in CommodityCache.AllCommodities) {
                 surrenderInv.Add(commodity, Loser.Inv[commodity] / 2);
             }
 
@@ -155,6 +172,7 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
             Loser, new InventoryOffer(surrenderInv), OptionCode, Description);
     }
     public string Description => $"SurrenderAccept";
+    public long ExpirationTime => 0;
     public override string ToString() => Description;
 }
 
@@ -168,25 +186,21 @@ public record ProposeDemand(
     string Ultimatum,
     Func<IActor, IActor, bool>? Condition = null): IProposal {
 
+    public long ExpirationTime { get; set; } = 0;
+
     public bool AgentCapable(IActor Agent) => true;
     public bool SubjectCapable(IActor Subject) => true;
     public bool InteractionCapable(IActor Agent, IActor Subject) {
         if (Agent == Subject) return false;
         if (!(Condition?.Invoke(Agent, Subject) ?? true)) return false;
 
-        // Check if there's an active ultimatum
-        var relation = Agent.To(Subject);
-        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-          //  return true;
-        //}
-
-        return false;
+        return Agent.To(Subject).PersistentProposals.Contains(this);
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var consequence = ConsequenceFn(Agent, Subject);
-        yield return new AcceptDemandInteraction(Agent, Subject, Demand, Ultimatum);
-        yield return new RefuseDemandInteraction(Agent, Subject, consequence, Ultimatum);
+        yield return new AcceptDemandInteraction(Agent, Subject, Demand, Ultimatum, this);
+        yield return new RefuseDemandInteraction(Agent, Subject, consequence, Ultimatum, this);
     }
 
     public string Description => Ultimatum;
@@ -196,6 +210,8 @@ public record ProposeDemand(
 
 // Bandit extortion: "Hand over cargo or I attack"
 public record ProposeExtortion(float DemandFraction = 0.5f): IProposal {
+    public long ExpirationTime { get; set; } = 0;
+
     public bool AgentCapable(IActor Agent) =>
         Agent is Crawler bandit && bandit.Faction == Faction.Bandit && !bandit.IsDisarmed;
 
@@ -203,23 +219,16 @@ public record ProposeExtortion(float DemandFraction = 0.5f): IProposal {
         Subject.Faction == Faction.Player;
 
     public bool InteractionCapable(IActor Agent, IActor Subject) {
-        if (Agent.To(Subject).Hostile) return false; // Already hostile
-        if (Agent.To(Subject).Surrendered) return false; // Surrendered
-        if (Subject.Inv.ValueAt(Subject.Location) <= 0) return false; // No valuable cargo
-
-        // Check if there's an active ultimatum
-        var relation = Agent.To(Subject);
-        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-//            return true;
-  //      }
-
-        return false; // Not active unless ultimatum is set
+        if (Agent.To(Subject).Hostile) return false;
+        if (Agent.To(Subject).Surrendered) return false;
+        if (Subject.Inv.ValueAt(Subject.Location) <= 0) return false;
+        return Agent.To(Subject).PersistentProposals.Any(p => p is ProposeExtortion);
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         // Calculate demand: fraction of subject's valuable commodities
         var demand = new Inventory();
-        foreach (var commodity in Enum.GetValues<Commodity>()) {
+        foreach (var commodity in CommodityCache.AllCommodities) {
             if (commodity == Commodity.Crew || commodity == Commodity.Morale) continue; // Don't demand crew/morale
             float amount = Subject.Inv[commodity] * DemandFraction;
             if (amount > 0) {
@@ -232,17 +241,9 @@ public record ProposeExtortion(float DemandFraction = 0.5f): IProposal {
         float value = demand.ValueAt(Subject.Location);
         string ultimatum = $"{Agent.Name} demands {value:F0}¢¢ worth of cargo or they will attack";
 
-        // Create ProposeDemand interactions
-        var demandProposal = new ProposeDemand(
-            new InventoryOffer(demand),
-            (agent, subject) => new AttackInteraction(agent, subject),
-            ultimatum,
-            (agent, subject) => true
-        );
-
-        foreach (var interaction in demandProposal.GetInteractions(Agent, Subject)) {
-            yield return interaction;
-        }
+        var consequence = new AttackInteraction(Agent, Subject);
+        yield return new AcceptDemandInteraction(Agent, Subject, new InventoryOffer(demand), ultimatum, this);
+        yield return new RefuseDemandInteraction(Agent, Subject, consequence, ultimatum, this);
     }
 
     public string Description => "Extort cargo";
@@ -251,6 +252,8 @@ public record ProposeExtortion(float DemandFraction = 0.5f): IProposal {
 
 // Civilian faction taxes: "Pay taxes or face hostility"
 public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
+    public long ExpirationTime { get; set; } = 0;
+
     public bool AgentCapable(IActor Agent) =>
         (Agent.Flags & EActorFlags.Settlement) != 0 && Agent.Faction.IsCivilian();
 
@@ -258,24 +261,10 @@ public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
         Subject.Faction == Faction.Player;
 
     public bool InteractionCapable(IActor Agent, IActor Subject) {
-        // Only tax if player is in the faction's territory
         if (Agent.Location.Sector.ControllingFaction != Agent.Faction) return false;
-
-        // Only tax if not already paid or hostile
         if (Agent.To(Subject).Hostile) return false;
-
-        // Only tax if player has cargo/scrap
-        if (!(Subject.Inv.ValueAt(Subject.Location) > 0 || Subject.Inv[Commodity.Scrap] > 0)) {
-            return false;
-        }
-
-        // Check if there's an active ultimatum
-        var relation = Agent.To(Subject);
-        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-          //  return true;
-        //}
-
-        return false; // Not active unless ultimatum is set
+        if (!(Subject.Inv.ValueAt(Subject.Location) > 0 || Subject.Inv[Commodity.Scrap] > 0)) return false;
+        return Agent.To(Subject).PersistentProposals.Any(p => p is ProposeTaxes);
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -286,16 +275,9 @@ public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
 
         string ultimatum = $"{Agent.Name} demands {taxAmount:F0}¢¢ in taxes for entering their territory";
 
-        var demandProposal = new ProposeDemand(
-            new ScrapOffer(taxAmount),
-            (agent, subject) => new HostilityInteraction(agent, subject, "refuses to pay taxes"),
-            ultimatum,
-            (agent, subject) => true
-        );
-
-        foreach (var interaction in demandProposal.GetInteractions(Agent, Subject)) {
-            yield return interaction;
-        }
+        var consequence = new HostilityInteraction(Agent, Subject, "refuses to pay taxes");
+        yield return new AcceptDemandInteraction(Agent, Subject, new ScrapOffer(taxAmount), ultimatum, this);
+        yield return new RefuseDemandInteraction(Agent, Subject, consequence, ultimatum, this);
     }
 
     public string Description => "Demand taxes";
@@ -305,6 +287,8 @@ public record ProposeTaxes(float TaxRate = 0.05f): IProposal {
 
 // Contraband seizure: "Surrender prohibited goods or pay fine"
 public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount): IProposal {
+    public long ExpirationTime { get; set; } = 0;
+
     public bool AgentCapable(IActor Agent) =>
         (Agent.Flags & EActorFlags.Settlement) != 0 ||
         (Agent.Faction == Faction.Independent || Agent.Faction.IsCivilian());
@@ -314,14 +298,7 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
 
     public bool InteractionCapable(IActor Agent, IActor Subject) {
         if (Agent.To(Subject).Hostile) return false;
-
-        // Check if there's an active ultimatum
-        var relation = Agent.To(Subject);
-        //if (relation.UltimatumTime > 0 && Game.Instance.TimeSeconds < relation.UltimatumTime) {
-        //    return true;
-        //}
-
-        return false; // Not active unless ultimatum is set
+        return Agent.To(Subject).PersistentProposals.Any(p => p is ProposeContrabandSeizure);
     }
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -332,7 +309,7 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
                           $"Surrender them or pay {PenaltyAmount:F0}¢¢ fine";
 
         // Create a choice: surrender contraband OR pay fine
-        yield return new ContrabandInteraction(Agent, Subject, Contraband, PenaltyAmount, ultimatum);
+        yield return new ContrabandInteraction(Agent, Subject, Contraband, PenaltyAmount, ultimatum, this);
     }
 
     public string Description => "Seize contraband";
@@ -357,7 +334,7 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         // Calculate demand: fraction of subject's valuable commodities
         var demand = new Inventory();
-        foreach (var commodity in Enum.GetValues<Commodity>()) {
+        foreach (var commodity in CommodityCache.AllCommodities) {
             if (commodity == Commodity.Crew || commodity == Commodity.Morale) continue;
             float amount = Subject.Inv[commodity] * DemandFraction;
             if (amount > 0) {
@@ -383,6 +360,7 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
     }
 
     public string Description => "Threaten for cargo";
+    public long ExpirationTime => 0;
     public override string ToString() => Description;
 }
 
@@ -412,5 +390,6 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
     }
 
     public float Markup = Tuning.Trade.RepairMarkup();
+    public long ExpirationTime => 0;
     public override string ToString() => Description;
 }

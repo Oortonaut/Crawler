@@ -16,6 +16,7 @@ public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"):
     }
     // Description is from theI  subjects POV
     public string Description => $"Buy {Stuff.Description} for {Cash}¢¢";
+    public long ExpirationTime => 0; // Trade proposals never expire
     public override string ToString() => Description;
 }
 
@@ -32,6 +33,7 @@ public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"):
     }
     // Description is from theI  subjects POV
     public string Description => $"Sell {Stuff.Description} for {Cash}¢¢";
+    public long ExpirationTime => 0; // Trade proposals never expire
     public override string ToString() => Description;
 }
 

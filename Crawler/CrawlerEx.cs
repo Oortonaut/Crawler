@@ -694,4 +694,62 @@ public static partial class CrawlerEx {
 
         throw new NotSupportedException($"Enum underlying type {underlyingType} is not supported");
     }
+
+    public static int TickInteractions(this List<IInteraction> interactions, IActor agent, string prefix) {
+        int result = 0;
+        foreach (var interaction in interactions) {
+            var msg = interaction.MessageFor(agent);
+            if (!string.IsNullOrEmpty(msg)) {
+                agent.Message(msg);
+            }
+            if (interaction.Enabled() == InteractionMode.Immediate) {
+                result += interaction.Perform();
+            }
+        }
+        return result;
+    }
+    public static List<MenuItem> InteractionMenuItems(this IActor agent, List<IInteraction> interactions, string title, string prefix) {
+        List<MenuItem> result = new();
+        if (interactions.Count == 0) {
+           result.Add(new MenuItem(prefix, $"{title}\n"));
+        } else {
+            var show = interactions.Count > 4 ? ShowArg.Hide : ShowArg.Show;
+            result.AddRange(interactions.DetailMenuItems(prefix, show));
+            result.Add(MenuItem.Sep);
+
+
+            bool anyEnabled = interactions.Any(i => i.Enabled() == InteractionMode.Menu);
+            result.Add(new ActionMenuItem(prefix,
+                title,
+                args => interactions.InteractionMenu(title, prefix, args).turns,
+                anyEnabled ? EnableArg.Enabled : EnableArg.Disabled));
+            result.Add(MenuItem.Sep);
+        }
+        return result;
+    }
+    public static IEnumerable<MenuItem> DetailMenuItems(this List<IInteraction> interactions, string prefix, ShowArg show, string args = "") {
+        var counters = new Dictionary<string, int>();
+        foreach (var interaction in interactions) {
+            int counter;
+            var shortcut = $"{prefix}{interaction.OptionCode}";
+            if (counters.ContainsKey(shortcut)) {
+                counter = ++counters[shortcut];
+            } else {
+                counter = counters[shortcut] = 1;
+            }
+            yield return new ActionMenuItem($"{shortcut}{counter}",
+                $"{interaction.Description}",
+                a => interaction.Perform(a),
+                interaction.Enabled().ToEnableArg(),
+                show);
+        }
+    }
+    public static (MenuItem item, int turns) InteractionMenu(this List<IInteraction> interactions, string Name, string prefix, string args) {
+        List<MenuItem> interactionsMenu = [
+            MenuItem.Cancel,
+            .. interactions.DetailMenuItems(prefix, ShowArg.Show, args),
+        ];
+
+        return MenuRun($"{Name}", interactionsMenu.ToArray());
+    }
 }

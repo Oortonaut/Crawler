@@ -130,13 +130,15 @@ public class Game {
         return PlayerEncounter().MenuItems(Player) ?? [];
     }
 
-    IEnumerable<MenuItem> LocalMenuItems(ShowArg showOption = ShowArg.Hide) {
+    IEnumerable<MenuItem> SectorMenuItems(ShowArg showOption = ShowArg.Hide) {
         var sector = PlayerLocation.Sector;
 
         bool isPinned = Player.Pinned();
         if (isPinned) {
             Player.Message("You are pinned.");
         }
+
+        yield return MenuItem.Cancel;
 
         float fuel = -1, time = -1;
 
@@ -156,7 +158,7 @@ public class Game {
             (fuel, time) = Player.FuelTimeTo(location);
             bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
             var enableArg = enabled ? EnableArg.Enabled : EnableArg.Disabled;
-            yield return new ActionMenuItem($"L{index}", $"To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
+            yield return new ActionMenuItem($"M{index}", $"To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
         }
 
         //////////////////////////
@@ -170,7 +172,7 @@ public class Game {
         }
     }
 
-    IEnumerable<MenuItem> WorldMapMenuItems(ShowArg showOption = ShowArg.Hide) {
+    IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
         var sector = PlayerLocation.Sector;
 
         yield return MenuItem.Cancel;
@@ -299,17 +301,19 @@ public class Game {
     public long TimeSeconds { get; private set; } = 1; // start at 1 so 0 can be an invalid time
 
     MenuItem GameMenu() {
-        Look();
-
-        var (selected, ap) = CrawlerEx.MenuRun("Game Menu", [
+        List<MenuItem> items = [
             .. GameMenuItems(),
             .. PlayerMenuItems(),
-            .. LocalMenuItems(),
-            .. WorldMapMenuItems(),
+            .. SectorMenuItems(),
+            .. GlobeMenuItems(),
             .. EncounterMenuItems(),
             MenuItem.Sep,
             new MenuItem("", "Choose"),
-        ]);
+        ];
+
+        Look();
+
+        var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
         AP -= ap;
         return selected;
     }
@@ -324,7 +328,7 @@ public class Game {
         CrawlerEx.ClearMessages();
 
         var (selected, ap) = CrawlerEx.MenuRun("Sector Map", [
-            .. LocalMenuItems(ShowArg.Show),
+            .. SectorMenuItems(ShowArg.Show),
         ]);
         return ap;
     }
@@ -336,7 +340,7 @@ public class Game {
         CrawlerEx.ClearMessages();
 
         var (selected, ap) = CrawlerEx.MenuRun("Global Map", [
-            .. WorldMapMenuItems(ShowArg.Show),
+            .. GlobeMenuItems(ShowArg.Show),
         ]);
         return ap;
     }

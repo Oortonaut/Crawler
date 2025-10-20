@@ -29,22 +29,74 @@ public class ActorToActor {
         return false;
     }
     public bool HasFlag(EFlags flag) => Flags.HasFlag(flag);
-    public EFlags SetFlag(EFlags flag, bool value = true) => Flags.SetFlag(flag, value);
+    public bool SetFlag(EFlags flag, bool value = true) {
+        if (HasFlag(flag) != value) {
+            Flags.SetFlag(flag, value);
+            InvalidateInteractions();
+        }
+        return value;
+    }
     public bool Hostile {
-        get => Flags.HasFlag(EFlags.Hostile);
-        set => Flags.SetFlag(EFlags.Hostile, value);
+        get => HasFlag(EFlags.Hostile);
+        set => SetFlag(EFlags.Hostile, value);
     }
     public bool Surrendered {
-        get => Flags.HasFlag(EFlags.Surrendered);
-        set => Flags.SetFlag(EFlags.Surrendered, value);
+        get => HasFlag(EFlags.Surrendered);
+        set => SetFlag(EFlags.Surrendered, value);
     }
     public bool Spared {
-        get => Flags.HasFlag(EFlags.Spared);
-        set => Flags.SetFlag(EFlags.Spared, value);
+        get => HasFlag(EFlags.Spared);
+        set => SetFlag(EFlags.Spared, value);
     }
     public int DamageCreated = 0;
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
+
+    // Persistent proposals (ultimatums) that have their own expiration
+    public List<IProposal> PersistentProposals { get; } = new();
+
+    /// <summary>Add a proposal to the persistent list</summary>
+    public void AddProposal(IProposal proposal) {
+        PersistentProposals.Add(proposal);
+        InvalidateInteractions();
+    }
+
+    /// <summary>Remove a specific proposal from the persistent list</summary>
+    public void RemoveProposal(IProposal proposal) {
+        PersistentProposals.Remove(proposal);
+        InvalidateInteractions();
+    }
+
+    /// <summary>Clear all persistent proposals (called when ultimatum is resolved)</summary>
+    public void ClearUltimatum() {
+        PersistentProposals.Clear();
+        InvalidateInteractions();
+    }
+
+    /// <summary>Remove expired proposals from the persistent list</summary>
+    public List<IProposal> ClearExpiredProposals(long currentTime) {
+        var expired = PersistentProposals
+            .Where(p => p.ExpirationTime != 0 && currentTime >= p.ExpirationTime)
+            .ToList();
+        foreach (var proposal in expired) {
+            PersistentProposals.Remove(proposal);
+        }
+        if (expired.Count > 0) InvalidateInteractions();
+        return expired;
+    }
+
+    /// <summary>Check if there's an active proposal</summary>
+    public bool HasActiveProposal() => PersistentProposals.Count > 0;
+
+    /// <summary>Get the first active proposal's expiration time (for display)</summary>
+    public long ActiveExpirationTime => PersistentProposals.FirstOrDefault()?.ExpirationTime ?? 0;
+
+    // Interaction caching to avoid O(N³) recalculation
+    public List<IInteraction> CachedInteractions { get; } = new();
+    public bool InteractionsDirty { get; set; } = true;
+
+    /// <summary>Mark interactions as needing recalculation</summary>
+    public void InvalidateInteractions() => InteractionsDirty = true;
 }
 
 public class Crawler: IActor {
@@ -150,27 +202,26 @@ public class Crawler: IActor {
                 !To(other).Hostile &&
                 !To(other).Surrendered &&
                 !IsDisarmed) {
-                //&& To(other).UltimatumTime == 0) { // Only set if not already set
 
-                var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction);
+                var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction) {
+                    ExpirationTime = Game.Instance.TimeSeconds + 300
+                };
                 StoredProposals.Add(extortion);
-
-                // Set ultimatum timer (e.g., 5 minutes = 300 seconds)
-                //To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
+                To(other).AddProposal(extortion);
             }
         }
 
         // Settlements and civilian factions scan for contraband
         if ((Flags & EActorFlags.Settlement) != 0 || Faction.IsCivilian() || Faction == Faction.Independent) {
-            if (other.Faction == Faction.Player && !To(other).Hostile) { ///} && To(other).UltimatumTime == 0) {
+            if (other.Faction == Faction.Player && !To(other).Hostile) {
                 var contraband = ScanForContraband(other);
                 if (!contraband.IsEmpty) {
                     float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
-                    var seizure = new ProposeContrabandSeizure(contraband, penalty);
+                    var seizure = new ProposeContrabandSeizure(contraband, penalty) {
+                        ExpirationTime = Game.Instance.TimeSeconds + 300
+                    };
                     StoredProposals.Add(seizure);
-
-                    // Set ultimatum timer
-                    //To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
+                    To(other).AddProposal(seizure);
                 }
 
                 // Also check for taxes if this is a settlement in own territory
@@ -178,11 +229,11 @@ public class Crawler: IActor {
                     Faction.IsCivilian() &&
                     Location.Sector.ControllingFaction == Faction) {
 
-                    var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
+                    var taxes = new ProposeTaxes(Tuning.Civilian.taxRate) {
+                        ExpirationTime = Game.Instance.TimeSeconds + 300
+                    };
                     StoredProposals.Add(taxes);
-
-                    // Set ultimatum timer
-                    //To(other).UltimatumTime = Game.Instance.TimeSeconds + 300;
+                    To(other).AddProposal(taxes);
                 }
             }
         }
@@ -784,7 +835,7 @@ public class Crawler: IActor {
     public ActorToActor To(IActor other) {
         return _relations.GetOrAddNewValue(other, () => NewRelation(other));
     }
-    ActorToActor NewRelation(IActor to) {
+    public ActorToActor NewRelation(IActor to) {
         var result = new ActorToActor();
         bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.GetEncounter().Faction is Faction.Independent;
         if (Faction is Faction.Bandit && to.Faction is Faction.Player && !isTradeSettlement) {
@@ -810,8 +861,107 @@ public class Crawler: IActor {
         }
         return result;
     }
+
     public ActorLocation To(Location location) {
-        return _locations.GetOrAddNewValue(location);
+        return _locations.GetOrAddNewValue(location, () => NewRelation(location));
+    }
+    public ActorLocation NewRelation(Location to) {
+        var result = new ActorLocation();
+        return result;
+    }
+
+    /// <summary>
+    /// Helper: Set up bandit extortion ultimatum if conditions are met
+    /// </summary>
+    void SetupBanditExtortion(IActor target) {
+        if (Faction != Faction.Bandit || target.Faction != Faction.Player) return;
+
+        float cargoValue = target.Inv.ValueAt(Location);
+        if (cargoValue >= Tuning.Bandit.minValueThreshold &&
+            Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
+            !To(target).Hostile &&
+            !To(target).Surrendered &&
+            !IsDisarmed) {
+
+            var extortion = new ProposeExtortion(Tuning.Bandit.demandFraction) {
+                ExpirationTime = Game.Instance.TimeSeconds + 300
+            };
+            To(target).AddProposal(extortion);
+        }
+    }
+
+    /// <summary>
+    /// Helper: Scan for contraband and set up seizure/tax ultimatums if needed
+    /// </summary>
+    void SetupContrabandAndTaxes(IActor target) {
+        if (!((Flags & EActorFlags.Settlement) != 0 || Faction.IsCivilian() || Faction == Faction.Independent))
+            return;
+
+        if (target.Faction != Faction.Player || To(target).Hostile)
+            return;
+
+        // Contraband scan
+        var contraband = ScanForContraband(target);
+        if (!contraband.IsEmpty) {
+            float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
+            var seizure = new ProposeContrabandSeizure(contraband, penalty) {
+                ExpirationTime = Game.Instance.TimeSeconds + 300
+            };
+            To(target).AddProposal(seizure);
+        }
+
+        // Taxes for settlements in own territory
+        if ((Flags & EActorFlags.Settlement) != 0 &&
+            Faction.IsCivilian() &&
+            Location.Sector.ControllingFaction == Faction) {
+
+            var taxes = new ProposeTaxes(Tuning.Civilian.taxRate) {
+                ExpirationTime = Game.Instance.TimeSeconds + 300
+            };
+            To(target).AddProposal(taxes);
+        }
+    }
+
+    /// <summary>
+    /// Helper: Expire all persistent proposals when leaving encounter
+    /// </summary>
+    void ExpireProposals(IActor other) {
+        To(other).PersistentProposals.Clear();
+    }
+
+    /// <summary>
+    /// Called when this actor enters an encounter with existing actors
+    /// </summary>
+    public void Meet(IEnumerable<IActor> encounterActors) {
+        foreach (var actor in encounterActors) {
+            Greet(actor);
+        }
+    }
+
+    /// <summary>
+    /// Called when a new actor joins the encounter
+    /// </summary>
+    public void Greet(IActor newActor) {
+        Message($"{newActor.Name} enters");
+        SetupBanditExtortion(newActor);
+        SetupContrabandAndTaxes(newActor);
+    }
+
+    /// <summary>
+    /// Called when this actor leaves an encounter with remaining actors
+    /// </summary>
+    public void Leave(IEnumerable<IActor> encounterActors) {
+        foreach (var actor in encounterActors) {
+            Part(actor);
+        }
+    }
+
+    /// <summary>
+    /// Called when another actor leaves the encounter
+    /// </summary>
+    public void Part(IActor leavingActor) {
+        ExpireProposals(leavingActor);
+        Message($"{leavingActor.Name} leaves");
     }
 
     // Accessor methods for save/load
