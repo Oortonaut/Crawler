@@ -13,6 +13,7 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2025-10-19**: Added `Betrayer` flag to `EFlags` enum; removed Standing/Trust fields from `ActorToActor`; added `Latch()`, `HasFlag()`, `SetFlag()` helper methods; removed `Betrayed` property (now uses `Betrayer` flag)
 - **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed)
 - **2025-01-19**: Added UltimatumTime to ActorToActor for mandatory interactions
 
@@ -88,15 +89,20 @@ class ActorToActor {
         Hostile = 1 << 0,       // Currently hostile to each other
         Surrendered = 1 << 1,   // This actor surrendered to other
         Spared = 1 << 2,        // This actor was spared by other
-        Betrayed = 1 << 3,      // Trust was betrayed
+        Betrayed = 1 << 3,      // Trust was betrayed (victim)
+        Betrayer = 1 << 4,      // Trust was betrayed (attacker)
     }
     EFlags Flags;
+
+    // ===== Helper Methods =====
+    bool Latch(EFlags flag, bool value = true);  // Set flag once, return true first time
+    bool HasFlag(EFlags flag);                    // Check if flag is set
+    EFlags SetFlag(EFlags flag, bool value = true);  // Set/clear flag
 
     // ===== Flag-based Properties =====
     bool Hostile { get; set; }      // Uses HasFlag/SetFlag pattern
     bool Surrendered { get; set; }  // Uses HasFlag/SetFlag pattern
     bool Spared { get; set; }       // Uses HasFlag/SetFlag pattern
-    bool Betrayed { get; set; }     // Uses HasFlag/SetFlag pattern
 
     // ===== Damage History =====
     bool WasHostile => DamageCreated > 0;   // Ever attacked them
@@ -105,15 +111,6 @@ class ActorToActor {
     int DamageCreated = 0;          // Total potential damage sent
     int DamageInflicted = 0;        // Total damage that hit
     int DamageTaken = 0;            // Total damage received
-
-    // ===== Trust Calculation =====
-    int StandingPositive = 0;       // Positive interaction points
-    int StandingNegative = 0;       // Negative interaction points
-
-    int Standing => StandingPositive - StandingNegative;
-
-    float Trust => 1 - (Min(StandingPositive, StandingNegative) /
-                       (Max(StandingPositive, StandingNegative) + 1e-12f));
 }
 ```
 
@@ -153,8 +150,11 @@ relation.Spared = true;
 if (relation.Hostile) {
     // Combat logic
 }
-if (relation.Surrendered && relation.Betrayed) {
-    // Trust penalty
+
+// Latch pattern - returns true only first time flag is set
+if (relation.Latch(ActorToActor.EFlags.Betrayed, true)) {
+    // Handle betrayal consequences (only once)
+    ++attacker.EvilPoints;
 }
 ```
 

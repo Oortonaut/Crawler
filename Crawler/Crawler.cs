@@ -12,10 +12,24 @@ public class ActorToActor {
         Surrendered = 1 << 1,
         Spared = 1 << 2,
         Betrayed = 1 << 3,
+        Betrayer = 1 << 4,
     }
     public EFlags Flags;
+
     public bool WasHostile => DamageCreated > 0;
     public bool WasDamaged => DamageTaken > 0; // Track if we've taken any damage from them
+
+    // Returns true the first time that value is true for the given flag,
+    // then sets the flag and returns false on subsequent calls.
+    public bool Latch(EFlags flag, bool value = true) {
+        if (!HasFlag(flag)) {
+            SetFlag(flag, value);
+            return value;
+        }
+        return false;
+    }
+    public bool HasFlag(EFlags flag) => Flags.HasFlag(flag);
+    public EFlags SetFlag(EFlags flag, bool value = true) => Flags.SetFlag(flag, value);
     public bool Hostile {
         get => Flags.HasFlag(EFlags.Hostile);
         set => Flags.SetFlag(EFlags.Hostile, value);
@@ -28,18 +42,9 @@ public class ActorToActor {
         get => Flags.HasFlag(EFlags.Spared);
         set => Flags.SetFlag(EFlags.Spared, value);
     }
-    public bool Betrayed {
-        get => Flags.HasFlag(EFlags.Betrayed);
-        set => Flags.SetFlag(EFlags.Betrayed, value);
-    }
     public int DamageCreated = 0;
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
-
-    public int StandingPositive = 0;
-    public int StandingNegative = 0;
-    public int Standing => StandingPositive - StandingNegative;
-    public float Trust => 1 - (Math.Min(StandingPositive, StandingNegative)/(Math.Max(StandingPositive, StandingNegative) + 1e-12f));
 }
 
 public class Crawler: IActor {

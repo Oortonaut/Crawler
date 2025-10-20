@@ -628,15 +628,14 @@ public static partial class CrawlerEx {
         var fire = attacker.CreateFire();
         if (fire.Any()) {
             attacker.Message($"{attacker.Name} attacks {defender.Name}:");
-            attacker.To(defender).Hostile = true;
+            var a2d = attacker.To(defender);
+            var d2a = defender.To(attacker);
+            a2d.Hostile = true;
 
-            if (attacker.To(defender).Spared) {
-                if (!attacker.To(defender).Betrayed) {
-                    attacker.To(defender).Betrayed = true;
-                    ++attacker.EvilPoints;
-                    attacker.Message($"You betrayed {defender.Name}");
-                    defender.Message($"You were betrayed by {attacker.Name}");
-                }
+            if (a2d.Spared && a2d.Latch(ActorToActor.EFlags.Betrayed, true)) {
+                ++attacker.EvilPoints;
+                attacker.Message($"You betrayed {defender.Name}");
+                defender.Message($"You were betrayed by {attacker.Name}");
             }
 
             defender.ReceiveFire(attacker, fire);

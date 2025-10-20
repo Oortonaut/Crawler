@@ -6,6 +6,9 @@
 - Use file-scoped namespaces
 - Use primary constructors where appropriate
 - Use collection expressions `[]` instead of `new List<>()`
+- Prefer `new ()` over `new T()`
+- Use the [Flags] attribute and HasFlag() and SetFlag() instead of bitwise operators
+- Prefer `var`
 
 ## Architecture Documentation
 
