@@ -145,9 +145,6 @@ public class Game {
         int index = 0;
         foreach (var location in sector.Locations) {
             ++index;
-            if (location == PlayerLocation) {
-                continue;
-            }
             float dist = PlayerLocation.Distance(location);
 
             string locationName = location.EncounterName(Player);
@@ -253,7 +250,7 @@ public class Game {
         return 0;
     }
     string DrawSectorMap() {
-        var height = 20;
+        var height = 10;
         var width = (5 * height) / 3;
         var sectorMapLines = Map.DumpSector(PlayerLocation.Sector.X, PlayerLocation.Sector.Y, width, height).Split('\n');
         var sectorMapWidth = sectorMapLines.Max(x => x.Length);
@@ -315,12 +312,11 @@ public class Game {
         return selected;
     }
     int SectorMap() {
+        var sector = PlayerLocation.Sector;
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
         Console.WriteLine(DrawSectorMap());
-        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
-        if (PlayerEncounter != null) {
-            Console.WriteLine(PlayerEncounter().ViewFrom(Player));
-        }
+        Console.WriteLine(sector.Look() + " " + PlayerLocation.PosString);
+        Console.WriteLine(PlayerEncounter().ViewFrom(Player));
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
 
@@ -341,8 +337,18 @@ public class Game {
         ]);
         return ap;
     }
+    string _SectorMapName() {
+        var sector = PlayerLocation.Sector;
+        var sectorMapName = sector.Name + " Map (";
+        foreach (var location in sector.Locations) {
+            var locationCode = Player.StyleFor(location).Format(location.Code);
+            sectorMapName += locationCode;
+        }
+        sectorMapName += Style.MenuNormal.Format(")");
+        return sectorMapName;
+    }
     IEnumerable<MenuItem> GameMenuItems() => [
-        new ActionMenuItem("M", "Sector Map", _ => SectorMap()),
+        new ActionMenuItem("M", _SectorMapName(), _ => SectorMap()),
         new ActionMenuItem("G", "Global Map", _ => WorldMap()),
         new ActionMenuItem("R", "Status Report", _ => Report()),
         new ActionMenuItem("K", "Skip Turn/Wait", args => Turn(args)),

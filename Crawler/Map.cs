@@ -33,6 +33,14 @@ public record Location(
     public float Population => Math.Clamp((MaxPopulation * (float)Math.Pow(0.005f, zipf)), 0, MaxPopulation);
     public float Wealth => wealth;
     public float TechLatitude => 2 * (1 - ((Position.Y + 0.5f) / Map.Height));
+    public string Code => Type switch {
+        EncounterType.None => ".",
+        EncounterType.Crossroads => "x",
+        EncounterType.Settlement => "o123456789ABCDEFGHIJK"[( int ) Math.Log2(Population)].ToString(),
+        EncounterType.Resource => "?",
+        EncounterType.Hazard => "!",
+        _ => "_",
+    };
 
     public Faction ChooseRandomFaction() {
         // Get base weights for this terrain type
@@ -462,18 +470,17 @@ public class Map {
         foreach (var (i, location) in sector.Locations.Index()) {
             int cx = (int)(CrawlerEx.Frac(location.Position.X) * (DrawWidth - 2));
             int cy = (int)(CrawlerEx.Frac(location.Position.Y) * (DrawHeight - 1));
-            sectorMap[cy, cx] = location.Type switch {
-                EncounterType.None => '.',
-                EncounterType.Crossroads => players.Any(c => c.Location == location) ? '@' : 'c',
-                EncounterType.Settlement => 'S',
-                EncounterType.Resource => '?',
-                EncounterType.Hazard => '!',
-                _ => '_',
-            };
-            var idx = (i + 1).ToString();
-            sectorMap[cy, cx + 1] = idx[0];
-            if (idx.Length > 1) {
-                sectorMap[cy, cx + 2] = idx[1];
+            sectorMap[cy + 1, cx] = location.Code[0];
+            if (players.Any(c => c.Location == location)) {
+                sectorMap[cy + 1, cx + 1] = '@';
+            }
+            var idx = "M" + (i + 1).ToString();
+            int col = cx;
+            foreach (var c in idx) {
+                sectorMap[cy, col] = c;
+                if (++col == DrawWidth) {
+                    break;
+                }
             }
         }
         string result = "";
@@ -524,7 +531,7 @@ public class Map {
 
                 // Mark settlements
                 foreach (var settlement in sector.Locations.Where(loc => loc.Type == EncounterType.Settlement)) {
-                    bottom += "o123456789ABCDEF"[(int)Math.Log(settlement.Population, 2)];
+                    bottom += settlement.Code;
                     ++bottomWidth;
                 }
 

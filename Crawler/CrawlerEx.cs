@@ -153,7 +153,7 @@ public static partial class CrawlerEx {
         Styles[Style.MenuInput] = Color.LightGray.On(menuBg);
         Styles[Style.MenuUnvisited] = Color.Aquamarine.On(menuBg);
         Styles[Style.MenuSomeVisited] = Color.CornflowerBlue.On(menuBg);
-        Styles[Style.MenuVisited] = Color.Sienna.On(menuBg);
+        Styles[Style.MenuVisited] = menuFg.On(menuBg);
         Styles[Style.MenuEmpty] = Color.DarkRed.On(menuBg);
 
 
@@ -654,6 +654,10 @@ public static partial class CrawlerEx {
         return value;
     }
     public static bool Visited(this IActor actor, Location location) => actor.Knows(location) && actor.To(location).Visited;
+    public static Style StyleFor(this IActor actor, Location location) =>
+        actor.Visited(location) ? Style.MenuVisited :
+        actor.Knows(location) ? Style.MenuSomeVisited :
+        Style.MenuUnvisited;
     public static int Visits(this IActor actor, Sector sector) => sector.Locations.Count(l => actor.Visited(l));
     public static Color Scale(this Color c, float s) => Color.FromArgb(
         c.A,
