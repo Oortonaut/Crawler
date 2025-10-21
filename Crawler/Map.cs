@@ -47,8 +47,10 @@ public record Location(
                 adjustedWeights[faction] = baseWeights[faction];
             } else if (faction == Sector.ControllingFaction) {
                 adjustedWeights[faction] = 2;
-            } else {
+            } else if (faction < Map.FactionEnd) {
                 adjustedWeights[faction] = 0.5f;
+            } else {
+                adjustedWeights[faction] = 0;
             }
         }
 
@@ -211,6 +213,8 @@ public class Map {
         AssignSectorFactions();
     }
 
+    public int NumFactions { get; protected set; }
+    public Faction FactionEnd { get; protected set; }
     void IdentifyFactionCapitals() {
         // Collect all settlement locations
         var settlementLocations = new List<Location>();
@@ -222,15 +226,15 @@ public class Map {
         // Sort by population descending
         settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).DistinctBy(loc => loc.Sector.Name).ToList();
 
-        int numFactions = Math.Min(Height * 3 / 4, 20);
-        Faction factionEnd = 1 + (Faction)Math.Min((int)Faction.Civilian19, (int)Faction.Civilian1 + numFactions - 1);
+        NumFactions = Math.Min(Height * 3 / 4, 20);
+        FactionEnd = 1 + (Faction)Math.Min((int)Faction.Civilian19, (int)Faction.Civilian1 + NumFactions - 1);
 
         FactionData[Faction.Player] = new ("Player", Color.White, null);
         FactionData[Faction.Independent] = new ("Independent", Color.Blue, null);
         FactionData[Faction.Bandit] = new ("Bandit", Color.Red, null);
 
         Faction currFaction = Faction.Civilian0;
-        for (int i = 0; i < settlementLocations.Count && currFaction < factionEnd; i++) {
+        for (int i = 0; i < settlementLocations.Count && currFaction < FactionEnd; i++) {
             var setLocation = settlementLocations[i];
             var sector = setLocation.Sector;
             var faction = currFaction;
