@@ -89,7 +89,7 @@ public interface IActor {
     ActorToActor To(IActor other);
 
     /// <summary>Get visit tracking for a location</summary>
-    ActorLocation To(Location loc);
+    LocationActor To(Location loc);
 
     /// <summary>
     /// Initialize relationship when actors first meet (called once per side per actor pair).
@@ -101,7 +101,7 @@ public interface IActor {
     /// Initialize actor/location relationship on first visit. The Encounter will
     /// have been created.
     /// </summary>
-    ActorLocation NewRelation(Location other);
+    LocationActor NewRelation(Location other);
 
     /// <summary>
     /// Called when this actor enters an encounter with existing actors.
@@ -170,7 +170,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";
     }
-    public List<IProposal> StoredProposals { get; private set; } = new();
+    public List<IProposal> StoredProposals { get; } = new();
     public IEnumerable<IProposal> Proposals() => StoredProposals;
     public void Tick() {
     }
@@ -182,7 +182,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public void Message(string message) {}
     public int Domes => 0;
     public bool Knows(Location loc) => false;
-    public ActorLocation To(Location loc) => new();
+    public LocationActor To(Location loc) => new();
 
     EEndState? _endState;
     string _endMessage = string.Empty;
@@ -196,7 +196,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public bool Knows(IActor other) => false;
     public ActorToActor To(IActor other) => new();
     public ActorToActor NewRelation(IActor other) => new();
-    public ActorLocation NewRelation(Location other) => new();
+    public LocationActor NewRelation(Location other) => new();
     public void Meet(IEnumerable<IActor> encounterActors) { }
     public void Greet(IActor newActor) { }
     public void Leave(IEnumerable<IActor> encounterActors) { }

@@ -299,7 +299,7 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
     public override bool InteractionCapable(IActor Agent, IActor Subject) =>
         base.InteractionCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
-        Agent.To(Subject).PersistentProposals.Any(p => p is ProposeContrabandSeizure);
+        Agent.To(Subject).StoredProposals.Any(p => p is ProposeContrabandSeizure);
 
     protected override IOffer SubjectOffer(IActor subject) => new InventoryOffer(Contraband);
 

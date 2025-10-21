@@ -22,8 +22,6 @@ public class Encounter {
     public Encounter(Location location, Faction faction) {
         this.location = location;
         Faction = faction;
-        Generate();
-        Tick();
         Game.Instance!.RegisterEncounter(this);
     }
 
@@ -430,7 +428,7 @@ public class Encounter {
             Tuning.Game.hazardNegativePayoffChance));
         AddActor(hazardActor);
     }
-    public void Generate() {
+    public Encounter Generate() {
         switch (Location.Type) {
         case EncounterType.Crossroads:
         {
@@ -442,6 +440,8 @@ public class Encounter {
         case EncounterType.Hazard: GenerateHazard(); break;
         }
         InitDynamicCrawlers();
+        Tick();
+        return this;
     }
     public IActor GenerateFactionActor(Faction faction, int? lifetime) {
         Crawler result;

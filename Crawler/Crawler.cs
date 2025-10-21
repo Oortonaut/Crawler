@@ -32,7 +32,7 @@ public class ActorToActor {
     public bool SetFlag(EFlags flag, bool value = true) {
         if (HasFlag(flag) != value) {
             Flags.SetFlag(flag, value);
-            InvalidateInteractions();
+            DirtyInteractions = true;
         }
         return value;
     }
@@ -52,51 +52,21 @@ public class ActorToActor {
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
 
-    // Persistent proposals (ultimatums) that have their own expiration
-    public List<IProposal> PersistentProposals { get; } = new();
+    public List<IProposal> StoredProposals { get; } = new();
 
     /// <summary>Add a proposal to the persistent list</summary>
     public void AddProposal(IProposal proposal) {
-        PersistentProposals.Add(proposal);
-        InvalidateInteractions();
+        StoredProposals.Add(proposal);
+        DirtyInteractions = true;
     }
 
     /// <summary>Remove a specific proposal from the persistent list</summary>
     public void RemoveProposal(IProposal proposal) {
-        PersistentProposals.Remove(proposal);
-        InvalidateInteractions();
+        StoredProposals.Remove(proposal);
+        DirtyInteractions = true;
     }
 
-    /// <summary>Clear all persistent proposals (called when ultimatum is resolved)</summary>
-    public void ClearUltimatum() {
-        PersistentProposals.Clear();
-        InvalidateInteractions();
-    }
-
-    /// <summary>Remove expired proposals from the persistent list</summary>
-    public List<IProposal> ClearExpiredProposals(long currentTime) {
-        var expired = PersistentProposals
-            .Where(p => p.ExpirationTime != 0 && currentTime >= p.ExpirationTime)
-            .ToList();
-        foreach (var proposal in expired) {
-            PersistentProposals.Remove(proposal);
-        }
-        if (expired.Count > 0) InvalidateInteractions();
-        return expired;
-    }
-
-    /// <summary>Check if there's an active proposal</summary>
-    public bool HasActiveProposal() => PersistentProposals.Count > 0;
-
-    /// <summary>Get the first active proposal's expiration time (for display)</summary>
-    public long ActiveExpirationTime => PersistentProposals.FirstOrDefault()?.ExpirationTime ?? 0;
-
-    // Interaction caching to avoid O(N³) recalculation
-    public List<IInteraction> CachedInteractions { get; } = new();
-    public bool InteractionsDirty { get; set; } = true;
-
-    /// <summary>Mark interactions as needing recalculation</summary>
-    public void InvalidateInteractions() => InteractionsDirty = true;
+    public bool DirtyInteractions { get; set; } = true;
 }
 
 public class Crawler: IActor {
@@ -823,7 +793,7 @@ public class Crawler: IActor {
     }
 
     Dictionary<IActor, ActorToActor> _relations = new();
-    Dictionary<Location, ActorLocation> _locations = new();
+    Dictionary<Location, LocationActor> _locations = new();
 
     public bool Knows(IActor other) => _relations.ContainsKey(other);
     public ActorToActor To(IActor other) {
@@ -856,11 +826,11 @@ public class Crawler: IActor {
         return result;
     }
 
-    public ActorLocation To(Location location) {
+    public LocationActor To(Location location) {
         return _locations.GetOrAddNewValue(location, () => NewRelation(location));
     }
-    public ActorLocation NewRelation(Location to) {
-        var result = new ActorLocation();
+    public LocationActor NewRelation(Location to) {
+        var result = new LocationActor();
         return result;
     }
 
@@ -914,7 +884,7 @@ public class Crawler: IActor {
     /// Helper: Expire all persistent proposals when leaving encounter
     /// </summary>
     void ExpireProposals(IActor other) {
-        To(other).PersistentProposals.Clear();
+        To(other).StoredProposals.Clear();
     }
 
     /// <summary>
@@ -955,9 +925,10 @@ public class Crawler: IActor {
 
     // Accessor methods for save/load
     public Dictionary<IActor, ActorToActor> GetRelations() => _relations;
-    public Dictionary<Location, ActorLocation> GetVisitedLocations() => _locations;
+    public Dictionary<Location, LocationActor> GetVisitedLocations() => _locations;
     public float Markup { get; set; }
     public float Spread { get; set; }
-    public void SetVisitedLocations(Dictionary<Location, ActorLocation> locations) => _locations = locations;
+    public void SetVisitedLocations(Dictionary<Location, LocationActor> locations) => _locations = locations;
+    public void SetRelations(Dictionary<IActor, ActorToActor> relations) => _relations = relations;
     public int Domes { get; set; } = 0;
 }

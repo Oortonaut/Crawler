@@ -73,7 +73,7 @@ public record Location(
     }
 }
 
-public class ActorLocation {
+public class LocationActor {
     public bool Visited = false;
     public long ForgetTime = 0;
 }
@@ -131,6 +131,19 @@ public class Sector(Map map, string name, int x, int y) {
 }
 
 public class Map {
+    // Private constructor for deserialization - doesn't generate locations
+    private Map(int Height, int Width, bool skipGeneration) {
+        Sectors = new Sector[Height, Width];
+        foreach (var (X, Y) in Sectors.Index()) {
+            var sectorName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Y] + $"{X}";
+            var sector = new Sector(this, sectorName, X, Y);
+            Sectors[Y, X] = sector;
+        }
+    }
+
+    // Factory method for creating map from save data
+    internal static Map FromSaveData(int Height, int Width) => new Map(Height, Width, skipGeneration: true);
+
     public Map(int Height, int Width) {
         Sectors = new Sector[Height, Width];
         float expectation = 2.5f * Height * Width;
@@ -175,7 +188,7 @@ public class Map {
                 new (loc.X, loc.Y),
                 encounterType,
                 wealth,
-                loc => new Encounter(loc)
+                loc => new Encounter(loc).Generate()
             );
             sector.Locations.Add(encounterLocation);
         }

@@ -22,13 +22,12 @@ public class SavedCrawler {
     public Faction Faction { get; set; }
     public Vector2 LocationPos { get; set; }
     public SavedInventory Supplies { get; set; } = new();
-    public List<SavedSegment> Segments { get; set; } = new();
     public SavedInventory Cargo { get; set; } = new();
-    public List<SavedSegment> CargoSegments { get; set; } = new();
     public float Markup { get; set; } = 1.0f;
     public Dictionary<string, SavedActorRelation> Relations { get; set; } = new();
     public Dictionary<string, SavedActorLocation> VisitedLocations { get; set; } = new();
     public int EvilPoints { get; set; } = 0;
+    public List<SavedProposal> StoredProposals { get; set; } = new();
 }
 
 [YamlSerializable]
@@ -83,6 +82,9 @@ public class SavedInventory {
     public float Idols { get; set; }
     public float Texts { get; set; }
     public float Relics { get; set; }
+
+    // Segments
+    public List<SavedSegment> Segments { get; set; } = new();
 }
 
 [YamlSerializable]
@@ -102,12 +104,30 @@ public class SavedActorRelation {
     public int DamageCreated { get; set; }
     public int DamageInflicted { get; set; }
     public int DamageTaken { get; set; }
+    public List<SavedProposal> StoredProposals { get; set; } = new();
 }
 
 [YamlSerializable]
 public class SavedActorLocation {
     public bool Visited { get; set; } = false;
     public long ForgetTime { get; set; } = 0;
+}
+
+[YamlSerializable]
+public class SavedProposal {
+    public string Type { get; set; } = "";
+    public float DemandFraction { get; set; }
+    public float TaxRate { get; set; }
+    public SavedInventory? Contraband { get; set; }
+    public float PenaltyAmount { get; set; }
+    public string OptionCode { get; set; } = "";
+    public string Verb { get; set; } = "";
+    public long ExpirationTime { get; set; }
+    // For ProposeHarvestTake and ProposeLootPay (actor-dependent proposals)
+    public string? ResourceActorName { get; set; }
+    public SavedInventory? Amount { get; set; }
+    public SavedInventory? Risk { get; set; }
+    public float Chance { get; set; }
 }
 
 
@@ -182,9 +202,7 @@ public static class SaveLoadExtensions {
             Faction = crawler.Faction,
             LocationPos = crawler.Location.Position,
             Supplies = crawler.Supplies.ToSaveData(),
-            Segments = crawler.Segments.Select(s => s.ToSaveData()).ToList(),
             Cargo = crawler.Cargo.ToSaveData(),
-            CargoSegments = crawler.Cargo.Segments.Select(s => s.ToSaveData()).ToList(),
             Markup = crawler.Markup,
             Relations = crawler.GetRelations().ToDictionary(
                 kvp => kvp.Key.Name,
@@ -194,7 +212,8 @@ public static class SaveLoadExtensions {
                 kvp => $"{kvp.Key.Position.X},{kvp.Key.Position.Y}",
                 kvp => kvp.Value.ToSaveData()
             ),
-            EvilPoints = crawler.EvilPoints
+            EvilPoints = crawler.EvilPoints,
+            StoredProposals = crawler.StoredProposals.Select(p => p.ToSaveData()).ToList()
         };
     }
 
@@ -249,7 +268,10 @@ public static class SaveLoadExtensions {
             // Religious items
             Idols = inventory[Commodity.Idols],
             Texts = inventory[Commodity.Texts],
-            Relics = inventory[Commodity.Relics]
+            Relics = inventory[Commodity.Relics],
+
+            // Segments
+            Segments = inventory.Segments.Select(s => s.ToSaveData()).ToList()
         };
     }
 
@@ -277,14 +299,84 @@ public static class SaveLoadExtensions {
             Surrendered = toActor.Surrendered,
             DamageCreated = toActor.DamageCreated,
             DamageInflicted = toActor.DamageInflicted,
-            DamageTaken = toActor.DamageTaken
+            DamageTaken = toActor.DamageTaken,
+            StoredProposals = toActor.StoredProposals.Select(p => p.ToSaveData()).ToList()
         };
     }
 
-    public static SavedActorLocation ToSaveData(this ActorLocation actorLoc) {
+    public static SavedActorLocation ToSaveData(this LocationActor locationActorLoc) {
         return new SavedActorLocation {
-            Visited = actorLoc.Visited,
-            ForgetTime = actorLoc.ForgetTime
+            Visited = locationActorLoc.Visited,
+            ForgetTime = locationActorLoc.ForgetTime
+        };
+    }
+
+    public static SavedProposal ToSaveData(this IProposal proposal) {
+        return proposal switch {
+            ProposeLootTake loot => new SavedProposal {
+                Type = "LootTake",
+                OptionCode = loot.OptionCode,
+                Verb = loot.verb,
+                ExpirationTime = loot.ExpirationTime
+            },
+            ProposeHarvestTake harvest => new SavedProposal {
+                Type = "HarvestTake",
+                ResourceActorName = harvest.Resource.Name,
+                Amount = harvest.Amount.ToSaveData(),
+                OptionCode = harvest.OptionCode,
+                Verb = harvest.verb,
+                ExpirationTime = harvest.ExpirationTime
+            },
+            ProposeLootPay lootPay => new SavedProposal {
+                Type = "LootPay",
+                ResourceActorName = lootPay.Resource.Name,
+                Risk = lootPay.Risk.ToSaveData(),
+                Chance = lootPay.Chance,
+                ExpirationTime = lootPay.ExpirationTime
+            },
+            ProposeAttackDefend attack => new SavedProposal {
+                Type = "AttackDefend",
+                ExpirationTime = attack.ExpirationTime
+            },
+            ProposeAcceptSurrender surrender => new SavedProposal {
+                Type = "AcceptSurrender",
+                OptionCode = surrender.OptionCode,
+                ExpirationTime = surrender.ExpirationTime
+            },
+            ProposeAttackOrLoot extortion => new SavedProposal {
+                Type = "AttackOrLoot",
+                DemandFraction = extortion.DemandFraction,
+                OptionCode = extortion.OptionCode,
+                ExpirationTime = extortion.ExpirationTime
+            },
+            ProposeTaxes taxes => new SavedProposal {
+                Type = "Taxes",
+                TaxRate = taxes.TaxRate,
+                OptionCode = taxes.OptionCode,
+                ExpirationTime = taxes.ExpirationTime
+            },
+            ProposeContrabandSeizure seizure => new SavedProposal {
+                Type = "ContrabandSeizure",
+                Contraband = seizure.Contraband.ToSaveData(),
+                PenaltyAmount = seizure.PenaltyAmount,
+                OptionCode = seizure.OptionCode,
+                ExpirationTime = seizure.ExpirationTime
+            },
+            ProposePlayerDemand demand => new SavedProposal {
+                Type = "PlayerDemand",
+                DemandFraction = demand.DemandFraction,
+                OptionCode = demand.OptionCode,
+                ExpirationTime = demand.ExpirationTime
+            },
+            ProposeRepairBuy repair => new SavedProposal {
+                Type = "RepairBuy",
+                OptionCode = repair.OptionCode,
+                ExpirationTime = repair.ExpirationTime
+            },
+            _ => new SavedProposal {
+                Type = "Unknown",
+                ExpirationTime = proposal.ExpirationTime
+            }
         };
     }
 
@@ -358,11 +450,12 @@ public static class SaveLoadExtensions {
     }
 
     public static Map ToGameMap(this SavedMap savedMap) {
-        var map = new Map(savedMap.Height, savedMap.Width);
+        var map = Map.FromSaveData(savedMap.Height, savedMap.Width);
 
-        // Restore sector-specific data
+        // Restore sector terrain and locations
         foreach (var savedSector in savedMap.Sectors) {
             var sector = map.GetSector(savedSector.X, savedSector.Y);
+            sector.Terrain = savedSector.Terrain;
             sector.ControllingFaction = savedSector.ControllingFaction;
 
             // Restore LocalMarkup
@@ -374,9 +467,15 @@ public static class SaveLoadExtensions {
             foreach (var kvp in savedSector.LocalSegmentRates) {
                 sector.LocalSegmentRates[kvp.Key] = kvp.Value;
             }
+
+            // Restore locations
+            foreach (var savedLocation in savedSector.Locations) {
+                var location = savedLocation.ToGameLocation(sector);
+                sector.Locations.Add(location);
+            }
         }
 
-        // Restore faction data
+        // Restore faction data (must happen after locations are restored)
         foreach (var savedFactionData in savedMap.FactionData) {
             var capital = savedFactionData.Capital?.ToGameCapital(map);
             map.FactionData[savedFactionData.Faction] = new FactionData(
@@ -386,12 +485,71 @@ public static class SaveLoadExtensions {
             );
         }
 
+        // Build actor lookup table from all encounters for Relations restoration
+        var actorLookup = new Dictionary<string, IActor>();
+        for (int y = 0; y < map.Height; y++) {
+            for (int x = 0; x < map.Width; x++) {
+                var sector = map.GetSector(x, y);
+                foreach (var location in sector.Locations.Where(l => l.HasEncounter)) {
+                    foreach (var actor in location.GetEncounter().Actors.OfType<Crawler>()) {
+                        actorLookup[actor.Name] = actor;
+                    }
+                }
+            }
+        }
+
+        // Second pass: Restore Relations for all crawlers
+        for (int y = 0; y < map.Height; y++) {
+            for (int x = 0; x < map.Width; x++) {
+                var sector = map.GetSector(x, y);
+                foreach (var location in sector.Locations.Where(l => l.HasEncounter)) {
+                    var encounter = location.GetEncounter();
+                    foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
+                        var savedCrawler = savedMap.Sectors
+                            .SelectMany(s => s.Locations)
+                            .SelectMany(l => l.Encounter?.Actors ?? [])
+                            .FirstOrDefault(sc => sc.Name == crawler.Name);
+
+                        if (savedCrawler != null) {
+                            savedCrawler.RestoreRelationsTo(crawler, actorLookup);
+                        }
+                    }
+                }
+            }
+        }
+
         return map;
     }
 
     public static Capital ToGameCapital(this SavedCapital savedCapital, Map map) {
         var settlement = savedCapital.Settlement.ToGameCrawler(map);
         return new Capital(settlement, savedCapital.Influence);
+    }
+
+    public static Location ToGameLocation(this SavedLocation savedLocation, Sector sector) {
+        var location = new Location(
+            sector,
+            savedLocation.Position,
+            savedLocation.Type,
+            savedLocation.Wealth,
+            loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(loc).Generate()
+        );
+        return location;
+    }
+
+    public static Encounter ToGameEncounter(this SavedEncounter savedEncounter, Location location) {
+        var encounter = new Encounter(location, savedEncounter.Faction) {
+            Name = savedEncounter.Name,
+            Description = savedEncounter.Description
+        };
+
+        // Restore actors
+        foreach (var savedActor in savedEncounter.Actors) {
+            var actor = savedActor.ToGameCrawler(location.Map);
+            encounter.AddActor(actor);
+        }
+
+        return encounter;
     }
 
     public static Location FindLocationByPosition(this Map map, Vector2 position) {
@@ -412,11 +570,6 @@ public static class SaveLoadExtensions {
         var location = map.FindLocationByPosition(savedCrawler.LocationPos);
         var inventory = savedCrawler.Supplies.ToGameInventory();
 
-        foreach (var savedSegment in savedCrawler.Segments) {
-            var segment = savedSegment.ToGameSegment();
-            inventory.Add(segment);
-        }
-
         var crawler = new Crawler(savedCrawler.Faction, location, inventory) {
             Name = savedCrawler.Name,
             EvilPoints = savedCrawler.EvilPoints
@@ -424,10 +577,6 @@ public static class SaveLoadExtensions {
 
         // Restore trade inventory
         var tradeInventory = savedCrawler.Cargo.ToGameInventory();
-        foreach (var savedSegment in savedCrawler.CargoSegments) {
-            var segment = savedSegment.ToGameSegment();
-            tradeInventory.Add(segment);
-        }
         crawler.Cargo.Clear();
         crawler.Cargo.Add(tradeInventory);
 
@@ -435,20 +584,30 @@ public static class SaveLoadExtensions {
         crawler.Markup = savedCrawler.Markup;
 
         // Restore visited locations
-        var visitedLocations = new Dictionary<Location, ActorLocation>();
+        var visitedLocations = new Dictionary<Location, LocationActor>();
         foreach (var kvp in savedCrawler.VisitedLocations) {
             var locParts = kvp.Key.Split(',');
             if (locParts.Length == 2 &&
                 float.TryParse(locParts[0], out float x) &&
                 float.TryParse(locParts[1], out float y)) {
                 var loc = map.FindLocationByPosition(new System.Numerics.Vector2(x, y));
-                visitedLocations[loc] = new ActorLocation {
+                visitedLocations[loc] = new LocationActor {
                     Visited = kvp.Value.Visited,
                     ForgetTime = kvp.Value.ForgetTime
                 };
             }
         }
         crawler.SetVisitedLocations(visitedLocations);
+
+        // Restore StoredProposals
+        foreach (var savedProposal in savedCrawler.StoredProposals) {
+            var proposal = savedProposal.ToGameProposal();
+            if (proposal != null) {
+                crawler.StoredProposals.Add(proposal);
+            }
+        }
+
+        // Relations are restored in a second pass after all actors are loaded (see ToGameMap)
 
         return crawler;
     }
@@ -506,6 +665,12 @@ public static class SaveLoadExtensions {
         inventory[Commodity.Texts] = savedInv.Texts;
         inventory[Commodity.Relics] = savedInv.Relics;
 
+        // Segments
+        foreach (var savedSegment in savedInv.Segments) {
+            var segment = savedSegment.ToGameSegment();
+            inventory.Add(segment);
+        }
+
         return inventory;
     }
 
@@ -525,6 +690,71 @@ public static class SaveLoadExtensions {
         }
 
         return segment;
+    }
+
+    public static IProposal? ToGameProposal(this SavedProposal saved, Dictionary<string, IActor>? actorLookup = null) {
+        return saved.Type switch {
+            "LootTake" => new ProposeLootTake(saved.OptionCode, saved.Verb),
+            "HarvestTake" when actorLookup?.TryGetValue(saved.ResourceActorName ?? "", out var harvestResource) == true =>
+                new ProposeHarvestTake(
+                    harvestResource,
+                    saved.Amount?.ToGameInventory() ?? new Inventory(),
+                    saved.OptionCode,
+                    saved.Verb),
+            "LootPay" when actorLookup?.TryGetValue(saved.ResourceActorName ?? "", out var lootResource) == true =>
+                new ProposeLootPay(
+                    lootResource,
+                    saved.Risk?.ToGameInventory() ?? new Inventory(),
+                    saved.Chance),
+            "AttackDefend" => new ProposeAttackDefend("Attack"),
+            "AcceptSurrender" => new ProposeAcceptSurrender(saved.OptionCode),
+            "AttackOrLoot" => new ProposeAttackOrLoot(saved.DemandFraction) {
+                ExpirationTime = saved.ExpirationTime
+            },
+            "Taxes" => new ProposeTaxes(saved.TaxRate) {
+                ExpirationTime = saved.ExpirationTime
+            },
+            "ContrabandSeizure" => saved.Contraband != null
+                ? new ProposeContrabandSeizure(saved.Contraband.ToGameInventory(), saved.PenaltyAmount) {
+                    ExpirationTime = saved.ExpirationTime
+                }
+                : null,
+            "PlayerDemand" => new ProposePlayerDemand(saved.DemandFraction, saved.OptionCode) {
+                ExpirationTime = saved.ExpirationTime
+            },
+            "RepairBuy" => new ProposeRepairBuy(saved.OptionCode),
+            _ => null // Unknown or incomplete proposal types are skipped
+        };
+    }
+
+    public static void RestoreRelationsTo(this SavedCrawler savedCrawler, Crawler crawler, Dictionary<string, IActor> actorLookup) {
+        var relations = new Dictionary<IActor, ActorToActor>();
+
+        foreach (var (actorName, savedRelation) in savedCrawler.Relations) {
+            if (actorLookup.TryGetValue(actorName, out var otherActor)) {
+                var relation = new ActorToActor {
+                    Hostile = savedRelation.Hostile,
+                    Surrendered = savedRelation.Surrendered,
+                    DamageCreated = savedRelation.DamageCreated,
+                    DamageInflicted = savedRelation.DamageInflicted,
+                    DamageTaken = savedRelation.DamageTaken
+                };
+
+                // Restore ActorToActor.StoredProposals
+                foreach (var savedProposal in savedRelation.StoredProposals) {
+                    var proposal = savedProposal.ToGameProposal(actorLookup);
+                    if (proposal != null) {
+                        relation.StoredProposals.Add(proposal);
+                    }
+                }
+
+                relations[otherActor] = relation;
+            }
+        }
+
+        if (relations.Count > 0) {
+            crawler.SetRelations(relations);
+        }
     }
 
 }
