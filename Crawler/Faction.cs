@@ -49,7 +49,7 @@ public static class FactionEx {
         _factionColors[faction];
     public static string Name(this Faction faction) => faction.GetData()?.Name ?? faction.ToString();
     public static Crawler? Capital(this Faction faction) => faction.GetData()?.Capital?.Settlement;
-    public static FactionData? GetData(this Faction faction) => Game.Instance.Map.FactionData[faction];
+    public static FactionData? GetData(this Faction faction) => Game.Instance?.Map.FactionData[faction];
 
     public static EArray<Faction, Color> _factionColors = [
         Color.Red,

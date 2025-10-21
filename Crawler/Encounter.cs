@@ -24,7 +24,7 @@ public class Encounter {
         Faction = faction;
         Generate();
         Tick();
-        Game.Instance.RegisterEncounter(this);
+        Game.Instance!.RegisterEncounter(this);
     }
 
     public string Name { get; set; } = "Encounter";
@@ -124,7 +124,7 @@ public class Encounter {
     void UpdateDynamicCrawlers() {
         if (hourlyArrivals <= 0) return;
 
-        long currentTime = Game.Instance.TimeSeconds;
+        long currentTime = Game.SafeTime;
         if (currentTime % 60 != 0) {
             return;
         }
@@ -166,7 +166,7 @@ public class Encounter {
             throw new ArgumentException("Actor is already in encounter");
         }
 
-        long exitTime = lifetime.HasValue ? Game.Instance.TimeSeconds + lifetime.Value : 0;
+        long exitTime = lifetime.HasValue ? Game.SafeTime + lifetime.Value : 0;
         var metadata = new EncounterActor {
             ExitTime = exitTime,
         };
@@ -457,7 +457,7 @@ public class Encounter {
         return result;
     }
 
-    public IEnumerable<IActor> ActorsExcept(IActor actor) => Game.Instance.Moving ? [] : Actors.Where(a => a != actor);
+    public IEnumerable<IActor> ActorsExcept(IActor actor) => Game.Instance is {} inst && inst.Moving ? [] : Actors.Where(a => a != actor);
     public IEnumerable<IActor> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
     public void Tick() {
         UpdateDynamicCrawlers();

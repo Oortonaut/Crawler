@@ -67,7 +67,7 @@ public static class TradeEx {
 
             // Vice category goods are only sold by Bandits
             if (!isBandit && commodity.Category() == CommodityCategory.Vice) {
-                continue;
+//                continue;
             }
 
             // Calculate mid-price with location, scarcity, and policy markups
@@ -96,6 +96,7 @@ public static class TradeEx {
             var sellOffer = new CommodityOffer(commodity, (float)Math.Floor(saleQuantity));
             var sellPrice = saleQuantity * askPrice;
 
+            // TODO: Transaction fees should count multiple buys as a single transaction
             // Add transaction fee for restricted goods
             if (policy == TradePolicy.Controlled) {
                 sellPrice += Tuning.Trade.restrictedTransactionFee;
@@ -131,5 +132,4 @@ public static class TradeEx {
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
     }
-
 }

@@ -42,39 +42,30 @@ public record HostilityInteraction(IActor Agent, IActor Subject, string Reason):
     public string OptionCode => "H";
 }
 
-public record AttackDefendInteraction(IActor _attacker, IActor Defender): IInteraction {
-    public InteractionMode Enabled(string args = "") => InteractionMode.Menu;
-    public int Perform(string args = "") {
-        var attacker = _attacker as Crawler;
-        attacker!.Attack(Defender);
-        return 1;
-    }
-    public string? MessageFor(IActor viewer) => null;
-    public string Description => $"Attack {Defender}";
-    public string OptionCode => "A";
-}
-
 public record ExchangeInteraction: IInteraction {
     public ExchangeInteraction(IActor agent,
         IOffer agentOffer,
         IActor subject,
         IOffer subjectOffer,
         string optionCode,
-        string? description = null) {
+        string? description = null,
+        InteractionMode mode = InteractionMode.Menu) {
         Agent = agent;
         AgentOffer = agentOffer;
         Subject = subject;
         SubjectOffer = subjectOffer;
         OptionCode = optionCode;
         Description = description ?? MakeDescription();
+        _mode = mode;
     }
     public IActor Agent { get; init; }
     public IActor Subject { get; init; }
+    readonly InteractionMode _mode;
 
     public InteractionMode Enabled(string args = "") {
         return AgentOffer.EnabledFor(Agent, Subject) &&
                SubjectOffer.EnabledFor(Subject, Agent)
-            ? InteractionMode.Menu
+            ? _mode
             : InteractionMode.Disabled;
     }
 
@@ -122,113 +113,4 @@ public record ExchangeInteraction: IInteraction {
     }
 
     public string? MessageFor(IActor viewer) => null;
-}
-
-public record CooperateInteraction(
-    IActor Agent,
-    IActor Subject,
-    IOffer Demand,
-    string Ultimatum,
-    IProposal Proposal): IInteraction {
-
-    public InteractionMode Enabled(string args = "") =>
-        Demand.EnabledFor(Subject, Agent) ? InteractionMode.Immediate : InteractionMode.Disabled;
-
-    public int Perform(string args = "") {
-        Demand.PerformOn(Subject, Agent);
-        Subject.Message($"You comply with {Agent.Name}'s demand and give {Demand.Description}.");
-        Agent.Message($"{Subject.Name} complies with your demand.");
-
-        // Expire the proposal
-        if (Proposal is ProposeAttackOrLoot pe) pe.ExpirationTime = -1;
-        else if (Proposal is ProposeTaxes pt) pt.ExpirationTime = -1;
-        else if (Proposal is ProposeContrabandSeizure pcs) pcs.ExpirationTime = -1;
-        return 1;
-    }
-
-    public string? MessageFor(IActor viewer) =>
-        viewer == Subject ? Ultimatum : null;
-
-    public string Description => $"Accept: {Ultimatum}";
-    public string OptionCode => "DA";
-}
-
-public record RefuseDemandInteraction(
-    IActor Agent,
-    IActor Subject,
-    IInteraction Consequence,
-    string Ultimatum,
-    IProposal Proposal): IInteraction {
-
-    public InteractionMode Enabled(string args = "") => InteractionMode.Immediate;
-
-    public int Perform(string args = "") {
-        Subject.Message($"You refuse {Agent.Name}'s demand!");
-        Agent.Message($"{Subject.Name} refuses your demand!");
-
-        // Expire the proposal
-        if (Proposal is ProposeAttackOrLoot pe) pe.ExpirationTime = -1;
-        else if (Proposal is ProposeTaxes pt) pt.ExpirationTime = -1;
-        else if (Proposal is ProposeContrabandSeizure pcs) pcs.ExpirationTime = -1;
-
-        if (Consequence.Enabled() != InteractionMode.Disabled) {
-            Consequence.Perform();
-        }
-        return 1;
-    }
-
-    public string? MessageFor(IActor viewer) =>
-        viewer == Subject ? Ultimatum : null;
-
-    public string Description => $"Refuse: {Ultimatum}";
-    public string OptionCode => "DR";
-}
-
-public record ContrabandInteraction(
-    IActor Agent,
-    IActor Subject,
-    Inventory Contraband,
-    float PenaltyAmount,
-    string Ultimatum,
-    IProposal Proposal): IInteraction {
-
-    public InteractionMode Enabled(string args = "") => InteractionMode.Immediate;
-
-    public int Perform(string args = "") {
-        // "pay" means pay the fine, otherwise surrender contraband
-        bool payFine = args.Equals("pay", StringComparison.OrdinalIgnoreCase);
-
-        if (payFine && Subject.Inv[Commodity.Scrap] >= PenaltyAmount) {
-            // Pay the fine
-            Subject.Inv[Commodity.Scrap] -= PenaltyAmount;
-            Agent.Inv[Commodity.Scrap] += PenaltyAmount;
-            Subject.Message($"You pay {PenaltyAmount:F0}¢¢ fine to {Agent.Name} and keep your contraband.");
-            Agent.Message($"{Subject.Name} pays the fine.");
-            if (Proposal is ProposeContrabandSeizure pcs) pcs.ExpirationTime = -1;
-            return 1;
-        } else if (!payFine && Subject.Inv.Contains(Contraband)) {
-            // Surrender contraband
-            Subject.Inv.Remove(Contraband);
-            Agent.Inv.Add(Contraband);
-            Subject.Message($"You surrender {Contraband} to {Agent.Name}.");
-            Agent.Message($"{Subject.Name} surrenders contraband.");
-            if (Proposal is ProposeContrabandSeizure pcs) pcs.ExpirationTime = -1;
-            return 1;
-        } else {
-            // Can't comply - turn hostile
-            Subject.Message($"You can't comply with {Agent.Name}'s demands! They turn hostile.");
-            Agent.Message($"{Subject.Name} can't comply. Turning hostile.");
-            Agent.To(Subject).Hostile = true;
-            Subject.To(Agent).Hostile = true;
-            Subject.Inv[Commodity.Morale] -= 3;
-            if (Proposal is ProposeContrabandSeizure pcs) pcs.ExpirationTime = -1;
-            return 1;
-        }
-    }
-
-    public string? MessageFor(IActor viewer) =>
-        viewer == Subject ? Ultimatum : null;
-
-    public string Description => $"{Ultimatum}";
-    public string OptionCode => "C";
 }

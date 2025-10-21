@@ -66,7 +66,7 @@ public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
 
     // Check for active ultimatum
     if (Agent.To(Subject).UltimatumTime > 0 &&
-        Game.Instance.TimeSeconds < Agent.To(Subject).UltimatumTime) {
+        Game.SafeTime < Agent.To(Subject).UltimatumTime) {
         return InteractionCapability.Mandatory;
     }
 

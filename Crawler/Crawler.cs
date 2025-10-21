@@ -203,9 +203,7 @@ public class Crawler: IActor {
                 !To(other).Surrendered &&
                 !IsDisarmed) {
 
-                var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction) {
-                    ExpirationTime = Game.Instance.TimeSeconds + 300
-                };
+                var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction);
                 StoredProposals.Add(extortion);
                 To(other).AddProposal(extortion);
             }
@@ -217,9 +215,7 @@ public class Crawler: IActor {
                 var contraband = ScanForContraband(other);
                 if (!contraband.IsEmpty) {
                     float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
-                    var seizure = new ProposeContrabandSeizure(contraband, penalty) {
-                        ExpirationTime = Game.Instance.TimeSeconds + 300
-                    };
+                    var seizure = new ProposeContrabandSeizure(contraband, penalty);
                     StoredProposals.Add(seizure);
                     To(other).AddProposal(seizure);
                 }
@@ -229,9 +225,7 @@ public class Crawler: IActor {
                     Faction.IsCivilian() &&
                     Location.Sector.ControllingFaction == Faction) {
 
-                    var taxes = new ProposeTaxes(Tuning.Civilian.taxRate) {
-                        ExpirationTime = Game.Instance.TimeSeconds + 300
-                    };
+                    var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
                     StoredProposals.Add(taxes);
                     To(other).AddProposal(taxes);
                 }
@@ -269,7 +263,7 @@ public class Crawler: IActor {
 
     public void Tick() {
         UpdateSegments();
-        if (Game.Instance.TimeSeconds % 3600 == 0) {
+        if (Game.SafeTime % 3600 == 0) {
             Recharge(1);
 
             // Check rations
@@ -359,7 +353,7 @@ public class Crawler: IActor {
 
     public void Message(string message) {
         // TODO: Message history for other actors
-        if (this == Game.Instance.Player) {
+        if (this == Game.Instance?.Player) {
             CrawlerEx.Message(message);
         }
     }
@@ -883,9 +877,7 @@ public class Crawler: IActor {
             !To(target).Surrendered &&
             !IsDisarmed) {
 
-            var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction) {
-                ExpirationTime = Game.Instance.TimeSeconds + 300
-            };
+            var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction);
             To(target).AddProposal(extortion);
         }
     }
@@ -904,9 +896,7 @@ public class Crawler: IActor {
         var contraband = ScanForContraband(target);
         if (!contraband.IsEmpty) {
             float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
-            var seizure = new ProposeContrabandSeizure(contraband, penalty) {
-                ExpirationTime = Game.Instance.TimeSeconds + 300
-            };
+            var seizure = new ProposeContrabandSeizure(contraband, penalty);
             To(target).AddProposal(seizure);
         }
 
@@ -915,9 +905,7 @@ public class Crawler: IActor {
             Faction.IsCivilian() &&
             Location.Sector.ControllingFaction == Faction) {
 
-            var taxes = new ProposeTaxes(Tuning.Civilian.taxRate) {
-                ExpirationTime = Game.Instance.TimeSeconds + 300
-            };
+            var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
             To(target).AddProposal(taxes);
         }
     }

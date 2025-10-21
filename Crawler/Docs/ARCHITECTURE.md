@@ -9,6 +9,7 @@
 - **Need the old comprehensive doc?** → [../Architecture.md](../Architecture.md) (deprecated, kept for reference)
 
 ## Recent Changes
+- **2025-10-20**: Refactored demand system with ProposeDemand base class: Created abstract `ProposeDemand` base class for ultimatum-style demands ("comply or face consequence"). All taxes, extortions, and contraband seizures now inherit from this class. Added `AttackOffer` and `HostilityOffer` to encapsulate combat and diplomatic consequences as offers. Removed specialized interaction classes (`CooperateInteraction`, `RefuseDemandInteraction`, `ContrabandInteraction`) - all demands now use `ExchangeInteraction` with appropriate offers.
 - **2025-10-20**: Refactored Meet/Part methods into role-based API: Meet(IEnumerable<IActor>) calls Greet(IActor) for each; Leave(IEnumerable<IActor>) calls Part(IActor) for each. Extracted shared threat-generation logic (bandit extortion, contraband scanning) into helper functions (SetupBanditExtortion, SetupContrabandAndTaxes, ExpireProposals).
 - **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed) using SetFlag/HasFlag pattern
 - **2025-10-19**: Replaced InteractionCapability enum with bool across proposals - simplified from three-state (Disabled, Possible, Mandatory) to two-state (enabled/disabled)

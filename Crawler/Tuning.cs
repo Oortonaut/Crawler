@@ -70,7 +70,7 @@ public static partial class Tuning {
 
         // Trade prohibition enforcement
         public static float contrabandScanChance = 0.7f;     // Chance to detect contraband
-        public static float restrictedTransactionFee = 50f;  // Fee for restricted goods
+        public static float restrictedTransactionFee = 15f;  // Fee for restricted goods
 
         // Policy-based pricing multipliers
         public static float subsidizedMultiplier = 0.7f;

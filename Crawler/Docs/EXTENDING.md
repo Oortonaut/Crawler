@@ -38,7 +38,7 @@ public record ProposeMyAction(string OptionCode = "M"): IProposal {
 
         // For mandatory interactions (ultimatums)
         if (Agent.To(Subject).UltimatumTime > 0 &&
-            Game.Instance.TimeSeconds < Agent.To(Subject).UltimatumTime) {
+            Game.SafeTime < Agent.To(Subject).UltimatumTime) {
             return InteractionCapability.Mandatory;
         }
 
@@ -90,7 +90,7 @@ crawler.StoredProposals.Add(new ProposeMyAction());
 // In Crawler.CheckAndSetUltimatums() or similar
 if (/* condition met */) {
     StoredProposals.Add(new ProposeMyAction());
-    To(other).UltimatumTime = Game.Instance.TimeSeconds + 300; // 5 min
+    To(other).UltimatumTime = Game.SafeTime + 300; // 5 min
 }
 ```
 
@@ -127,7 +127,7 @@ public record ProposeMyDemand(IOffer Demand): IProposal {
     public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
         var relation = Agent.To(Subject);
         if (relation.UltimatumTime > 0 &&
-            Game.Instance.TimeSeconds < relation.UltimatumTime) {
+            Game.SafeTime < relation.UltimatumTime) {
             return InteractionCapability.Mandatory;
         }
         return InteractionCapability.Disabled;

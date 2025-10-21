@@ -6,7 +6,7 @@ namespace Crawler;
 public class Game {
 
     static Game? _instance = null;
-    public static Game Instance => _instance!;
+    public static Game? Instance => _instance;
 
     Map? _map = null;
     public Map Map => _map!;
@@ -299,6 +299,7 @@ public class Game {
 
     // seconds -
     public long TimeSeconds { get; private set; } = 1; // start at 1 so 0 can be an invalid time
+    public static long SafeTime => Instance == null ? 0 : Instance.TimeSeconds;
 
     MenuItem GameMenu() {
         List<MenuItem> items = [
@@ -389,6 +390,7 @@ public class Game {
 
     int PowerMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Power Menu", [
+            MenuItem.Cancel,
             .. PowerMenuItems(),
         ]);
         return ap;
@@ -408,6 +410,7 @@ public class Game {
 
     int PackagingMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Packaging Menu", [
+            MenuItem.Cancel,
             .. PackagingMenuItems(),
         ]);
         return ap;
@@ -443,6 +446,7 @@ public class Game {
 
     int TradeInventoryMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Trade Inventory Menu", [
+            MenuItem.Cancel,
             .. TradeInventoryMenuItems(),
         ]);
         return ap;
@@ -451,9 +455,10 @@ public class Game {
     IEnumerable<MenuItem> TradeInventoryMenuItems(ShowArg showOption = ShowArg.Show) {
         // Show packaged segments in main inventory that can be moved to trade inventory
         var packagedSegments = Player.Segments.Where(s => s.State == Segment.Working.Packaged).ToList();
+
         for (int i = 0; i < packagedSegments.Count; i++) {
             var segment = packagedSegments[i];
-            yield return new ActionMenuItem($"PT{i + 1}M", $"{segment.StateName} - Move to Trade", _ => MoveToTradeInventory(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PT{i + 1}M", $"{segment.StateName} to Cargo", _ => MoveToTradeInventory(segment), EnableArg.Enabled, showOption);
         }
 
         // Show segments in trade inventory that can be moved back to main inventory
@@ -461,7 +466,7 @@ public class Game {
         for (int i = 0; i < tradeSegments.Count; i++) {
             var segment = tradeSegments[i];
             int index = i;
-            yield return new ActionMenuItem($"PT{i + 1}R", $"{segment.StateName} (Trade) - Return to Inventory", _ => MoveFromTradeInventory(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PT{i + 1}R", $"{segment.StateName} to Supplies", _ => MoveFromTradeInventory(segment), EnableArg.Enabled, showOption);
         }
     }
 

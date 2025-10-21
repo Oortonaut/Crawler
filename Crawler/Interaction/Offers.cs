@@ -118,6 +118,32 @@ public record SegmentOffer(Segment Segment): IOffer {
     public float ValueFor(IActor Agent) => Segment.Cost * Tuning.Economy.LocalMarkup(Segment.SegmentKind, Agent.Location);
 }
 
+public record AttackOffer: IOffer {
+    public string Description => "Attack";
+    public override string ToString() => Description;
+    public bool EnabledFor(IActor Agent, IActor Subject) => Agent is Crawler attacker && !attacker.IsDisarmed;
+    public void PerformOn(IActor Agent, IActor Subject) {
+        if (Agent is Crawler attacker) {
+            attacker.Attack(Subject);
+        }
+    }
+    public float ValueFor(IActor Agent) => 0;
+}
+
+public record HostilityOffer(string Reason): IOffer {
+    public string Description => $"Turn hostile: {Reason}";
+    public override string ToString() => Description;
+    public bool EnabledFor(IActor Agent, IActor Subject) => true;
+    public void PerformOn(IActor Agent, IActor Subject) {
+        Agent.To(Subject).Hostile = true;
+        Subject.To(Agent).Hostile = true;
+        Agent.Message($"{Subject.Name} {Reason}. You are now hostile.");
+        Subject.Message($"{Agent.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
+        Subject.Inv[Commodity.Morale] -= 2;
+    }
+    public float ValueFor(IActor Agent) => 0;
+}
+
 // This offer moves the Delivered inventory from the agent's trade inventory to the subjects main inventory.
 public record InventoryOffer(
     Inventory Delivered,
@@ -137,8 +163,7 @@ public record InventoryOffer(
     public float ValueFor(IActor Agent) => Promised.ValueAt(Agent.Location);
 }
 
-public record LootOffer(IActor Wreck, Inventory LootInv)
-    : LootOfferWrapper(new InventoryOffer(LootInv)) {
-    public LootOffer(IActor Wreck, float lootReturn): this(Wreck, Wreck.Inv.Loot(lootReturn)) { }
-    public override string Description => $"{base.Description} from {Wreck.Name}";
+public static partial class OfferEx {
+    public static IOffer LootOffer(this Inventory inventory) => new LootOfferWrapper(new InventoryOffer(inventory));
+    public static IOffer LootOffer(this Inventory inventory, float fraction) => new LootOfferWrapper(new InventoryOffer(inventory.Loot(fraction)));
 }

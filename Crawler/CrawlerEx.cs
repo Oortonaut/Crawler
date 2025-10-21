@@ -583,7 +583,7 @@ public static partial class CrawlerEx {
                 yield return interaction;
             }
         }
-        foreach (var proposal in Game.Instance.StoredProposals) {
+        foreach (var proposal in Game.Instance!.StoredProposals) {
             foreach (var interaction in proposal.TestGetInteractions(agent, subject)) {
                 yield return interaction;
             }
