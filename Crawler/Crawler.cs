@@ -110,13 +110,13 @@ public class Crawler: IActor {
         float hoursOfFuel = supplyDays * 24;
         float initialFuel = fuelPerHr * hoursOfFuel;
         float mileageFuel = 25 * supplyDays * crawler.FuelPerKm; // 25 km per day
-        crawler.Inv[Commodity.Fuel] += initialFuel + mileageFuel;
+        crawler.Supplies[Commodity.Fuel] += initialFuel + mileageFuel;
 
         return crawler;
     }
     public Crawler(Faction faction, Location location, Inventory inventory) {
         Faction = faction;
-        Inv = inventory;
+        Supplies = inventory;
         Location = location;
         Name = Names.HumanName();
         if (faction == Faction.Bandit) {
@@ -196,7 +196,7 @@ public class Crawler: IActor {
     public void CheckAndSetUltimatums(IActor other) {
         // Bandits demand cargo from players on encounter entry
         if (Faction == Faction.Bandit && other.Faction == Faction.Player) {
-            float cargoValue = other.Inv.ValueAt(Location);
+            float cargoValue = other.Supplies.ValueAt(Location);
             if (cargoValue >= Tuning.Bandit.minValueThreshold &&
                 Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
                 !To(other).Hostile &&
@@ -246,7 +246,7 @@ public class Crawler: IActor {
         foreach (var commodity in Enum.GetValues<Commodity>()) {
             var policy = Tuning.FactionPolicies.GetPolicy(Faction, commodity);
             if (policy == TradePolicy.Prohibited) {
-                float amount = target.Inv[commodity];
+                float amount = target.Supplies[commodity];
                 if (amount > 0) {
                     contraband.Add(commodity, amount);
                 }
@@ -360,16 +360,16 @@ public class Crawler: IActor {
     public bool Knows(Location loc) => _locations.ContainsKey(loc);
 
     Inventory _inventory = new Inventory();
-    public Inventory Inv {
+    public Inventory Supplies {
         get => _inventory;
         set {
             _inventory = value;
             UpdateSegments();
         }
     }
-    public Inventory TradeInv { get; } = new Inventory();
+    public Inventory Cargo { get; } = new Inventory();
     public void UpdateSegments() {
-        _allSegments = Inv.Segments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
+        _allSegments = Supplies.Segments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
 
         _activeSegments.Clear();
         _disabledSegments.Clear();
@@ -470,7 +470,7 @@ public class Crawler: IActor {
         return new Move(bestSpeed, drain, bestMsg == "" ? null : bestMsg);
     }
 
-    public float Mass => Inv.Mass;
+    public float Mass => Supplies.Mass;
     public float TotalCharge => PowerSegments.Any() ? PowerSegments.Select(s => s switch {
             ReactorSegment rs => rs.Charge,
             _ => 0,
@@ -496,7 +496,7 @@ public class Crawler: IActor {
             ("Local Value", 12)
         );
 
-        foreach (var (commodity, amount) in Inv.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
+        foreach (var (commodity, amount) in Supplies.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
             var value = amount * commodity.CostAt(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
@@ -574,40 +574,40 @@ public class Crawler: IActor {
     }
 
     public float ScrapInv {
-        get => Inv[Commodity.Scrap];
-        set => Inv[Commodity.Scrap] = value;
+        get => Supplies[Commodity.Scrap];
+        set => Supplies[Commodity.Scrap] = value;
     }
     public float FuelInv {
-        get => Inv[Commodity.Fuel];
-        set => Inv[Commodity.Fuel] = value;
+        get => Supplies[Commodity.Fuel];
+        set => Supplies[Commodity.Fuel] = value;
     }
     public float RationsInv {
-        get => Inv[Commodity.Rations];
-        set => Inv[Commodity.Rations] = value;
+        get => Supplies[Commodity.Rations];
+        set => Supplies[Commodity.Rations] = value;
     }
     public float CrewInv {
-        get => Inv[Commodity.Crew];
-        set => Inv[Commodity.Crew] = value;
+        get => Supplies[Commodity.Crew];
+        set => Supplies[Commodity.Crew] = value;
     }
     public float MoraleInv {
-        get => Inv[Commodity.Morale];
-        set => Inv[Commodity.Morale] = value;
+        get => Supplies[Commodity.Morale];
+        set => Supplies[Commodity.Morale] = value;
     }
     public float WaterInv {
-        get => Inv[Commodity.Water];
-        set => Inv[Commodity.Water] = value;
+        get => Supplies[Commodity.Water];
+        set => Supplies[Commodity.Water] = value;
     }
     public float AirInv {
-        get => Inv[Commodity.Air];
-        set => Inv[Commodity.Air] = value;
+        get => Supplies[Commodity.Air];
+        set => Supplies[Commodity.Air] = value;
     }
     public float PassengersInv {
-        get => Inv[Commodity.Passengers];
-        set => Inv[Commodity.Passengers] = value;
+        get => Supplies[Commodity.Passengers];
+        set => Supplies[Commodity.Passengers] = value;
     }
     public float SoldiersInv {
-        get => Inv[Commodity.Soldiers];
-        set => Inv[Commodity.Soldiers] = value;
+        get => Supplies[Commodity.Soldiers];
+        set => Supplies[Commodity.Soldiers] = value;
     }
     public void End(EEndState state, string message = "") {
         EndMessage = $"{state}: {message}";
@@ -717,7 +717,7 @@ public class Crawler: IActor {
         return 0;
     }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
-        if (!Inv.Segments.Any() || !fire.Any()) {
+        if (!Supplies.Segments.Any() || !fire.Any()) {
             return;
         }
         
@@ -785,7 +785,7 @@ public class Crawler: IActor {
         // Apply first damage morale penalty only if this is the first time taking damage from this attacker
         if (!wasAlreadyDamaged && totalDamageDealt > 0) {
             float dMorale = Tuning.Crawler.MoraleTakeAttack;
-            Inv[Commodity.Morale] += dMorale;
+            Supplies[Commodity.Morale] += dMorale;
             msg += $"{dMorale} morale for taking fire.\n";
         }
 
@@ -793,12 +793,12 @@ public class Crawler: IActor {
         if (!wasDestroyed && IsDestroyed) {
             if (relation.Hostile) {
                 float dMorale = Tuning.Crawler.MoraleHostileDestroyed;
-                from.Inv[Commodity.Morale] += dMorale;
+                from.Supplies[Commodity.Morale] += dMorale;
                 Message($"{dMorale} morale for destroying {Name}");
             } else {
                 float dHostileMorale = Tuning.Crawler.MoraleHostileDestroyed;
                 float dMorale = Tuning.Crawler.MoraleFriendlyDestroyed;
-                from.Inv[Commodity.Morale] += dMorale;
+                from.Supplies[Commodity.Morale] += dMorale;
                 if (from is Crawler fromCrawler) {
                     float evilage = fromCrawler.EvilPoints / Tuning.EvilLimit;
                     evilage = Math.Clamp(evilage, 0.0f, 1.0f);
@@ -870,7 +870,7 @@ public class Crawler: IActor {
     void SetupBanditExtortion(IActor target) {
         if (Faction != Faction.Bandit || target.Faction != Faction.Player) return;
 
-        float cargoValue = target.Inv.ValueAt(Location);
+        float cargoValue = target.Supplies.ValueAt(Location);
         if (cargoValue >= Tuning.Bandit.minValueThreshold &&
             Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
             !To(target).Hostile &&

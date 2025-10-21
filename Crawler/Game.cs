@@ -263,10 +263,6 @@ public class Game {
         var mapLines = sectorMapLines.Select(line => $"│{line}║").StringJoin("\n");
         return $"{header}\n{mapLines}\n{footer}";
     }
-    int ManageInventory() {
-        //AP--;
-        return 1;
-    }
     int Turn(string args) {
         float count = float.TryParse(args, out float parsed) ? parsed * 60 : 3600;
         return (int) count;
@@ -364,7 +360,7 @@ public class Game {
         yield return new MenuItem("", Style.MenuTitle.Format("Player Menu"));
         yield return new ActionMenuItem("PP", "Power...", _ => PowerMenu());
         yield return new ActionMenuItem("PK", "Packaging...", _ => PackagingMenu());
-        yield return new ActionMenuItem("PT", "Trade Inv...", _ => TradeInventoryMenu());
+        yield return new ActionMenuItem("PT", "Trade Cargo...", _ => TradeInventoryMenu());
 
         // Hidden detail items for power control
         var segments = Player.Segments;
@@ -445,7 +441,7 @@ public class Game {
     }
 
     int TradeInventoryMenu() {
-        var (selected, ap) = CrawlerEx.MenuRun("Trade Inventory Menu", [
+        var (selected, ap) = CrawlerEx.MenuRun("Trade Cargo Menu", [
             MenuItem.Cancel,
             .. TradeInventoryMenuItems(),
         ]);
@@ -453,35 +449,35 @@ public class Game {
     }
 
     IEnumerable<MenuItem> TradeInventoryMenuItems(ShowArg showOption = ShowArg.Show) {
-        // Show packaged segments in main inventory that can be moved to trade inventory
+        // Show packaged segments in supplies that can be moved to cargo
         var packagedSegments = Player.Segments.Where(s => s.State == Segment.Working.Packaged).ToList();
 
         for (int i = 0; i < packagedSegments.Count; i++) {
             var segment = packagedSegments[i];
-            yield return new ActionMenuItem($"PT{i + 1}M", $"{segment.StateName} to Cargo", _ => MoveToTradeInventory(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PT{i + 1}M", $"{segment.StateName} to Cargo", _ => MoveToCargo(segment), EnableArg.Enabled, showOption);
         }
 
-        // Show segments in trade inventory that can be moved back to main inventory
-        var tradeSegments = Player.TradeInv.Segments.ToList();
+        // Show segments in cargo that can be moved back to supplies
+        var tradeSegments = Player.Cargo.Segments.ToList();
         for (int i = 0; i < tradeSegments.Count; i++) {
             var segment = tradeSegments[i];
             int index = i;
-            yield return new ActionMenuItem($"PT{i + 1}R", $"{segment.StateName} to Supplies", _ => MoveFromTradeInventory(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PT{i + 1}R", $"{segment.StateName} to Supplies", _ => MoveFromCargo(segment), EnableArg.Enabled, showOption);
         }
     }
 
-    int MoveToTradeInventory(Segment segment) {
-        Player.Inv.Remove(segment);
-        Player.TradeInv.Add(segment);
-        Player.Message($"{segment.Name} moved to trade inventory");
+    int MoveToCargo(Segment segment) {
+        Player.Supplies.Remove(segment);
+        Player.Cargo.Add(segment);
+        Player.Message($"{segment.Name} moved to cargo");
         Player.UpdateSegments();
         return 0;
     }
 
-    int MoveFromTradeInventory(Segment segment) {
-        Player.TradeInv.Remove(segment);
-        Player.Inv.Add(segment);
-        Player.Message($"{segment.Name} returned from trade inventory");
+    int MoveFromCargo(Segment segment) {
+        Player.Cargo.Remove(segment);
+        Player.Supplies.Add(segment);
+        Player.Message($"{segment.Name} returned from cargo");
         Player.UpdateSegments();
         return 0;
     }
@@ -535,7 +531,7 @@ public class Game {
             return 0;
         }
 
-        Player.Inv[matchingCommodity] += amount;
+        Player.Supplies[matchingCommodity] += amount;
         Player.Message($"Added {amount} {matchingCommodity}");
         return 0;
     }

@@ -89,7 +89,7 @@ public static class TradeEx {
 
             // Add commodity to seller's inventory
             var quantity = Inventory.QuantitySold(CFrac / locationMarkup, commodity, Location);
-            Seller.Inv[commodity] += quantity;
+            Seller.Supplies[commodity] += quantity;
 
             // Create proposals
             var saleQuantity = 1f;
@@ -116,7 +116,7 @@ public static class TradeEx {
         }
 
         // Offer segments from trade inventory if available
-        foreach (var segment in seller?.TradeInv.Segments.ToList() ?? []) {
+        foreach (var segment in seller?.Cargo.Segments.ToList() ?? []) {
             var localCost =  segment.CostAt(Location);
             var price = localCost * merchantMarkup;
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
@@ -127,7 +127,7 @@ public static class TradeEx {
             var segment = segmentDef.NewSegment();
             var markup = Tuning.Economy.LocalMarkup(segment.SegmentKind, Location);
             markup *= merchantMarkup;
-            Seller.Inv.Segments.Add(segment);
+            Seller.Supplies.Segments.Add(segment);
             var price = segment.Cost * markup;
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }

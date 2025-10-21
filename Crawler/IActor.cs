@@ -63,10 +63,10 @@ public interface IActor {
 
     // ===== Resources =====
     /// <summary>Commodities and segments this actor is willing to trade</summary>
-    Inventory TradeInv { get; }
+    Inventory Cargo { get; }
 
     /// <summary>Commodities and segments owned by this actor</summary>
-    Inventory Inv { get; }
+    Inventory Supplies { get; }
 
     // ===== State =====
     /// <summary>Game over message if actor is destroyed/ended</summary>
@@ -161,14 +161,14 @@ public interface IActor {
 public class StaticActor(string name, string brief, Faction faction, Inventory inv, Location location): IActor {
     public string Name => name;
     public Faction Faction => faction;
-    public Inventory Inv { get; } = inv;
-    public Inventory TradeInv => Inv;
+    public Inventory Supplies { get; } = inv;
+    public Inventory Cargo => Supplies;
     public EActorFlags Flags { get; set; } = EActorFlags.None;
     public Location Location { get; set; } = location;
     public bool Harvested => (Flags & EActorFlags.Looted) != 0;
     public string Brief(IActor viewer) => brief + (Harvested ? " (Harvested)" : "") + "\n";
     public string Report() {
-        return $"{Name}\n{Brief(this)}\n{Inv}";
+        return $"{Name}\n{Brief(this)}\n{Supplies}";
     }
     public List<IProposal> StoredProposals { get; private set; } = new();
     public IEnumerable<IProposal> Proposals() => StoredProposals;

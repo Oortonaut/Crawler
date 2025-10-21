@@ -21,10 +21,10 @@ public class SavedCrawler {
     public string Name { get; set; } = "";
     public Faction Faction { get; set; }
     public Vector2 LocationPos { get; set; }
-    public SavedInventory Inventory { get; set; } = new();
+    public SavedInventory Supplies { get; set; } = new();
     public List<SavedSegment> Segments { get; set; } = new();
-    public SavedInventory TradeInventory { get; set; } = new();
-    public List<SavedSegment> TradeSegments { get; set; } = new();
+    public SavedInventory Cargo { get; set; } = new();
+    public List<SavedSegment> CargoSegments { get; set; } = new();
     public float Markup { get; set; } = 1.0f;
     public Dictionary<string, SavedActorRelation> Relations { get; set; } = new();
     public Dictionary<string, SavedActorLocation> VisitedLocations { get; set; } = new();
@@ -181,10 +181,10 @@ public static class SaveLoadExtensions {
             Name = crawler.Name,
             Faction = crawler.Faction,
             LocationPos = crawler.Location.Position,
-            Inventory = crawler.Inv.ToSaveData(),
+            Supplies = crawler.Supplies.ToSaveData(),
             Segments = crawler.Segments.Select(s => s.ToSaveData()).ToList(),
-            TradeInventory = crawler.TradeInv.ToSaveData(),
-            TradeSegments = crawler.TradeInv.Segments.Select(s => s.ToSaveData()).ToList(),
+            Cargo = crawler.Cargo.ToSaveData(),
+            CargoSegments = crawler.Cargo.Segments.Select(s => s.ToSaveData()).ToList(),
             Markup = crawler.Markup,
             Relations = crawler.GetRelations().ToDictionary(
                 kvp => kvp.Key.Name,
@@ -410,7 +410,7 @@ public static class SaveLoadExtensions {
 
     public static Crawler ToGameCrawler(this SavedCrawler savedCrawler, Map map) {
         var location = map.FindLocationByPosition(savedCrawler.LocationPos);
-        var inventory = savedCrawler.Inventory.ToGameInventory();
+        var inventory = savedCrawler.Supplies.ToGameInventory();
 
         foreach (var savedSegment in savedCrawler.Segments) {
             var segment = savedSegment.ToGameSegment();
@@ -423,13 +423,13 @@ public static class SaveLoadExtensions {
         };
 
         // Restore trade inventory
-        var tradeInventory = savedCrawler.TradeInventory.ToGameInventory();
-        foreach (var savedSegment in savedCrawler.TradeSegments) {
+        var tradeInventory = savedCrawler.Cargo.ToGameInventory();
+        foreach (var savedSegment in savedCrawler.CargoSegments) {
             var segment = savedSegment.ToGameSegment();
             tradeInventory.Add(segment);
         }
-        crawler.TradeInv.Clear();
-        crawler.TradeInv.Add(tradeInventory);
+        crawler.Cargo.Clear();
+        crawler.Cargo.Add(tradeInventory);
 
         // Restore markup
         crawler.Markup = savedCrawler.Markup;

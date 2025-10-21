@@ -244,7 +244,7 @@ ProposeDemand(
 ScanForContraband(target):
   if Random() > contrabandScanChance: return empty
 
-  foreach commodity in target.Inv:
+  foreach commodity in target.Supplies:
     policy = FactionPolicies.GetPolicy(faction, commodity)
     if policy == Prohibited and amount > 0:
       contraband.Add(commodity, amount)
@@ -326,7 +326,7 @@ Selling Fuel at Trade Settlement:
 Only sold by Bandits (Liquor, Stims, Downers, Trips)
 
 **Segments:**
-- Offered from trader's TradeInv
+- Offered from trader's Cargo
 - Procedurally generated based on location wealth
 - Local markup applied to base cost
 

@@ -344,7 +344,7 @@ public class CrawlerArena {
         crawler.Faction = faction;
 
         // Assign the crawler as owner to all segments
-        foreach (var segment in crawler.Inv.Segments) {
+        foreach (var segment in crawler.Supplies.Segments) {
             segment.Owner = crawler;
         }
 

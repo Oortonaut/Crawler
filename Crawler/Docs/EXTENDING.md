@@ -99,7 +99,7 @@ if (/* condition met */) {
 **Simple Exchange:**
 ```csharp
 public record ProposeGiveItem(Commodity Item, float Amount): IProposal {
-    public bool AgentCapable(IActor Agent) => Agent.Inv[Item] >= Amount;
+    public bool AgentCapable(IActor Agent) => Agent.Supplies[Item] >= Amount;
     public bool SubjectCapable(IActor Subject) => true;
 
     public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) =>
@@ -613,14 +613,14 @@ Console.WriteLine($"Capability: {capability}");
 ```csharp
 // Add to player crawler
 var segment = mySegmentDef.NewSegment();
-Game.Instance.Player.Inv.Add(segment);
+Game.Instance.Player.Supplies.Add(segment);
 Game.Instance.Player.UpdateSegments();
 ```
 
 ### Commodities
 ```csharp
 // Give to player
-Game.Instance.Player.Inv[Commodity.MyNewCommodity] = 100f;
+Game.Instance.Player.Supplies[Commodity.MyNewCommodity] = 100f;
 
 // Check price
 float price = Commodity.MyNewCommodity.CostAt(player.Location);

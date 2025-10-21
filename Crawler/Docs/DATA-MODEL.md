@@ -33,7 +33,7 @@ interface IActor {
     EActorFlags Flags;              // Type flags (Mobile, Settlement, etc.)
 
     // ===== State =====
-    Inventory Inv;                  // Commodities and segments
+    Inventory Supplies;             // Commodities and segments
     string EndMessage;              // Game over message (if applicable)
     EEndState? EndState;            // End condition (Destroyed, Revolt, etc.)
 
@@ -314,18 +314,18 @@ class Inventory {
 
 ### Trade Inventory
 
-**Crawler has separate TradeInv:**
+**Crawler has separate Cargo:**
 ```csharp
 class Crawler {
-    Inventory Inv;        // Main inventory (installed + stored)
-    Inventory TradeInv;   // Trade-specific items (visible to NPCs)
+    Inventory Supplies;   // Main inventory (installed + stored)
+    Inventory Cargo;      // Trade-specific items (visible to NPCs)
 }
 ```
 
 **Purpose:**
-- Segments in TradeInv are visible for sale
+- Segments in Cargo are visible for sale
 - Keeps packaged segments separate from installed
-- NPCs only offer items from TradeInv
+- NPCs only offer items from Cargo
 
 ---
 

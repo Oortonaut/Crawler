@@ -34,7 +34,7 @@ public record HostilityInteraction(IActor Agent, IActor Subject, string Reason):
         Subject.To(Agent).Hostile = true;
         Agent.Message($"{Subject.Name} {Reason}. You are now hostile.");
         Subject.Message($"{Agent.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
-        Subject.Inv[Commodity.Morale] -= 2;
+        Subject.Supplies[Commodity.Morale] -= 2;
         return 1;
     }
     public string? MessageFor(IActor viewer) => null;
