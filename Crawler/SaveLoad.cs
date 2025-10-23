@@ -450,7 +450,7 @@ public static class SaveLoadExtensions {
     }
 
     public static Map ToGameMap(this SavedMap savedMap) {
-        var map = Map.FromSaveData(savedMap.Height, savedMap.Width);
+        var map = new Map(savedMap.Height, savedMap.Width);
 
         // Restore sector terrain and locations
         foreach (var savedSector in savedMap.Sectors) {
