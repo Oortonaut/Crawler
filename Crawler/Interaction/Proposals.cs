@@ -148,14 +148,16 @@ record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal 
     public override string ToString() => Description;
 }
 
-public record ProposeAttackDefend(string Description): IProposal {
+public record ProposeAttackDefend(string OptionCode): IProposal {
     public bool AgentCapable(IActor agent) => agent is Crawler;
     public bool SubjectCapable(IActor subject) => subject.Faction is not Faction.Independent;
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
-        yield return new ExchangeInteraction(Agent, new AttackOffer(), Subject, new EmptyOffer(), "A", Description);
+        var description = $"{Description} {Subject.Name}";
+        yield return new ExchangeInteraction(Agent, new AttackOffer(), Subject, new EmptyOffer(), OptionCode, description);
     }
     public long ExpirationTime => 0;
+    public string Description => "Attack";
 }
 
 // a proposal that I accept your surrender
