@@ -149,8 +149,8 @@ record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal 
 }
 
 public record ProposeAttackDefend(string OptionCode): IProposal {
-    public bool AgentCapable(IActor agent) => agent is Crawler;
-    public bool SubjectCapable(IActor subject) => subject.Faction is not Faction.Independent;
+    public bool AgentCapable(IActor agent) => agent == Game.Instance?.Player;
+    public bool SubjectCapable(IActor subject) => true;
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var description = $"{Description} {Subject.Name}";
@@ -168,10 +168,10 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
         if (Loser is Crawler loser) {
             float totalHits = loser.Segments.Sum(s => s.Hits);
             float totalMaxHits = loser.Segments.Sum(s => s.MaxHits);
-            ratio = totalHits / totalMaxHits;
+            ratio = Math.Min(totalHits, 1) / Math.Min(totalMaxHits, 1);
             ratio = (float)Math.Pow(ratio, 0.8);
         }
-        surrenderInv.Add(Loser.Supplies.Loot(ratio));
+        surrenderInv.Add(Loser.SupplyOffer(ratio));
         if (Loser.Supplies != Loser.Cargo) {
             surrenderInv.Add(Loser.Cargo.Loot(ratio));
         }
@@ -185,9 +185,7 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
     public bool InteractionCapable(IActor Winner, IActor Loser) =>
         Winner != Loser &&
         Winner.To(Loser).Hostile &&
-        !Loser.To(Winner).Surrendered
-            ? true
-            : false;
+        !Loser.To(Winner).Surrendered;
     public IEnumerable<IInteraction> GetInteractions(IActor Winner, IActor Loser) {
         var surrenderInv = MakeSurrenderInv(Loser);
         string Description = $"{Loser.Name} Surrender";
