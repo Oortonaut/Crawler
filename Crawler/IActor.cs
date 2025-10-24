@@ -161,11 +161,11 @@ public interface IActor {
 public class StaticActor(string name, string brief, Faction faction, Inventory inv, Location location): IActor {
     public string Name => name;
     public Faction Faction => faction;
-    public Inventory Supplies { get; } = inv;
-    public Inventory Cargo => Supplies;
+    public Inventory Supplies { get; } = new Inventory().WithOverdraft(inv);
+    public Inventory Cargo { get; } = inv;
     public EActorFlags Flags { get; set; } = EActorFlags.None;
     public Location Location { get; set; } = location;
-    public bool Harvested => (Flags & EActorFlags.Looted) != 0;
+    public bool Harvested => Flags.HasFlag(EActorFlags.Looted);
     public string Brief(IActor viewer) => brief + (Harvested ? " (Harvested)" : "") + "\n";
     public string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";

@@ -142,6 +142,7 @@ public static partial class CrawlerEx {
         StyleNone = fg.On(bg);
         Styles[Style.Name] = Color.Yellow.On(bg);
         Styles[Style.Em] = Color.SandyBrown.On(bg);
+        Styles[Style.UL] = StyleUnderline;
 
         Color menuBg = bg;
         Color menuFg = fg;
@@ -158,15 +159,16 @@ public static partial class CrawlerEx {
 
 
         Color segmentBg = Color.LightGray;
-        Color segmentBgInactive = segmentBg.Dark();
+        Color segmentBgInactive = Color.Pink;
         Color segmentBgPackaged = Color.LightCyan;
         Color segmentFg = Color.Green.Dark();
+        Color damagedFg = Color.Red.Dark();
         Styles[Style.SegmentNone] = segmentFg.On(segmentBg);
         Styles[Style.SegmentActive] = segmentFg.On(segmentBg);
         Styles[Style.SegmentPackaged] = segmentFg.On(segmentBgPackaged);
         Styles[Style.SegmentDeactivated] = segmentFg.On(segmentBgInactive);
-        Styles[Style.SegmentDisabled] = Color.SandyBrown.Dark().On(segmentBg);
-        Styles[Style.SegmentDestroyed] = Color.Red.On(segmentBg);
+        Styles[Style.SegmentDisabled] = damagedFg.On(segmentBgInactive);
+        Styles[Style.SegmentDestroyed] = damagedFg.On(segmentBg);
 
     }
     public static string Format(this Style style, string text = "") {
@@ -592,7 +594,8 @@ public static partial class CrawlerEx {
             }
         }
     }
-    public static bool Failed(this IActor actor) => actor.EndMessage != null;
+    public static bool Failed(this IActor actor) => actor.EndState != null;
+    public static bool Lives(this IActor actor) => actor.EndState == null;
     public static int Length<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>().Length;
     public static ENUM ChooseRandom<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>()[Random.Shared.Next(0, Length<ENUM>() - 1)];
     static List<string> _messages = new();
@@ -631,6 +634,7 @@ public static partial class CrawlerEx {
             a2d.Hostile = true;
 
             if (a2d.Spared && a2d.Latch(ActorToActor.EFlags.Betrayed, true)) {
+                d2a.SetFlag(ActorToActor.EFlags.Betrayer);
                 ++attacker.EvilPoints;
                 attacker.Message($"You betrayed {defender.Name}");
                 defender.Message($"You were betrayed by {attacker.Name}");
@@ -704,7 +708,7 @@ public static partial class CrawlerEx {
             if (!string.IsNullOrEmpty(msg)) {
                 agent.Message(msg);
             }
-            if (interaction.Enabled() == InteractionMode.Immediate) {
+            if (interaction.PerformMode() == InteractionMode.Immediate) {
                 result += interaction.Perform();
             }
         }
@@ -720,7 +724,7 @@ public static partial class CrawlerEx {
             result.Add(MenuItem.Sep);
 
 
-            bool anyEnabled = interactions.Any(i => i.Enabled() == InteractionMode.Menu);
+            bool anyEnabled = interactions.Any(i => i.PerformMode() == InteractionMode.Menu);
             result.Add(new ActionMenuItem(prefix,
                 title,
                 args => interactions.InteractionMenu(title, prefix, args).turns,
@@ -742,7 +746,7 @@ public static partial class CrawlerEx {
             yield return new ActionMenuItem($"{shortcut}{counter}",
                 $"{interaction.Description}",
                 a => interaction.Perform(a),
-                interaction.Enabled().ToEnableArg(),
+                interaction.PerformMode().ToEnableArg(),
                 show);
         }
     }
@@ -754,11 +758,11 @@ public static partial class CrawlerEx {
 
         return MenuRun($"{Name}", interactionsMenu.ToArray());
     }
-    public static Inventory Loot(this Inventory from, float? lootReturn) {
+    public static Inventory Loot(this Inventory from, float lootReturn) {
         var loot = new Inventory();
         foreach (var commodity in Enum.GetValues<Commodity>()) {
             float x = Random.Shared.NextSingle();
-            loot[commodity] += from[commodity] * x * (lootReturn ?? Tuning.Game.LootReturn);
+            loot[commodity] += from[commodity] * x * lootReturn;
         }
         var lootableSegments = from.Segments.Where(s => s.Health > 0).ToArray();
         loot.Segments.AddRange(lootableSegments

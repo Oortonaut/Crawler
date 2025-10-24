@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 
 namespace Crawler;
 
@@ -43,12 +44,30 @@ public interface IProposal {
 }
 
 public static class IProposalEx {
-    public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) =>
-        proposal.AgentCapable(Agent) &&
-        proposal.SubjectCapable(Subject) &&
-        proposal.InteractionCapable(Agent, Subject);
-    public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) =>
-        proposal.Test(Agent, Subject) ? proposal.GetInteractions(Agent, Subject) : [];
+    public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) {
+        Debug.Write($"Testing {proposal.Description} for {Agent.Name} and {Subject.Name}: ");
+        bool ac = proposal.AgentCapable(Agent);
+        bool sc = proposal.SubjectCapable(Subject);
+        bool ic = proposal.InteractionCapable(Agent, Subject);
+        bool result = ac && sc && ic;
+        Debug.WriteLine(result ? "OK" : "Bad "+ (ac ? "" : "Agent ") + (sc ? "" : "Subject ") + (ic ? "" : "Interaction "));
+        return result;
+    }
+    public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) {
+        bool tested = proposal.Test(Agent, Subject);
+        if (tested) {
+            Debug.Write("Interactions: ");
+            var interactions = proposal.GetInteractions(Agent, Subject).ToArray();
+            foreach (var interaction in interactions) {
+                var im = interaction.PerformMode();
+                Debug.Write($"{interaction.Description}: {im} ");
+            }
+            Debug.WriteLine("");
+            return interactions;
+        } else {
+            return [];
+        }
+    }
 }
 
 // Agent is seller
@@ -65,7 +84,7 @@ public record ProposeExchange(
     public virtual IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new ExchangeInteraction(Agent, agentOffer, Subject, subjectOffer, OptionCode, Description);
     }
-    // Description is from theI  subjects POV
+    // Description is from the subjects POV
     public virtual string Description => $"Trade your {agentOffer.Description} for {subjectOffer.Description}";
     public virtual long ExpirationTime { get; set; } = 0;
     public override string ToString() => Description;
@@ -87,14 +106,6 @@ public record ProposeSubjectExchange(
     public override bool SubjectCapable(IActor subject) => subject == Subject && base.SubjectCapable(subject);
 }
 
-// Agent is seller
-public record ProposeInvInv(
-    Inventory agentInv,
-    Inventory subjectInv,
-    string OptionCode = "T"): ProposeExchange(new InventoryOffer(agentInv), new InventoryOffer(subjectInv), OptionCode) {
-}
-
-
 // I propose that I give you my loot
 record ProposeLootTake(string OptionCode, string verb = "Loot"): IProposal {
     public bool AgentCapable(IActor agent) =>
@@ -105,7 +116,7 @@ record ProposeLootTake(string OptionCode, string verb = "Loot"): IProposal {
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{verb} {Agent.Name}";
-        yield return new ExchangeInteraction(Agent, Agent.Supplies.LootOffer(Tuning.Game.LootReturn), Subject, new EmptyOffer(), OptionCode, description);
+        yield return new ExchangeInteraction(Agent, Agent.SupplyOffer(Tuning.Game.LootReturn), Subject, new EmptyOffer(), OptionCode, description);
     }
     public string Description => $"Offer {verb}";
     public long ExpirationTime => 0;
@@ -119,7 +130,7 @@ record ProposeHarvestTake(IActor Resource, Inventory Amount, string OptionCode, 
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{verb} {Agent.Name}";
-        yield return new ExchangeInteraction(Agent, Agent.Supplies.LootOffer(), Subject, new EmptyOffer(), OptionCode, description);
+        yield return new ExchangeInteraction(Agent, Agent.SupplyOffer(), Subject, new EmptyOffer(), OptionCode, description);
     }
     public string Description => $"Propose {verb}";
     public long ExpirationTime => 0;
@@ -139,8 +150,8 @@ record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal 
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new ExchangeInteraction(
-            Agent, Agent.Supplies.LootOffer(Chance),
-            Subject, new InventoryOffer(Risk),
+            Agent, Agent.SupplyOffer(Chance),
+            Subject, new InventoryOffer(false, Risk),
             "H");
     }
     public string Description => $"Explore {Resource.Name}";
@@ -149,8 +160,8 @@ record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal 
 }
 
 public record ProposeAttackDefend(string OptionCode): IProposal {
-    public bool AgentCapable(IActor agent) => agent == Game.Instance?.Player;
-    public bool SubjectCapable(IActor subject) => true;
+    public bool AgentCapable(IActor agent) => agent == Game.Instance?.Player && agent.Lives();
+    public bool SubjectCapable(IActor subject) => subject.Lives();
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var description = $"{Description} {Subject.Name}";
@@ -171,7 +182,7 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
             ratio = Math.Min(totalHits, 1) / Math.Min(totalMaxHits, 1);
             ratio = (float)Math.Pow(ratio, 0.8);
         }
-        surrenderInv.Add(Loser.SupplyOffer(ratio));
+        surrenderInv.Add(Loser.Supplies.Loot(ratio));
         if (Loser.Supplies != Loser.Cargo) {
             surrenderInv.Add(Loser.Cargo.Loot(ratio));
         }
@@ -179,9 +190,9 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
         return surrenderInv;
     }
 
-    public bool AgentCapable(IActor Winner) => true;
+    public bool AgentCapable(IActor Winner) => Winner.Lives();
     public bool SubjectCapable(IActor subject) =>
-        subject is Crawler loser && loser.IsVulnerable;
+        subject is Crawler loser && loser.IsVulnerable && loser.Lives();
     public bool InteractionCapable(IActor Winner, IActor Loser) =>
         Winner != Loser &&
         Winner.To(Loser).Hostile &&
@@ -192,7 +203,7 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
         float value = surrenderInv.ValueAt(Winner.Location);
         yield return new ExchangeInteraction(
             Winner, new AcceptSurrenderOffer(value, Description),
-            Loser, new InventoryOffer(surrenderInv), OptionCode, Description);
+            Loser, new InventoryOffer(false, surrenderInv), OptionCode, Description);
     }
     public string Description => $"SurrenderAccept";
     public long ExpirationTime => 0;
@@ -246,7 +257,7 @@ public record ProposeAttackOrLoot(float DemandFraction = 0.5f)
         !Agent.To(Subject).Surrendered &&
         Subject.Supplies.ValueAt(Subject.Location) > 0;
 
-    protected override IOffer SubjectOffer(IActor subject) => new InventoryOffer(subject.Supplies.Loot(DemandFraction));
+    protected override IOffer SubjectOffer(IActor subject) => subject.SupplyOffer(DemandFraction);
     public override string Description => "Extort cargo";
 }
 
@@ -294,14 +305,14 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
         (agent.Faction == Faction.Independent || agent.Faction.IsCivilian());
 
     public override bool SubjectCapable(IActor subject) =>
-        subject.Faction == Faction.Player && subject.Supplies.Contains(Contraband);
+        subject.Faction == Faction.Player && subject.Supplies.Contains(Contraband) != ContainsResult.False;
 
     public override bool InteractionCapable(IActor Agent, IActor Subject) =>
         base.InteractionCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
         Agent.To(Subject).StoredProposals.Any(p => p is ProposeContrabandSeizure);
 
-    protected override IOffer SubjectOffer(IActor subject) => new InventoryOffer(Contraband);
+    protected override IOffer SubjectOffer(IActor subject) => new InventoryOffer(false, Contraband);
 
     public override string Description => "Seize contraband";
 }
@@ -327,7 +338,10 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
         !Subject.To(Agent).Surrendered &&
         Subject.Supplies.ValueAt(Subject.Location) > 0;
 
-    protected override IOffer SubjectOffer(IActor subject) => new InventoryOffer(subject.Supplies.Loot(DemandFraction));
+    protected override IOffer SubjectOffer(IActor subject) => new CompoundOffer(
+        subject.SupplyOffer(DemandFraction),
+        subject.CargoOffer((DemandFraction + 1) / 2)
+    );
 
     public override string Description => "Threaten for cargo";
 }

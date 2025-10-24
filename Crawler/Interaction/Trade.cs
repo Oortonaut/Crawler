@@ -3,6 +3,16 @@
 // Offers and Exchange Interactions
 //=========================================================================
 
+// Trade policy defines how a faction treats a commodity category
+public enum TradePolicy {
+    Subsidized, // 0.7x base price - government subsidy or local production
+    Legal, // 1.0x base price - normal trade
+    Taxed, // 1.3x markup - import tariffs
+    Controlled, // 1.75x markup + transaction fee - heavily regulated
+    Prohibited // Cannot trade - illegal in this faction's territory
+}
+
+
 // Agent is seller
 public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"): IProposal {
     public readonly float Cash = Commodity.Scrap.Round(cash);

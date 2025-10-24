@@ -146,24 +146,28 @@ public record HostilityOffer(string Reason): IOffer {
 
 // This offer moves the Delivered inventory from the agent's trade inventory to the subjects main inventory.
 public record InventoryOffer(
+    bool cargo,
     Inventory Delivered,
     Inventory? _promised = null) : IOffer {
 
     public virtual string Description => Promised.ToString();
     public override string ToString() => Description;
     public Inventory Promised => _promised ?? Delivered;
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) => Agent.Cargo.Contains(Delivered);
+    public virtual bool EnabledFor(IActor Agent, IActor Subject) => GetInv(Agent).Contains(Delivered) != ContainsResult.False;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
-        Subject.Supplies.Add(Delivered);
-        Agent.Cargo.Remove(Delivered);
+        Subject.Cargo.Add(Delivered);
+        GetInv(Agent).Remove(Delivered);
         foreach (var segment in Delivered.Segments) {
             segment.Packaged = false;
         }
     }
     public float ValueFor(IActor Agent) => Promised.ValueAt(Agent.Location);
+    Inventory GetInv(IActor Agent) => cargo ? Agent.Cargo : Agent.Supplies;
 }
 
 public static partial class OfferEx {
-    public static IOffer LootOffer(this Inventory inventory) => new LootOfferWrapper(new InventoryOffer(inventory));
-    public static IOffer LootOffer(this Inventory inventory, float fraction) => new LootOfferWrapper(new InventoryOffer(inventory.Loot(fraction)));
+    public static IOffer CargoOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo));
+    public static IOffer SupplyOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies));
+    public static IOffer CargoOffer(this IActor actor, float fraction) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo.Loot(fraction)));
+    public static IOffer SupplyOffer(this IActor actor, float fraction) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies.Loot(fraction)));
 }

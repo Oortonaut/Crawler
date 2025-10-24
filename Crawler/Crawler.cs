@@ -87,6 +87,7 @@ public class Crawler: IActor {
     public Crawler(Faction faction, Location location, Inventory inventory) {
         Faction = faction;
         Supplies = inventory;
+        Supplies.Overdraft = Cargo;
         Location = location;
         Name = Names.HumanName();
         if (faction == Faction.Bandit) {

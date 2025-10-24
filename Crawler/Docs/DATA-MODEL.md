@@ -13,6 +13,7 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2025-10-24**: Added `Overdraft` property and `ContainsResult` enum to Inventory; withdrawal methods now support overdraft from linked inventory
 - **2025-10-19**: Added `Betrayer` flag to `EFlags` enum; removed Standing/Trust fields from `ActorToActor`; added `Latch()`, `HasFlag()`, `SetFlag()` helper methods; removed `Betrayed` property (now uses `Betrayer` flag)
 - **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed)
 - **2025-01-19**: Added UltimatumTime to ActorToActor for mandatory interactions
@@ -291,24 +292,56 @@ class Inventory {
     // Accessor
     float this[Commodity c] {
         get => Commodities[c];
-        set => Commodities[c] = value;
+        set => Commodities[c] = value;  // Supports overdraft on withdrawal
     }
 
     // ===== Segments =====
     List<Segment> Segments;
 
+    // ===== Overdraft =====
+    Inventory? Overdraft { get; set; }  // Linked inventory for withdrawals
+
     // ===== Operations =====
     void Add(Commodity c, float amount);
-    void Remove(Commodity c, float amount);
+    void Remove(Commodity c, float amount);  // Pulls from Overdraft if needed
     void Add(Segment segment);
     void Remove(Segment segment);
-    bool Contains(Inventory other);
+    ContainsResult Contains(Inventory other);  // Returns True/False/Overdraft
     bool IsEmpty { get; }
 
     // ===== Value Calculations =====
     float ValueAt(Location location);  // Total scrap value
     float Mass { get; }                // Total weight
     float Volume { get; }              // Total volume
+}
+```
+
+### ContainsResult Enum
+
+**File:** `Inventory.cs:176-180`
+**Purpose:** Indicates whether an inventory can fulfill a request
+
+```csharp
+enum ContainsResult {
+    False,      // Cannot fulfill (even with overdraft)
+    True,       // Can fulfill from current inventory alone
+    Overdraft   // Can fulfill, but requires pulling from overdraft
+}
+```
+
+**Usage:**
+```csharp
+var result = supplies.Contains(requestedItems);
+switch (result) {
+    case ContainsResult.True:
+        // Have everything locally
+        break;
+    case ContainsResult.Overdraft:
+        // Need to pull from cargo
+        break;
+    case ContainsResult.False:
+        // Can't fulfill request
+        break;
 }
 ```
 
@@ -326,6 +359,31 @@ class Crawler {
 - Segments in Cargo are visible for sale
 - Keeps packaged segments separate from installed
 - NPCs only offer items from Cargo
+
+### Overdraft System
+
+**Setup:**
+```csharp
+// In Crawler.cs:90 and IActor.cs:164
+Supplies.Overdraft = Cargo;
+```
+
+**Behavior:**
+- Withdrawals from `Supplies` automatically pull from `Cargo` if needed
+- **One-way flow**: Supplies → Cargo only (not Cargo → Supplies)
+- Indexer setter, `Remove(Commodity)`, and `Remove(Inventory)` all support overdraft
+- `Contains()` checks both current inventory and overdraft availability
+
+**Example:**
+```csharp
+// Player has 10 Fuel in Supplies, 50 Fuel in Cargo
+Supplies[Commodity.Fuel] = 5;  // Reduces Supplies to 5
+Supplies[Commodity.Fuel] = 0;  // Drains Supplies to 0
+
+Supplies.Remove(Commodity.Fuel, 30);
+// Drains all 0 from Supplies, then removes 30 from Cargo
+// Result: Supplies.Fuel = 0, Cargo.Fuel = 20
+```
 
 ---
 

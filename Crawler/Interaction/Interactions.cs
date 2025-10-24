@@ -1,4 +1,6 @@
-﻿namespace Crawler;
+﻿using System.Diagnostics;
+
+namespace Crawler;
 
 public enum InteractionMode {
     Disabled,
@@ -11,7 +13,7 @@ public enum InteractionMode {
 /// </summary>
 public interface IInteraction {
     /// <summary>Can this interaction be performed right now?</summary>
-    InteractionMode Enabled(string args = "");
+    InteractionMode PerformMode(string args = "");
 
     /// <summary>Execute the interaction. Returns AP cost (0 for instant).</summary>
     int Perform(string args = "");
@@ -28,7 +30,7 @@ public interface IInteraction {
 
 // Simple consequence: mark as hostile
 public record HostilityInteraction(IActor Agent, IActor Subject, string Reason): IInteraction {
-    public InteractionMode Enabled(string args = "") => InteractionMode.Menu;
+    public InteractionMode PerformMode(string args = "") => InteractionMode.Menu;
     public int Perform(string args = "") {
         Agent.To(Subject).Hostile = true;
         Subject.To(Agent).Hostile = true;
@@ -62,11 +64,16 @@ public record ExchangeInteraction: IInteraction {
     public IActor Subject { get; init; }
     readonly InteractionMode _mode;
 
-    public InteractionMode Enabled(string args = "") {
-        return AgentOffer.EnabledFor(Agent, Subject) &&
-               SubjectOffer.EnabledFor(Subject, Agent)
-            ? _mode
-            : InteractionMode.Disabled;
+    public InteractionMode PerformMode(string args = "") {
+        bool aoe = AgentOffer.EnabledFor(Agent, Subject);
+        bool soe = SubjectOffer.EnabledFor(Subject, Agent);
+        if (aoe && soe) {
+            Debug.WriteLine($"Can {Description}: {_mode}");
+            return _mode;
+        } else {
+            Debug.WriteLine($"Can {Description}: Bad " + (aoe ? "" : "Agent ") + (soe ? "" : "Subject "));
+            return InteractionMode.Disabled;
+        }
     }
 
     public int Perform(string args = "") {
@@ -77,7 +84,7 @@ public record ExchangeInteraction: IInteraction {
 
         int performed = 0;
         for (int i = 0; i < count; i++) {
-            if (Enabled() == InteractionMode.Disabled) {
+            if (PerformMode() == InteractionMode.Disabled) {
                 break;
             }
             AgentOffer.PerformOn(Agent, Subject);

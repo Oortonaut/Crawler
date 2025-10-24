@@ -60,15 +60,6 @@ public enum GameTier {
     Late
 }
 
-// Trade policy defines how a faction treats a commodity category
-public enum TradePolicy {
-    Subsidized,   // 0.7x base price - government subsidy or local production
-    Legal,        // 1.0x base price - normal trade
-    Taxed,        // 1.3x markup - import tariffs
-    Controlled,   // 1.75x markup + transaction fee - heavily regulated
-    Prohibited    // Cannot trade - illegal in this faction's territory
-}
-
 [Flags]
 public enum CommodityFlag {
     None = 0,
@@ -172,6 +163,13 @@ public static class CommodityEx {
     public static PowerScaling CommodityAvlByPopTech = new(0.15f, new(5.0f, 3.0f), "primitive", "tech");
     public static float Round(this Commodity commodity, float value) => ( float ) Math.Round(value, commodity.Flags().HasFlag(CommodityFlag.Integral) ? 0 : 1);
 }
+
+public enum ContainsResult {
+    False,      // Cannot fulfill (even with overdraft)
+    True,       // Can fulfill from current inventory
+    Overdraft   // Can fulfill, but requires pulling from overdraft
+}
+
 public class Inventory {
     public Inventory() { }
     public Inventory(EArray<Commodity, float> InItemCounts, IEnumerable<Segment> InSegments) {
@@ -182,6 +180,8 @@ public class Inventory {
     EArray<Commodity, float> _commodities = new();
     public IReadOnlyList<float> Commodities => _commodities.Items;
     public List<Segment> Segments { get; } = new();
+    // A linked list of overdraft inventories, which can be used to fulfill requests.
+    public Inventory? Overdraft { get; set; } = null;
     public bool IsEmpty => _commodities.All(c => c == 0) && Segments.Count == 0;
     public void Clear() {
         _commodities.Initialize(0);
@@ -190,13 +190,50 @@ public class Inventory {
 
     public float this[Commodity c] {
         get => _commodities[c];
-        set => _commodities[c] = c.Round(Math.Max(0, value));
+        set {
+            var currentValue = _commodities[c];
+            var newValue = c.Round(Math.Max(0, value));
+
+            // If withdrawing (new value < current value)
+            if (newValue < currentValue) {
+                var shortfall = currentValue - newValue;
+                var available = currentValue;
+
+                // Try to fulfill from current inventory
+                if (available >= shortfall) {
+                    _commodities[c] = newValue;
+                } else {
+                    // Need to pull from overdraft (recursively)
+                    var deficit = shortfall - available;
+                    _commodities[c] = 0; // Drain current inventory
+                    if (Overdraft != null) {
+                        Overdraft.Remove(c, deficit); // Recursive call
+                    }
+                }
+            } else {
+                // Depositing, just set the value
+                _commodities[c] = newValue;
+            }
+        }
     }
     public void Add(Commodity commodity, float addCount) {
         _commodities[commodity] = commodity.Round(_commodities[commodity] + addCount);
     }
     public void Remove(Commodity commodity, float removeCount) {
-        _commodities[commodity] = commodity.Round(_commodities[commodity] - removeCount);
+        var currentValue = _commodities[commodity];
+        var newValue = currentValue - removeCount;
+
+        if (newValue >= 0) {
+            // Can fulfill from current inventory
+            _commodities[commodity] = commodity.Round(newValue);
+        } else {
+            // Need overdraft (recursively)
+            var deficit = -newValue;
+            _commodities[commodity] = 0; // Drain current inventory
+            if (Overdraft != null) {
+                Overdraft.Remove(commodity, deficit); // Recursive call
+            }
+        }
     }
     public void Add(Segment s) => Segments.Add(s);
     public void Remove(Segment s) => Segments.Remove(s);
@@ -242,15 +279,38 @@ public class Inventory {
         Segments.AddRange(other.Segments);
     }
     public void Remove(Inventory other) {
-        if (!Contains(other)) {
+        var containsResult = Contains(other);
+        if (containsResult == ContainsResult.False) {
             throw new Exception("Inventory doesn't contain other.");
         }
 
-        other._commodities
-            .Pairs()
-            .Do(ii => _commodities[ii.Key] = ii.Key.Round(_commodities[ii.Key] - ii.Value));
+        // Remove commodities (with overdraft if needed)
+        foreach (var (commodity, amount) in other._commodities.Pairs()) {
+            if (amount > 0) {
+                Remove(commodity, amount);
+            }
+        }
+
+        // Remove segments (recursively through overdraft chain)
         foreach (var otherSegment in other.Segments) {
-            Segments.Remove(otherSegment);
+            var found = false;
+            if (Segments.Contains(otherSegment)) {
+                Segments.Remove(otherSegment);
+                found = true;
+            }
+
+            // If not found locally, search recursively through overdraft chain
+            if (!found && Overdraft != null) {
+                var current = Overdraft;
+                while (current != null) {
+                    if (current.Segments.Contains(otherSegment)) {
+                        current.Segments.Remove(otherSegment);
+                        found = true;
+                        break;
+                    }
+                    current = current.Overdraft;
+                }
+            }
         }
     }
 
@@ -268,25 +328,56 @@ public class Inventory {
         return comm.Round(paid);
     }
 
-    public bool Contains(Inventory other) {
-        if (Commodities.Zip(other.Commodities).Any(ii => ii.First < ii.Second)) {
-            return false;
+    public ContainsResult Contains(Inventory other) {
+        // Check if current inventory alone can fulfill
+        var needsOverdraft = false;
+        var shortfallCommodities = new EArray<Commodity, float>();
+        var shortfallSegments = new List<Segment>();
+
+        // Check commodities and calculate shortfalls
+        for (int i = 0; i < Commodities.Count; i++) {
+            var shortfall = other.Commodities[i] - Commodities[i];
+            if (shortfall > 0) {
+                needsOverdraft = true;
+                shortfallCommodities[(Commodity)i] = shortfall;
+            }
         }
+
+        // Check segments and calculate shortfalls
         var countBySegment = Segments
             .GroupBy(s => s.SegmentDef)
             .Select(g => (g.Key, g.Count()))
             .ToDictionary();
+
         foreach (var segment in other.Segments) {
-            if (countBySegment.TryGetValue(segment.SegmentDef, out var count)) {
-                countBySegment[segment.SegmentDef] = --count;
-                if (count < 0) {
-                    return false;
-                }
+            if (countBySegment.TryGetValue(segment.SegmentDef, out var count) && count > 0) {
+                countBySegment[segment.SegmentDef]--;
             } else {
-                return false;
+                needsOverdraft = true;
+                shortfallSegments.Add(segment);
             }
         }
-        return true;
+
+        // If current inventory is sufficient, return True
+        if (!needsOverdraft) {
+            return ContainsResult.True;
+        }
+
+        // If no overdraft available, return False
+        if (Overdraft == null) {
+            return ContainsResult.False;
+        }
+
+        // Recursively check if overdraft can fulfill the shortfall
+        var shortfallInventory = new Inventory(shortfallCommodities, shortfallSegments);
+        var overdraftResult = Overdraft.Contains(shortfallInventory);
+
+        // If overdraft can fulfill (either directly or via its own overdraft chain)
+        if (overdraftResult != ContainsResult.False) {
+            return ContainsResult.Overdraft;
+        }
+
+        return ContainsResult.False;
     }
     public void AddRandomInventory(Location Loc, int crew, float supplyDays, float goodsWealth, float segmentWealth, bool includeCore = false, EArray<SegmentKind, float>? segmentClassWeights = null, Faction faction = Faction.Player) {
         AddCrewInventory(crew, supplyDays);
@@ -411,5 +502,10 @@ public class Inventory {
                 Add(def.NewSegment());
             }
         }
+    }
+
+    public Inventory WithOverdraft(Inventory od) {
+        Overdraft = od;
+        return this;
     }
 };

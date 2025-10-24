@@ -343,7 +343,7 @@ public class Encounter {
         Inv.Add(resource, amt);
 
         var resourceActor = new StaticActor(name, giftDesc, Faction.Independent, Inv, Location);
-        resourceActor.StoredProposals.Add(new ProposeHarvestTake(resourceActor, Inv, "H", verb));
+        resourceActor.StoredProposals.Add(new ProposeLootTake("H", verb));
         AddActor(resourceActor);
     }
     public void GenerateHazard() {
