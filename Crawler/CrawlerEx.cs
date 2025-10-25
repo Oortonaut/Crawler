@@ -629,15 +629,14 @@ public static partial class CrawlerEx {
         var fire = attacker.CreateFire();
         if (fire.Any()) {
             attacker.Message($"{attacker.Name} attacks {defender.Name}:");
-            var a2d = attacker.To(defender);
-            var d2a = defender.To(attacker);
+            var (a2d, d2a) = attacker.ToTo(defender);
             a2d.Hostile = true;
 
             if (a2d.Spared && a2d.Latch(ActorToActor.EFlags.Betrayed, true)) {
-                d2a.SetFlag(ActorToActor.EFlags.Betrayer);
-                ++attacker.EvilPoints;
-                attacker.Message($"You betrayed {defender.Name}");
                 defender.Message($"You were betrayed by {attacker.Name}");
+                d2a.SetFlag(ActorToActor.EFlags.Betrayer);
+                attacker.Message($"You betrayed {defender.Name}");
+                ++attacker.EvilPoints;
             }
 
             defender.ReceiveFire(attacker, fire);
@@ -769,5 +768,5 @@ public static partial class CrawlerEx {
             .Where(s => Random.Shared.NextDouble() < lootReturn));
         return loot;
     }
-
+    public static (ActorToActor a2s, ActorToActor s2a) ToTo(this IActor attacker, IActor defender) => (attacker.To(defender), defender.To(attacker));
 }

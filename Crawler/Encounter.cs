@@ -11,6 +11,13 @@ public class EncounterActor {
     public bool Dynamic => ExitTime > 0;
     public long ExitTime { get; set; } = 0; // 0 means never exits (permanent actor)
     public bool ShouldExit(long currentTime) => Dynamic && currentTime >= ExitTime;
+    public void ExitAfter(int duration) {
+        if (Dynamic) {
+            ExitTime = Math.Min(ExitTime, Game.SafeTime + duration);
+        } else {
+            ExitTime = Game.SafeTime + duration;
+        }
+    }
 }
 
 public class Encounter {
@@ -181,6 +188,7 @@ public class Encounter {
             other.Greet(actor);
         }
     }
+    public EncounterActor this[IActor actor] => actors[actor];
 
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
     public virtual void RemoveActor(IActor actor) {

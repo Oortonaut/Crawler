@@ -584,6 +584,7 @@ public class Crawler: IActor {
         EndMessage = $"{state}: {message}";
         EndState = state;
         Message($"Game Over: {message} ({state})");
+        Location.GetEncounter()[this].ExitAfter(300);
     }
     public string EndMessage { get; set; } = string.Empty;
     public EEndState? EndState { get; set; }
