@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+﻿using Crawler.Logging;
 
 namespace Crawler;
 
@@ -67,11 +67,23 @@ public record ExchangeInteraction: IInteraction {
     public InteractionMode PerformMode(string args = "") {
         bool aoe = AgentOffer.EnabledFor(Agent, Subject);
         bool soe = SubjectOffer.EnabledFor(Subject, Agent);
+
+        using var activity = ActivitySources.Interaction.StartActivity("interaction.perform_mode");
+        activity?.SetTag("interaction.description", Description);
+        activity?.SetTag("agent.name", Agent.Name);
+        activity?.SetTag("subject.name", Subject.Name);
+        activity?.SetTag("agent.offer.enabled", aoe);
+        activity?.SetTag("subject.offer.enabled", soe);
+
         if (aoe && soe) {
-            Debug.WriteLine($"Can {Description}: {_mode}");
+            activity?.SetTag("mode", _mode.ToString());
             return _mode;
         } else {
-            Debug.WriteLine($"Can {Description}: Bad " + (aoe ? "" : "Agent ") + (soe ? "" : "Subject "));
+            var failures = new List<string>();
+            if (!aoe) failures.Add("Agent");
+            if (!soe) failures.Add("Subject");
+            activity?.SetTag("mode", "Disabled");
+            activity?.SetTag("failures", string.Join(", ", failures));
             return InteractionMode.Disabled;
         }
     }

@@ -1,5 +1,5 @@
 using System.Data;
-using System.Diagnostics;
+using Crawler.Logging;
 
 namespace Crawler;
 
@@ -45,24 +45,48 @@ public interface IProposal {
 
 public static class IProposalEx {
     public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) {
-        Debug.Write($"Testing {proposal.Description} for {Agent.Name} and {Subject.Name}: ");
+        using var activity = ActivitySources.Interaction.StartActivity("proposal.test");
+        activity?.SetTag("proposal.description", proposal.Description);
+        activity?.SetTag("agent.name", Agent.Name);
+        activity?.SetTag("subject.name", Subject.Name);
+
         bool ac = proposal.AgentCapable(Agent);
         bool sc = proposal.SubjectCapable(Subject);
         bool ic = proposal.InteractionCapable(Agent, Subject);
         bool result = ac && sc && ic;
-        Debug.WriteLine(result ? "OK" : "Bad "+ (ac ? "" : "Agent ") + (sc ? "" : "Subject ") + (ic ? "" : "Interaction "));
+
+        activity?.SetTag("result", result);
+        activity?.SetTag("agent.capable", ac);
+        activity?.SetTag("subject.capable", sc);
+        activity?.SetTag("interaction.capable", ic);
+
+        if (!result) {
+            var failures = new List<string>();
+            if (!ac) failures.Add("Agent");
+            if (!sc) failures.Add("Subject");
+            if (!ic) failures.Add("Interaction");
+            activity?.SetTag("failures", string.Join(", ", failures));
+        }
+
         return result;
     }
     public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) {
+        using var activity = ActivitySources.Interaction.StartActivity("proposal.get_interactions");
+        activity?.SetTag("proposal.description", proposal.Description);
+        activity?.SetTag("agent.name", Agent.Name);
+        activity?.SetTag("subject.name", Subject.Name);
+
         bool tested = proposal.Test(Agent, Subject);
+        activity?.SetTag("test.passed", tested);
+
         if (tested) {
-            Debug.Write("Interactions: ");
             var interactions = proposal.GetInteractions(Agent, Subject).ToArray();
-            foreach (var interaction in interactions) {
-                var im = interaction.PerformMode();
-                Debug.Write($"{interaction.Description}: {im} ");
-            }
-            Debug.WriteLine("");
+            activity?.SetTag("interaction.count", interactions.Length);
+
+            var interactionDetails = interactions.Select(i =>
+                $"{i.Description}: {i.PerformMode()}").ToArray();
+            activity?.SetTag("interactions", string.Join("; ", interactionDetails));
+
             return interactions;
         } else {
             return [];

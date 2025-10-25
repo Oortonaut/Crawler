@@ -2,6 +2,22 @@
 
 using System;
 using Crawler;
+using Crawler.Logging;
+using OpenTelemetry;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
+// Initialize OpenTelemetry tracing
+using var tracerProvider = Sdk.CreateTracerProviderBuilder()
+    .SetResourceBuilder(ResourceBuilder.CreateDefault()
+        .AddService(ActivitySources.ServiceName, serviceVersion: ActivitySources.ServiceVersion))
+    .AddSource(ActivitySources.Interaction.Name)
+    .AddSource(ActivitySources.Game.Name)
+    .AddSource(ActivitySources.Console.Name)
+    .AddDebugExporter()
+    .AddOtlpExporter(initOptions => { initOptions.Protocol = OtlpExportProtocol.Grpc; })
+    .Build();
 
 string Logo = string.Join("\n", [
     @"+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+",

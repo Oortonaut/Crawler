@@ -610,8 +610,8 @@ public class Game {
                             // Crawler is selling to player (player buys)
                             if (proposal.Stuff is CommodityOffer commodityOffer) {
                                 float pricePerUnit = proposal.Cash / commodityOffer.Amount;
-                                buyPrices[commodityOffer.Commodity].Add(pricePerUnit);
-                                offeredCommodities.Add(commodityOffer.Commodity);
+                                buyPrices[commodityOffer.commodity].Add(pricePerUnit);
+                                offeredCommodities.Add(commodityOffer.commodity);
                             }
                         }
 
@@ -619,8 +619,8 @@ public class Game {
                             // Crawler is buying from player (player sells)
                             if (proposal.Stuff is CommodityOffer commodityOffer) {
                                 float pricePerUnit = proposal.Cash / commodityOffer.Amount;
-                                sellPrices[commodityOffer.Commodity].Add(pricePerUnit);
-                                offeredCommodities.Add(commodityOffer.Commodity);
+                                sellPrices[commodityOffer.commodity].Add(pricePerUnit);
+                                offeredCommodities.Add(commodityOffer.commodity);
                             }
                         }
 

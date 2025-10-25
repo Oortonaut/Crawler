@@ -1,5 +1,5 @@
 ﻿using PInvoke;
-using System.Diagnostics;
+using Crawler.Logging;
 
 namespace Crawler;
 
@@ -500,7 +500,10 @@ public class CrawlerConsole {
     // TODO - save/restore event stream including timing events
     public IEnumerable<INPUT_RECORD> Events {
         get {
-            Debug.WriteLine("Tick");
+            using var activity = ActivitySources.Console.StartActivity("console.events_tick",
+                System.Diagnostics.ActivityKind.Internal);
+            activity?.SetTag("queued.count", events.Count);
+
             foreach (var queued in events) {
                 yield return queued;
             }
