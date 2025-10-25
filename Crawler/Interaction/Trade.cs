@@ -19,7 +19,7 @@ public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"):
     public bool AgentCapable(IActor agent) => true;
     public bool SubjectCapable(IActor subject) => true;
     public bool InteractionCapable(IActor agent, IActor subject) =>
-        subject != agent && Stuff.EnabledFor(agent, subject);
+        subject != agent && Stuff.EnabledFor(agent, subject) && !agent.To(subject).Hostile && !subject.To(agent).Hostile;
     public IEnumerable<IInteraction> GetInteractions(IActor Seller, IActor Buyer) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;

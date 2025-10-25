@@ -45,7 +45,7 @@ public interface IProposal {
 
 public static class IProposalEx {
     public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) {
-        using var activity = ActivitySources.Interaction.StartActivity("proposal.test");
+        using var activity = LogCat.Interaction.StartActivity(nameof(IProposalEx.Test));
         activity?.SetTag("proposal.description", proposal.Description);
         activity?.SetTag("agent.name", Agent.Name);
         activity?.SetTag("subject.name", Subject.Name);
@@ -55,36 +55,35 @@ public static class IProposalEx {
         bool ic = proposal.InteractionCapable(Agent, Subject);
         bool result = ac && sc && ic;
 
-        activity?.SetTag("result", result);
-        activity?.SetTag("agent.capable", ac);
-        activity?.SetTag("subject.capable", sc);
-        activity?.SetTag("interaction.capable", ic);
-
         if (!result) {
             var failures = new List<string>();
             if (!ac) failures.Add("Agent");
             if (!sc) failures.Add("Subject");
             if (!ic) failures.Add("Interaction");
-            activity?.SetTag("failures", string.Join(", ", failures));
+            activity?.SetTag("failures", string.Join(' ', failures));
         }
+
+        activity?.SetTag("result", result);
+        activity?.SetTag("agent.capable", ac);
+        activity?.SetTag("subject.capable", sc);
+        activity?.SetTag("interaction.capable", ic);
 
         return result;
     }
     public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) {
-        using var activity = ActivitySources.Interaction.StartActivity("proposal.get_interactions");
-        activity?.SetTag("proposal.description", proposal.Description);
-        activity?.SetTag("agent.name", Agent.Name);
-        activity?.SetTag("subject.name", Subject.Name);
+        using var activity = LogCat.Interaction.StartActivity(nameof(IProposalEx.TestGetInteractions))
+            .SetTag("Proposal", proposal.Description)
+            .SetTag("Agent", Agent.Name).SetTag("Subject", Subject.Name);
 
-        bool tested = proposal.Test(Agent, Subject);
-        activity?.SetTag("test.passed", tested);
+        bool passed = proposal.Test(Agent, Subject);
+        activity?.SetTag("test.passed", passed);
 
-        if (tested) {
+        if (passed) {
             var interactions = proposal.GetInteractions(Agent, Subject).ToArray();
             activity?.SetTag("interaction.count", interactions.Length);
 
             var interactionDetails = interactions.Select(i =>
-                $"{i.Description}: {i.PerformMode()}").ToArray();
+                $"{i.Description}: {i.Immediacy()}").ToArray();
             activity?.SetTag("interactions", string.Join("; ", interactionDetails));
 
             return interactions;
@@ -104,7 +103,9 @@ public record ProposeExchange(
     public virtual bool InteractionCapable(IActor Agent, IActor Subject) =>
         Agent != Subject &&
         agentOffer.EnabledFor(Agent, Subject) &&
-        subjectOffer.EnabledFor(Subject, Agent);
+        subjectOffer.EnabledFor(Subject, Agent) &&
+        !Agent.To(Subject).Hostile &&
+        !Subject.To(Agent).Hostile;
     public virtual IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new ExchangeInteraction(Agent, agentOffer, Subject, subjectOffer, OptionCode, Description);
     }
@@ -255,7 +256,7 @@ public record ProposeDemand(
             yield return new ExchangeInteraction(Agent, agentOfferComply, Subject, SubjectOffer(Subject), OptionCode + "Y", Ultimatum);
             yield return new ExchangeInteraction(Agent, agentOfferRefuse, Subject, new EmptyOffer(), OptionCode + "N", Ultimatum);
         } else {
-            yield return new ExchangeInteraction(Agent, agentOfferRefuse, Subject, new EmptyOffer(), "", Ultimatum, InteractionMode.Immediate);
+            yield return new ExchangeInteraction(Agent, agentOfferRefuse, Subject, new EmptyOffer(), "", Ultimatum, Immediacy.Immediate);
         }
     }
     protected virtual IOffer SubjectOffer(IActor subject) => subjectOfferDemanded ?? throw new InvalidDataException($"You must override {nameof(SubjectOffer)} or specify {nameof(ProposeDemand)}");
@@ -304,6 +305,7 @@ public record ProposeTaxes(float TaxRate = 0.05f)
         base.InteractionCapable(Agent, Subject) && 
         Agent.Location.Sector.ControllingFaction == Agent.Faction &&
         !Agent.To(Subject).Hostile &&
+        !Subject.To(Agent).Hostile &&
         (Subject.Supplies.ValueAt(Subject.Location) > 0 || Subject.Supplies[Commodity.Scrap] > 0);
 
     protected override IOffer SubjectOffer(IActor subject) {
@@ -334,6 +336,7 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
     public override bool InteractionCapable(IActor Agent, IActor Subject) =>
         base.InteractionCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
+        !Subject.To(Agent).Hostile &&
         Agent.To(Subject).StoredProposals.Any(p => p is ProposeContrabandSeizure);
 
     protected override IOffer SubjectOffer(IActor subject) => new InventoryOffer(false, Contraband);
@@ -376,7 +379,9 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
     public bool SubjectCapable(IActor subject) =>
         subject is Crawler damaged &&
         damaged.Segments.Any(IsRepairable);
-    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
+    public bool InteractionCapable(IActor Agent, IActor Subject) =>
+        !Agent.To(Subject).Hostile &&
+        !Subject.To(Agent).Hostile;
     public string Description => $"Repair subject segments";
     static bool IsRepairable(Segment segment) => segment is { Hits: > 0, IsDestroyed: false };
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
