@@ -184,7 +184,7 @@ record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal 
 }
 
 public record ProposeAttackDefend(string OptionCode): IProposal {
-    public bool AgentCapable(IActor agent) => agent == Game.Instance?.Player && agent.Lives();
+    public bool AgentCapable(IActor agent) => agent == Game.Instance?.Player;
     public bool SubjectCapable(IActor subject) => subject.Lives();
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -214,7 +214,7 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
         return surrenderInv;
     }
 
-    public bool AgentCapable(IActor Winner) => Winner.Lives();
+    public bool AgentCapable(IActor Winner) => true;
     public bool SubjectCapable(IActor subject) =>
         subject is Crawler loser && loser.IsVulnerable && loser.Lives();
     public bool InteractionCapable(IActor Winner, IActor Loser) =>
@@ -223,11 +223,11 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
         !Loser.To(Winner).Surrendered;
     public IEnumerable<IInteraction> GetInteractions(IActor Winner, IActor Loser) {
         var surrenderInv = MakeSurrenderInv(Loser);
-        string Description = $"{Loser.Name} Surrender";
+        string description = $"{Loser.Name} Surrender";
         float value = surrenderInv.ValueAt(Winner.Location);
         yield return new ExchangeInteraction(
-            Winner, new AcceptSurrenderOffer(value, Description),
-            Loser, new InventoryOffer(false, surrenderInv), OptionCode, Description);
+            Winner, new AcceptSurrenderOffer(value, description),
+            Loser, new InventoryOffer(false, surrenderInv), OptionCode, description);
     }
     public string Description => $"SurrenderAccept";
     public long ExpirationTime => 0;

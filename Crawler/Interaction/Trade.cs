@@ -16,10 +16,10 @@ public enum TradePolicy {
 // Agent is seller
 public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"): IProposal {
     public readonly float Cash = Commodity.Scrap.Round(cash);
-    public bool AgentCapable(IActor Seller) => true;
+    public bool AgentCapable(IActor agent) => true;
     public bool SubjectCapable(IActor subject) => true;
-    public bool InteractionCapable(IActor Seller, IActor Buyer) =>
-        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
+    public bool InteractionCapable(IActor agent, IActor subject) =>
+        subject != agent && Stuff.EnabledFor(agent, subject);
     public IEnumerable<IInteraction> GetInteractions(IActor Seller, IActor Buyer) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;
@@ -33,10 +33,10 @@ public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"):
 // Agent is buyer
 public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"): IProposal {
     public readonly float Cash = Commodity.Scrap.Round(cash);
-    public bool AgentCapable(IActor Buyer) => true;
+    public bool AgentCapable(IActor agent) => true;
     public bool SubjectCapable(IActor subject) => true;
-    public bool InteractionCapable(IActor Buyer, IActor Seller) =>
-        Buyer != Seller && Stuff.EnabledFor(Seller, Buyer);
+    public bool InteractionCapable(IActor agent, IActor subject) =>
+        agent != subject && Stuff.EnabledFor(subject, agent);
     public IEnumerable<IInteraction> GetInteractions(IActor Buyer, IActor Seller) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;
@@ -99,7 +99,7 @@ public static class TradeEx {
 
             // Add commodity to seller's inventory
             var quantity = Inventory.QuantitySold(CFrac / locationMarkup, commodity, Location);
-            Seller.Supplies[commodity] += quantity;
+            Seller.Cargo[commodity] += quantity;
 
             // Create proposals
             var saleQuantity = 1f;
@@ -137,7 +137,7 @@ public static class TradeEx {
             var segment = segmentDef.NewSegment();
             var markup = Tuning.Economy.LocalMarkup(segment.SegmentKind, Location);
             markup *= merchantMarkup;
-            Seller.Supplies.Segments.Add(segment);
+            Seller.Cargo.Segments.Add(segment);
             var price = segment.Cost * markup;
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
