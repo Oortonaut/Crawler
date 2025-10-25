@@ -6,7 +6,7 @@ namespace Crawler.Logging;
 /// OpenTelemetry ActivitySource definitions for the Crawler game.
 /// Provides structured logging and tracing across different subsystems.
 /// </summary>
-public static class ActivitySources {
+public static class LogCat {
     /// <summary>Service name for the entire application</summary>
     public const string ServiceName = "Crawler";
 
@@ -16,6 +16,11 @@ public static class ActivitySources {
     /// <summary>ActivitySource for proposal and interaction system logging</summary>
     public static readonly ActivitySource Interaction = new(
         $"{ServiceName}.Interaction",
+        ServiceVersion);
+
+    /// <summary>ActivitySource for encounters</summary>
+    public static readonly ActivitySource Encounter = new(
+        $"{ServiceName}.Encounter",
         ServiceVersion);
 
     /// <summary>ActivitySource for game loop and tick events</summary>

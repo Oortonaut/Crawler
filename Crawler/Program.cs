@@ -11,10 +11,10 @@ using OpenTelemetry.Trace;
 // Initialize OpenTelemetry tracing
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .SetResourceBuilder(ResourceBuilder.CreateDefault()
-        .AddService(ActivitySources.ServiceName, serviceVersion: ActivitySources.ServiceVersion))
-    .AddSource(ActivitySources.Interaction.Name)
-    .AddSource(ActivitySources.Game.Name)
-    .AddSource(ActivitySources.Console.Name)
+        .AddService(LogCat.ServiceName, serviceVersion: LogCat.ServiceVersion))
+    .AddSource(LogCat.Interaction.Name)
+    .AddSource(LogCat.Game.Name)
+    .AddSource(LogCat.Console.Name)
     .AddDebugExporter()
     .AddOtlpExporter(initOptions => { initOptions.Protocol = OtlpExportProtocol.Grpc; })
     .Build();

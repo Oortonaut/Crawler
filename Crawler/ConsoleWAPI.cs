@@ -500,8 +500,7 @@ public class CrawlerConsole {
     // TODO - save/restore event stream including timing events
     public IEnumerable<INPUT_RECORD> Events {
         get {
-            using var activity = ActivitySources.Console.StartActivity("console.events_tick",
-                System.Diagnostics.ActivityKind.Internal);
+            using var activity = LogCat.Console.StartActivity(nameof(Events), System.Diagnostics.ActivityKind.Internal);
             activity?.SetTag("queued.count", events.Count);
 
             foreach (var queued in events) {
