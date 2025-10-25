@@ -176,6 +176,12 @@ public class Inventory {
         _commodities = InItemCounts.Clone();
         Segments = InSegments.ToList();
     }
+    public Inventory(params (Commodity, float)[] InItemCounts) {
+        _commodities = new EArray<Commodity, float>(InItemCounts);
+    }
+    public Inventory(params Segment[] InSegments) {
+        Segments = InSegments.ToList();
+    }
 
     EArray<Commodity, float> _commodities = new();
     public IReadOnlyList<float> Commodities => _commodities.Items;
@@ -236,7 +242,15 @@ public class Inventory {
         }
     }
     public void Add(Segment s) => Segments.Add(s);
-    public void Remove(Segment s) => Segments.Remove(s);
+    public void Remove(Segment s) {
+        if (Segments.Contains(s)) {
+            Segments.Remove(s);
+        } else if (Overdraft != null) {
+            Overdraft.Remove(s);
+        } else {
+            throw new Exception("Segment not found in inventory.");
+        }
+    }
 
     public Inventory Copy() {
         var commoditiesCopy = _commodities.Clone();
@@ -293,24 +307,7 @@ public class Inventory {
 
         // Remove segments (recursively through overdraft chain)
         foreach (var otherSegment in other.Segments) {
-            var found = false;
-            if (Segments.Contains(otherSegment)) {
-                Segments.Remove(otherSegment);
-                found = true;
-            }
-
-            // If not found locally, search recursively through overdraft chain
-            if (!found && Overdraft != null) {
-                var current = Overdraft;
-                while (current != null) {
-                    if (current.Segments.Contains(otherSegment)) {
-                        current.Segments.Remove(otherSegment);
-                        found = true;
-                        break;
-                    }
-                    current = current.Overdraft;
-                }
-            }
+            Remove(otherSegment);
         }
     }
 
@@ -378,6 +375,28 @@ public class Inventory {
         }
 
         return ContainsResult.False;
+    }
+    public ContainsResult Contains(Commodity commodity, float amt) {
+        amt = commodity.Round(amt);
+        var held = _commodities[commodity];
+        if (held >= amt) {
+            return ContainsResult.True;
+        } else if (Overdraft == null) {
+            return ContainsResult.False;
+        } else {
+            return Overdraft.Contains(commodity, amt - held) == ContainsResult.False ? ContainsResult.False : ContainsResult.Overdraft;
+        }
+    }
+    public ContainsResult Contains(Segment segment, int n = 1) {
+        var here = Segments.Count(s => s.SegmentDef == segment.SegmentDef);
+        if (here <= n) {
+            return ContainsResult.True;
+        } else if (Overdraft == null) {
+            return ContainsResult.False;
+        } else {
+            n -= here;
+            return Overdraft.Contains(segment, n) == ContainsResult.False ? ContainsResult.False : ContainsResult.Overdraft;
+        }
     }
     public void AddRandomInventory(Location Loc, int crew, float supplyDays, float goodsWealth, float segmentWealth, bool includeCore = false, EArray<SegmentKind, float>? segmentClassWeights = null, Faction faction = Faction.Player) {
         AddCrewInventory(crew, supplyDays);
