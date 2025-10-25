@@ -2,7 +2,7 @@
 
 namespace Crawler;
 
-public enum InteractionMode {
+public enum Immediacy {
     Disabled,
     Menu,
     Immediate, // Perform now
@@ -13,7 +13,7 @@ public enum InteractionMode {
 /// </summary>
 public interface IInteraction {
     /// <summary>Can this interaction be performed right now?</summary>
-    InteractionMode PerformMode(string args = "");
+    Immediacy Immediacy(string args = "");
 
     /// <summary>Execute the interaction. Returns AP cost (0 for instant).</summary>
     int Perform(string args = "");
@@ -30,7 +30,7 @@ public interface IInteraction {
 
 // Simple consequence: mark as hostile
 public record HostilityInteraction(IActor Agent, IActor Subject, string Reason): IInteraction {
-    public InteractionMode PerformMode(string args = "") => InteractionMode.Menu;
+    public Immediacy Immediacy(string args = "") => global::Crawler.Immediacy.Menu;
     public int Perform(string args = "") {
         Agent.To(Subject).Hostile = true;
         Subject.To(Agent).Hostile = true;
@@ -51,7 +51,7 @@ public record ExchangeInteraction: IInteraction {
         IOffer subjectOffer,
         string optionCode,
         string? description = null,
-        InteractionMode mode = InteractionMode.Menu) {
+        Immediacy mode = global::Crawler.Immediacy.Menu) {
         Agent = agent;
         AgentOffer = agentOffer;
         Subject = subject;
@@ -62,13 +62,13 @@ public record ExchangeInteraction: IInteraction {
     }
     public IActor Agent { get; init; }
     public IActor Subject { get; init; }
-    readonly InteractionMode _mode;
+    readonly Immediacy _mode;
 
-    public InteractionMode PerformMode(string args = "") {
+    public Immediacy Immediacy(string args = "") {
         bool aoe = AgentOffer.EnabledFor(Agent, Subject);
         bool soe = SubjectOffer.EnabledFor(Subject, Agent);
 
-        using var activity = ActivitySources.Interaction.StartActivity("interaction.perform_mode");
+        using var activity = LogCat.Interaction.StartActivity(nameof(Immediacy));
         activity?.SetTag("interaction.description", Description);
         activity?.SetTag("agent.name", Agent.Name);
         activity?.SetTag("subject.name", Subject.Name);
@@ -84,7 +84,7 @@ public record ExchangeInteraction: IInteraction {
             if (!soe) failures.Add("Subject");
             activity?.SetTag("mode", "Disabled");
             activity?.SetTag("failures", string.Join(", ", failures));
-            return InteractionMode.Disabled;
+            return global::Crawler.Immediacy.Disabled;
         }
     }
 
@@ -96,7 +96,7 @@ public record ExchangeInteraction: IInteraction {
 
         int performed = 0;
         for (int i = 0; i < count; i++) {
-            if (PerformMode() == InteractionMode.Disabled) {
+            if (Immediacy() == global::Crawler.Immediacy.Disabled) {
                 break;
             }
             AgentOffer.PerformOn(Agent, Subject);

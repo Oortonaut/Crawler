@@ -35,7 +35,7 @@ public enum EnableArg: byte {
 public static partial class EnumEx {
     public static EnableArg Enable(this bool b) => b ? EnableArg.Enabled : EnableArg.Disabled;
     public static ShowArg Show(this bool b) => b ? ShowArg.Show : ShowArg.Hide;
-    public static EnableArg ToEnableArg(this InteractionMode mode) => mode == InteractionMode.Disabled ? EnableArg.Disabled : EnableArg.Enabled;
+    public static EnableArg ToEnableArg(this Immediacy mode) => mode == Immediacy.Disabled ? EnableArg.Disabled : EnableArg.Enabled;
 }
 
 public record ActionMenuItem(string Option, string Item, Func<string, int> Run, EnableArg Enabled = EnableArg.Enabled, ShowArg Show = ShowArg.Show): MenuItem(Option, Item) {
