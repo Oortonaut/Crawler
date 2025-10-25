@@ -49,8 +49,8 @@ public class CrawlerArena {
         ];
         SegmentDef[] defense = [
             SegmentEx.NameLookup["Armor"],
-            SegmentEx.NameLookup["Shield"],
-            SegmentEx.NameLookup["Point Defense"],
+            SegmentEx.NameLookup["Plating"],
+            SegmentEx.NameLookup["Shields"],
         ];
         var reactor = SegmentEx.NameLookup["Reactor"];
         var traction = SegmentEx.NameLookup["Traction"];

@@ -231,7 +231,7 @@ public static partial class Tuning {
         // Base segment parameters
         public static PowerScaling WeightTiers = new PowerScaling(30.0f, (20, 0.9f), "hefty", "lightened");
         public static PowerScaling CostTiers = new PowerScaling(300.0f, (10, 2.0f), "cheap", "expensive");
-        public static PowerScaling MaxHitsTiers = new PowerScaling(2.0f, (12, 2.0f), "decrepit", "hardened");
+        public static PowerScaling MaxHitsTiers = new PowerScaling(10.0f, (12, 2.0f), "decrepit", "hardened");
 
         // Weapon parameters
         public static PowerScaling DamageTiers = new PowerScaling(10f, (15, 1.4f), "weak", "strong");
