@@ -21,6 +21,8 @@ apply: always
 
 ### Documentation Structure
 
+Feel free to also modify this file as needed.
+
 **docs/ARCHITECTURE.md** - High-level overview
 
 - Update when: Core game loop changes, system map changes, adding/removing major systems
@@ -71,5 +73,16 @@ New to the codebase? Read in this order:
 ## Code Organization
 
 See docs/ARCHITECTURE.md for the system map and component relationships.
+
+## Processes
+
+### Preparing for a commit
+The changed files will probably have several different commits worth of changes.
+To prepare for a commit, you need to go through and partition the changed hunks into groups based on function.
+Try to work out the dependencies between the different groups, if any, but don't bust your ass too hard. 
+The linearize that graph and create a separate stash for each group with the staged changes and a strong description.
+
+### Grooming the documentation
+
 
 ~~~~
