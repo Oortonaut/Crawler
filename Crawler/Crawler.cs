@@ -67,6 +67,23 @@ public class ActorToActor {
     }
 
     public bool DirtyInteractions { get; set; } = true;
+    public override string ToString() {
+        var Adjs = new List<string>();
+        if (Hostile) {
+            Adjs.Add("Hostile");
+        }
+        if (Surrendered) {
+            Adjs.Add("Surrendered");
+        }
+        if (Spared) {
+            Adjs.Add("Spared");
+        }
+        var result = "";
+        if (Adjs.Any()) {
+            result += $" (" + string.Join(", ", Adjs) + ")";
+        }
+        return result;
+    }
 }
 
 public class Crawler: IActor {
