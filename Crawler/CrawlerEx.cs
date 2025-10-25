@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using System.Runtime.CompilerServices;
+using Crawler.Logging;
 
 namespace Crawler;
 using System.Drawing;
@@ -572,9 +573,11 @@ public static partial class CrawlerEx {
         return string.IsNullOrWhiteSpace(line) ? dflt : line;
     }
     public static IEnumerable<IInteraction> InteractionsWith(this IActor agent, IActor subject) {
-        if (agent == subject) {
-            yield break;
-        }
+        using var activity = LogCat.Interaction.StartActivity($"{nameof(InteractionsWith)} {agent.Name} {subject.Name})")?
+            .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("SubjectFaction", subject.Faction)
+            .SetTag("AgentToSubject", agent.To(subject).ToString())
+            .SetTag("SubjectToAgent", subject.To(agent).ToString());
+
         foreach (var proposal in agent.Proposals()) {
             foreach (var interaction in proposal.TestGetInteractions(agent, subject)) {
                 yield return interaction;
@@ -701,13 +704,16 @@ public static partial class CrawlerEx {
     }
 
     public static int TickInteractions(this List<IInteraction> interactions, IActor agent, string prefix) {
+        using var activity = LogCat.Interaction.StartActivity($"nameof(TickInteractions) {agent.Name} '{prefix}'")?
+            .SetTag("Agent", agent.Name).SetTag("#Interactions", interactions.Count);
+
         int result = 0;
         foreach (var interaction in interactions) {
             var msg = interaction.MessageFor(agent);
             if (!string.IsNullOrEmpty(msg)) {
                 agent.Message(msg);
             }
-            if (interaction.PerformMode() == InteractionMode.Immediate) {
+            if (interaction.Immediacy() == Immediacy.Immediate) {
                 result += interaction.Perform();
             }
         }
@@ -723,7 +729,7 @@ public static partial class CrawlerEx {
             result.Add(MenuItem.Sep);
 
 
-            bool anyEnabled = interactions.Any(i => i.PerformMode() == InteractionMode.Menu);
+            bool anyEnabled = interactions.Any(i => i.Immediacy() == Immediacy.Menu);
             result.Add(new ActionMenuItem(prefix,
                 title,
                 args => interactions.InteractionMenu(title, prefix, args).turns,
@@ -745,7 +751,7 @@ public static partial class CrawlerEx {
             yield return new ActionMenuItem($"{shortcut}{counter}",
                 $"{interaction.Description}",
                 a => interaction.Perform(a),
-                interaction.PerformMode().ToEnableArg(),
+                interaction.Immediacy().ToEnableArg(),
                 show);
         }
     }

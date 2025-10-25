@@ -1,4 +1,6 @@
-﻿namespace Crawler;
+﻿using Crawler.Logging;
+
+namespace Crawler;
 
 public enum EncounterType {
     None,
@@ -56,13 +58,21 @@ public class Encounter {
 
         int ap = 0;
 
-        foreach (var (index, actor) in ActorsExcept(agent)
+        using var activity = LogCat.Interaction.StartActivity($"{nameof(MenuItems)}({agent.Name})")?
+            .SetTag("Agent", agent.Name).SetTag("Agent.Faction", agent.Faction);
+        if (agent is Crawler ac) {
+            activity?.SetTag("About", ac.About);
+        }
+
+        foreach (var (index, subject) in ActorsExcept(agent)
                      .OrderBy(a => a.Faction)
                      .Index()) {
             string prefix = "C" + ( char ) ('A' + index);
-            var interactions = agent.InteractionsWith(actor).ToList();
+            using var activityOther = LogCat.Interaction.StartActivity($"Menu {prefix}")?
+                .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("Subject.Faction", subject.Faction);
+            var interactions = agent.InteractionsWith(subject).ToList();
             ap += interactions.TickInteractions(agent, prefix);
-            var agentActorMenus = agent.InteractionMenuItems(interactions, actor.Brief(agent), prefix);
+            var agentActorMenus = agent.InteractionMenuItems(interactions, subject.Brief(agent), prefix);
             result.AddRange(agentActorMenus);
         }
         return result;
