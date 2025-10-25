@@ -354,7 +354,7 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
         damaged.Segments.Any(IsRepairable);
     public bool InteractionCapable(IActor Agent, IActor Subject) => true;
     public string Description => $"Repair subject segments";
-    static bool IsRepairable(Segment segment) => segment.Hits > 0;
+    static bool IsRepairable(Segment segment) => segment is { Hits: > 0, IsDestroyed: false };
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         if (Subject is Crawler damaged) {
             foreach (var segment in damaged.Segments.Where(IsRepairable))

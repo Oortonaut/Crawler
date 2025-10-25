@@ -127,6 +127,7 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
         Health <= MaxHits / 2 ? Working.Disabled :
         Working.Active;
     public bool IsActive => State == Working.Active;
+    public bool IsDestroyed => State == Working.Destroyed;
     public string StateString => State switch { Working.Active => "", _ => $" ({State})" };
     public string StateName => Name + StateString;
 

@@ -32,8 +32,8 @@ public record CompoundOffer(params IOffer[] subs): IOffer {
 }
 
 public record LootOfferWrapper(IOffer offer): IOffer {
-    public virtual string Description => offer.Description;
-    public override string ToString() => $"{offer} (Loot)";
+    public virtual string Description => $"{offer} (Loot)";
+    public override string ToString() => Description;
     public virtual bool EnabledFor(IActor Agent, IActor Subject) => !Agent.HasFlag(EActorFlags.Looted) && offer.EnabledFor(Agent, Subject);
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         offer.PerformOn(Agent, Subject);
