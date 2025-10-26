@@ -441,8 +441,12 @@ public class Game {
             int index = i;
 
             string packageLabel = !segment.Packaged ? "Package" : "Unpackage";
+            string label = $"{segment.StateName} ({packageLabel})";
             bool canPackage = segment.Hits == 0 && segment.State != Segment.Working.Destroyed;
-            yield return new ActionMenuItem($"PK{index + 1}", $"{segment.StateName} - {packageLabel}", _ => TogglePackage(index), canPackage.Enable(), showOption);
+            if (!canPackage) {
+                label += " (Damaged)";
+            }
+            yield return new ActionMenuItem($"PK{index + 1}", label, _ => TogglePackage(index), canPackage.Enable(), showOption);
         }
     }
 
