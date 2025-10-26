@@ -670,9 +670,9 @@ public static class SegmentEx {
 
     // Power definitions (Amount = Capacity, Rate = Refill per round)
     public static List<PowerDef> PowerDefs = [
-        new ReactorDef('r', 1, "Reactor", 1, 1, 1, 1, 2),
-        new ReactorDef('b', 1, "Battery", 1, 1, 1, 2, 0.5f),
-        new ChargerDef('c', 1, "Charger", 1, 1, 1, 1.5f),
+        new ReactorDef('r', 1, "Reactor", 1, 1, 2, 1, 2),
+        new ReactorDef('b', 1, "Battery", 1, 1, 2, 2, 0.5f),
+        new ChargerDef('c', 1, "Charger", 1, 1, 1.5f, 1.5f),
     ];
 
     public static IEnumerable<PowerDef> CorePowerDefs => PowerDefs.OfType<ReactorDef>();
