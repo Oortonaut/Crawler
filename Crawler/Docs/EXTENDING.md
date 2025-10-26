@@ -31,19 +31,9 @@ public record ProposeMyAction(string OptionCode = "M"): IProposal {
     public bool SubjectCapable(IActor Subject) =>
         Subject.Faction != Faction.Player || /* subject requirements */;
 
-    // 3. When is this interaction available?
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
-        if (/* basic requirements not met */)
-            return InteractionCapability.Disabled;
-
-        // For mandatory interactions (ultimatums)
-        if (Agent.To(Subject).UltimatumTime > 0 &&
-            Game.SafeTime < Agent.To(Subject).UltimatumTime) {
-            return InteractionCapability.Mandatory;
-        }
-
-        return InteractionCapability.Possible;
-    }
+    // 3. Is this interaction available?
+    public bool InteractionCapable(IActor Agent, IActor Subject) =>
+        AgentCapable(Agent) && SubjectCapable(Subject) && /* other conditions */;
 
     // 4. Create the actual interactions
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -52,7 +42,14 @@ public record ProposeMyAction(string OptionCode = "M"): IProposal {
 
     // 5. Define the interaction
     public record MyInteraction(IActor Agent, IActor Subject): IInteraction {
-        public bool Enabled(string args = "") => /* can execute now? */;
+        public Immediacy Immediacy(string args = "") {
+            // Check if can execute now
+            if (/* conditions not met */)
+                return Crawler.Immediacy.Disabled;
+
+            // Return Menu for normal menu option, or Immediate for auto-execute
+            return Crawler.Immediacy.Menu;
+        }
 
         public int Perform(string args = "") {
             // Execute the action
@@ -63,6 +60,7 @@ public record ProposeMyAction(string OptionCode = "M"): IProposal {
             return 0;
         }
 
+        public string? MessageFor(IActor viewer) => null;  // Optional context message
         public string Description => "Do something";
         public string OptionCode => "M";
     }
@@ -102,15 +100,16 @@ public record ProposeGiveItem(Commodity Item, float Amount): IProposal {
     public bool AgentCapable(IActor Agent) => Agent.Supplies[Item] >= Amount;
     public bool SubjectCapable(IActor Subject) => true;
 
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) =>
-        AgentCapable(Agent) ? InteractionCapability.Possible : InteractionCapability.Disabled;
+    public bool InteractionCapable(IActor Agent, IActor Subject) =>
+        AgentCapable(Agent) && SubjectCapable(Subject);
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var offer = new CommodityOffer(Item, Amount);
         yield return new ExchangeInteraction(
             Agent, offer,
             Subject, new EmptyOffer(),
-            "G", $"Give {Amount} {Item}"
+            "G", $"Give {Amount} {Item}",
+            Immediacy.Menu  // Normal menu option
         );
     }
 
@@ -124,14 +123,8 @@ public record ProposeMyDemand(IOffer Demand): IProposal {
     public bool AgentCapable(IActor Agent) => /* requirements */;
     public bool SubjectCapable(IActor Subject) => /* requirements */;
 
-    public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
-        var relation = Agent.To(Subject);
-        if (relation.UltimatumTime > 0 &&
-            Game.SafeTime < relation.UltimatumTime) {
-            return InteractionCapability.Mandatory;
-        }
-        return InteractionCapability.Disabled;
-    }
+    public bool InteractionCapable(IActor Agent, IActor Subject) =>
+        AgentCapable(Agent) && SubjectCapable(Subject);
 
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var demandProposal = new ProposeDemand(
@@ -567,12 +560,14 @@ float result = Tuning.MyNewSystem.CalculateSomething(value);
 ## Best Practices
 
 ### When Adding Proposals
-1. ✅ Use InteractionCapability correctly (Disabled/Possible/Mandatory)
-2. ✅ Provide clear descriptions (shown in menus)
-3. ✅ Test both Enabled() and Perform() paths
-4. ✅ Return appropriate AP costs
-5. ✅ Send messages to both actors
-6. ✅ Update [SYSTEMS.md](SYSTEMS.md)
+1. ✅ Make InteractionCapable() return true only when the interaction should be available
+2. ✅ Use Immediacy enum correctly in IInteraction.Immediacy() (Disabled/Menu/Immediate)
+3. ✅ Provide clear descriptions (shown in menus)
+4. ✅ Test both Immediacy() and Perform() paths
+5. ✅ Return appropriate AP costs from Perform()
+6. ✅ Send messages to both actors via Message()
+7. ✅ Implement MessageFor() if you need context-specific display messages
+8. ✅ Update [SYSTEMS.md](SYSTEMS.md)
 
 ### When Adding Segments
 1. ✅ Choose appropriate SegmentKind

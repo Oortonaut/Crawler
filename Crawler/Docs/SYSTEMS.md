@@ -13,8 +13,11 @@
 - [Tick System](#tick-system)
 
 ## Recent Changes
+- **2025-10-25**: Renamed `InteractionMode` enum to `Immediacy`; IInteraction.PerformMode() renamed to IInteraction.Immediacy()
+- **2025-10-25**: Added comprehensive OpenTelemetry tracing via `LogCat` (renamed from `ActivitySources`)
+- **2025-10-24**: Added mutual hostility checks to prevent trading/repairing/taxing with hostile actors
 - **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
-- **2025-01-19**: Refactored InteractionCapability to use enum (Disabled/Possible/Mandatory)
+- **2025-10-19**: Simplified IProposal.InteractionCapable to return `bool` instead of enum; moved urgency control to IInteraction.Immediacy()
 - **2025-01-19**: ProposeDemand now yields separate Accept/Refuse interactions
 
 ---
@@ -30,16 +33,17 @@
 IProposal (capability check)
   ├── AgentCapable(IActor) - Can agent make this proposal?
   ├── SubjectCapable(IActor) - Can subject receive it?
-  └── InteractionCapable(Agent, Subject) → InteractionCapability
-      ├── Disabled - Not available (conditions not met)
-      ├── Possible - Available but optional
-      └── Mandatory - Must be addressed immediately
-
-      └── GetInteractions() → IInteraction[]
+  ├── InteractionCapable(Agent, Subject) → bool
+  │     Returns true if interaction is available
+  └── GetInteractions() → IInteraction[]
 
 IInteraction (concrete action)
-  ├── Enabled(string args) - Can perform now?
+  ├── Immediacy(string args) → Immediacy enum
+  │   ├── Disabled - Not available (conditions not met)
+  │   ├── Menu - Available in menu (user choice)
+  │   └── Immediate - Auto-execute now
   ├── Perform(string args) - Execute action, return AP cost
+  ├── MessageFor(IActor viewer) - Context-specific message for viewer
   ├── Description - Display text
   └── OptionCode - Shortcut key
 
@@ -50,28 +54,36 @@ IOffer (exchange component)
   └── Description - Display text
 ```
 
-### InteractionCapability Enum
+### Immediacy Enum
 
-**Purpose:** Distinguish between optional and mandatory interactions
+**Purpose:** Control when and how interactions are presented and executed
 
 **Values:**
 - **Disabled** - Not available (e.g., can't trade if hostile, can't loot if already looted)
-- **Possible** - Available in normal context (e.g., voluntary trading, attacking)
-- **Mandatory** - Time-limited demand requiring immediate response (e.g., bandit extortion, taxes)
+- **Menu** - Available in normal menu context (user must select)
+- **Immediate** - Auto-execute immediately without menu interaction (e.g., ultimatum consequences)
 
 **Usage:**
 ```csharp
-public InteractionCapability InteractionCapable(IActor Agent, IActor Subject) {
-    if (!meetsBasicRequirements) return InteractionCapability.Disabled;
+public Immediacy Immediacy(string args = "") {
+    if (!meetsBasicRequirements) return Crawler.Immediacy.Disabled;
 
-    // Check for active ultimatum
-    if (Agent.To(Subject).UltimatumTime > 0 &&
-        Game.SafeTime < Agent.To(Subject).UltimatumTime) {
-        return InteractionCapability.Mandatory;
+    // Check if offers are enabled
+    bool aoe = AgentOffer.EnabledFor(Agent, Subject);
+    bool soe = SubjectOffer.EnabledFor(Subject, Agent);
+
+    if (aoe && soe) {
+        return _mode;  // Usually Immediacy.Menu
+    } else {
+        return Crawler.Immediacy.Disabled;
     }
-
-    return InteractionCapability.Possible;
 }
+```
+
+**IProposal.InteractionCapable** now returns a simple `bool`:
+```csharp
+public bool InteractionCapable(IActor Agent, IActor Subject) =>
+    AgentCapable(Agent) && SubjectCapable(Subject);
 ```
 
 ### Common Proposals

@@ -9,10 +9,14 @@
 - **Need the old comprehensive doc?** → [../Architecture.md](../Architecture.md) (deprecated, kept for reference)
 
 ## Recent Changes
+- **2025-10-25**: Renamed `ActivitySources` to `LogCat` for OpenTelemetry logging categories
+- **2025-10-25**: Renamed `InteractionMode` enum to `Immediacy` and `PerformMode()` method to `Immediacy()`
+- **2025-10-24**: Added mutual hostility checks to InteractionCapable methods to prevent trading/repairing/taxing with hostile actors
+- **2025-10-24**: Added comprehensive OpenTelemetry activity tracing to interaction system (InteractionsWith, TickInteractions, MenuItems)
 - **2025-10-20**: Refactored demand system with ProposeDemand base class: Created abstract `ProposeDemand` base class for ultimatum-style demands ("comply or face consequence"). All taxes, extortions, and contraband seizures now inherit from this class. Added `AttackOffer` and `HostilityOffer` to encapsulate combat and diplomatic consequences as offers. Removed specialized interaction classes (`CooperateInteraction`, `RefuseDemandInteraction`, `ContrabandInteraction`) - all demands now use `ExchangeInteraction` with appropriate offers.
 - **2025-10-20**: Refactored Meet/Part methods into role-based API: Meet(IEnumerable<IActor>) calls Greet(IActor) for each; Leave(IEnumerable<IActor>) calls Part(IActor) for each. Extracted shared threat-generation logic (bandit extortion, contraband scanning) into helper functions (SetupBanditExtortion, SetupContrabandAndTaxes, ExpireProposals).
 - **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed) using SetFlag/HasFlag pattern
-- **2025-10-19**: Replaced InteractionCapability enum with bool across proposals - simplified from three-state (Disabled, Possible, Mandatory) to two-state (enabled/disabled)
+- **2025-10-19**: Replaced InteractionCapability enum with bool across proposals - simplified from three-state (Disabled, Possible, Mandatory) to two-state (enabled/disabled); moved urgency control to IInteraction.Immediacy()
 - **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
 - **2025-01-19**: Mandatory interactions now use ultimatum timers
 - **2025-01-19**: Documentation split into focused files for easier maintenance
@@ -229,7 +233,7 @@ Common interface for all interactive entities (Crawlers, Static entities)
 Relationship state tracking (hostile, surrendered, damage history)
 
 ### ActorLocation
-Visit tracking and knowledge management
+Visit tracking and knowledge management (renamed from LocationActor in recent commits)
 
 ### Segments
 Component hierarchy for crawler functionality
@@ -269,6 +273,11 @@ For detailed information, see [EXTENDING.md](EXTENDING.md)
 - Gaussian distribution for variance
 - Pareto distribution for populations
 - Procedural world generation
+
+### Observability
+- OpenTelemetry activity tracing via `LogCat` class
+- Activity sources for Interaction, Encounter, Game, and Console subsystems
+- Structured logging with tags for debugging and telemetry
 
 ---
 

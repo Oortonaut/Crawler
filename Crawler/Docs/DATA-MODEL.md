@@ -595,18 +595,23 @@ if (policy == TradePolicy.Prohibited) {
 }
 ```
 
-### InteractionCapability
+### Immediacy
 
-**File:** `Trade.cs:3-7`
+**File:** `Interactions.cs:5-9`
 ```csharp
-enum InteractionCapability {
+enum Immediacy {
     Disabled,       // Not available
-    Possible,       // Optional interaction
-    Mandatory,      // Time-limited demand
+    Menu,           // Available in menu (user choice)
+    Immediate,      // Perform now (auto-execute)
 }
 ```
 
-**See:** [SYSTEMS.md#interaction-capability-enum](SYSTEMS.md#interaction-capability-enum)
+**Purpose:** Controls when and how interactions are presented/executed.
+- **Disabled**: Interaction cannot be performed (conditions not met)
+- **Menu**: Normal menu option (user must select)
+- **Immediate**: Auto-executes without menu (e.g., time-sensitive ultimatum consequences)
+
+**See:** [SYSTEMS.md#immediacy-enum](SYSTEMS.md#immediacy-enum)
 
 ---
 
