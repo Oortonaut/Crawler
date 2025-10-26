@@ -384,23 +384,12 @@ public class Game {
         yield return new ActionMenuItem("PK", "Packaging...", _ => PackagingMenu());
         yield return new ActionMenuItem("PT", "Trade Cargo...", _ => TradeInventoryMenu());
 
-        // Hidden detail items for power control
-        var segments = Player.Segments;
-        for (int i = 0; i < segments.Count; i++) {
-            var segment = segments[i];
-            int index = i;
-
-            string toggleLabel = segment.Activated ? "Deactivate" : "Activate";
-            bool canToggle = segment.State != Segment.Working.Destroyed && segment.State != Segment.Working.Packaged;
-            yield return new ActionMenuItem($"PP{index + 1}", $"{segment.StateName} - {toggleLabel}", _ => ToggleSegmentPower(index), canToggle.Enable(), ShowArg.Hide);
+        foreach (var item in PowerMenuItems(ShowArg.Hide)) {
+            yield return item;
         }
-
-        // Hidden detail items for packaging control
         foreach (var item in PackagingMenuItems(ShowArg.Hide)) {
             yield return item;
         }
-
-        // Hidden detail items for trade inventory control
         foreach (var item in TradeInventoryMenuItems(ShowArg.Hide)) {
             yield return item;
         }
@@ -414,7 +403,7 @@ public class Game {
         return ap;
     }
 
-    IEnumerable<MenuItem> PowerMenuItems() {
+    IEnumerable<MenuItem> PowerMenuItems(ShowArg show = ShowArg.Show) {
         var segments = Player.Segments;
         for (int i = 0; i < segments.Count; i++) {
             var segment = segments[i];
@@ -422,7 +411,7 @@ public class Game {
 
             string toggleLabel = segment.Activated ? "Deactivate" : "Activate";
             bool canToggle = segment.State != Segment.Working.Destroyed && segment.State != Segment.Working.Packaged;
-            yield return new ActionMenuItem($"PP{index + 1}", $"{segment.StateName} - {toggleLabel}", _ => ToggleSegmentPower(index), canToggle.Enable());
+            yield return new ActionMenuItem($"PP{index + 1}", $"{segment.StateName} - {toggleLabel}", _ => ToggleSegmentPower(index), canToggle.Enable(), show);
         }
     }
 
@@ -434,8 +423,8 @@ public class Game {
         return ap;
     }
 
-    IEnumerable<MenuItem> PackagingMenuItems(ShowArg showOption = ShowArg.Show) {
-        var segments = Player.Segments;
+    IEnumerable<MenuItem> PackagingMenuItems(ShowArg show = ShowArg.Show) {
+        var segments= Player.Segments;
         for (int i = 0; i < segments.Count; i++) {
             var segment = segments[i];
             int index = i;
