@@ -748,10 +748,18 @@ public static partial class CrawlerEx {
             } else {
                 counter = counters[shortcut] = 1;
             }
+            var immediacy = interaction.Immediacy();
+            string description = interaction.Description;
+            if (immediacy == Immediacy.Disabled && interaction is ExchangeInteraction exchange) {
+                var reason = exchange.FailureReason();
+                if (reason != null) {
+                    description = $"{description} ({reason})";
+                }
+            }
             yield return new ActionMenuItem($"{shortcut}{counter}",
-                $"{interaction.Description}",
+                description,
                 a => interaction.Perform(a),
-                interaction.Immediacy().ToEnableArg(),
+                immediacy.ToEnableArg(),
                 show);
         }
     }

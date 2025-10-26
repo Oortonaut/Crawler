@@ -132,4 +132,17 @@ public record ExchangeInteraction: IInteraction {
     }
 
     public string? MessageFor(IActor viewer) => null;
+
+    public string? FailureReason() {
+        string? aoe = AgentOffer.DisabledFor(Agent, Subject);
+        string? soe = SubjectOffer.DisabledFor(Subject, Agent);
+        string result = aoe == null ? "" :  $"{Agent.Name} {aoe}" ;
+        if (soe != null) {
+            if (aoe != null) {
+                result += ", ";
+            }
+            result += $"{Subject.Name} {soe}";
+        }
+        return result;
+    }
 }
