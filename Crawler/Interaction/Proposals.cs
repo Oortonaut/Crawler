@@ -45,7 +45,7 @@ public interface IProposal {
 
 public static class IProposalEx {
     public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) {
-        using var activity = LogCat.Interaction.StartActivity(nameof(IProposalEx.Test));
+        using var activity = LogCat.Interaction.StartActivity($"Test {proposal.Description} {Agent.Name} {Subject.Name}");
         activity?.SetTag("proposal.description", proposal.Description);
         activity?.SetTag("agent.name", Agent.Name);
         activity?.SetTag("subject.name", Subject.Name);
@@ -71,7 +71,7 @@ public static class IProposalEx {
         return result;
     }
     public static IEnumerable<IInteraction> TestGetInteractions(this IProposal proposal, IActor Agent, IActor Subject) {
-        using var activity = LogCat.Interaction.StartActivity(nameof(IProposalEx.TestGetInteractions))
+        using var activity = LogCat.Interaction.StartActivity(nameof(IProposalEx.TestGetInteractions))?
             .SetTag("Proposal", proposal.Description)
             .SetTag("Agent", Agent.Name).SetTag("Subject", Subject.Name);
 
@@ -79,12 +79,12 @@ public static class IProposalEx {
         activity?.SetTag("test.passed", passed);
 
         if (passed) {
-            var interactions = proposal.GetInteractions(Agent, Subject).ToArray();
-            activity?.SetTag("interaction.count", interactions.Length);
+            var interactions = proposal.GetInteractions(Agent, Subject);
+            //activity?.SetTag("interaction.count", interactions.Length);
 
-            var interactionDetails = interactions.Select(i =>
-                $"{i.Description}: {i.Immediacy()}").ToArray();
-            activity?.SetTag("interactions", string.Join("; ", interactionDetails));
+            // var interactionDetails = interactions.Select(i =>
+            //     $"{i.Description}: {i.Immediacy()}").ToArray();
+            // activity?.SetTag("interactions", string.Join("; ", interactionDetails));
 
             return interactions;
         } else {
@@ -279,8 +279,7 @@ public record ProposeAttackOrLoot(float DemandFraction = 0.5f)
     public override bool InteractionCapable(IActor Agent, IActor Subject) =>
         base.InteractionCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
-        !Agent.To(Subject).Surrendered &&
-        Subject.Supplies.ValueAt(Subject.Location) > 0;
+        !Agent.To(Subject).Surrendered;
 
     protected override IOffer SubjectOffer(IActor subject) => subject.SupplyOffer(DemandFraction);
     public override string Description => "Extort cargo";
@@ -305,8 +304,7 @@ public record ProposeTaxes(float TaxRate = 0.05f)
         base.InteractionCapable(Agent, Subject) && 
         Agent.Location.Sector.ControllingFaction == Agent.Faction &&
         !Agent.To(Subject).Hostile &&
-        !Subject.To(Agent).Hostile &&
-        (Subject.Supplies.ValueAt(Subject.Location) > 0 || Subject.Supplies[Commodity.Scrap] > 0);
+        !Subject.To(Agent).Hostile;
 
     protected override IOffer SubjectOffer(IActor subject) {
         float cargoValue = subject.Supplies.ValueAt(subject.Location);
@@ -354,16 +352,15 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
         OptionCode: OptionCode) {
 
     public override bool AgentCapable(IActor agent) =>
-        agent.Faction == Faction.Player && agent is Crawler player && !player.IsDisarmed;
+        agent.Faction == Faction.Player && agent is Crawler { IsDisarmed: false };
 
     public override bool SubjectCapable(IActor subject) =>
-        subject is Crawler target && target.IsVulnerable && subject.Faction != Faction.Player;
+        subject is Crawler { IsVulnerable: true } && subject.Faction != Faction.Player;
 
     public override bool InteractionCapable(IActor Agent, IActor Subject) =>
         base.InteractionCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
-        !Subject.To(Agent).Surrendered &&
-        Subject.Supplies.ValueAt(Subject.Location) > 0;
+        !Subject.To(Agent).Surrendered;
 
     protected override IOffer SubjectOffer(IActor subject) => new CompoundOffer(
         subject.SupplyOffer(DemandFraction),
