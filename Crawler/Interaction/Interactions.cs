@@ -65,23 +65,23 @@ public record ExchangeInteraction: IInteraction {
     readonly Immediacy _mode;
 
     public Immediacy Immediacy(string args = "") {
-        bool aoe = AgentOffer.EnabledFor(Agent, Subject);
-        bool soe = SubjectOffer.EnabledFor(Subject, Agent);
+        string? aoe = AgentOffer.DisabledFor(Agent, Subject);
+        string? soe = SubjectOffer.DisabledFor(Subject, Agent);
 
         using var activity = LogCat.Interaction.StartActivity(nameof(Immediacy));
         activity?.SetTag("interaction.description", Description);
         activity?.SetTag("agent.name", Agent.Name);
         activity?.SetTag("subject.name", Subject.Name);
-        activity?.SetTag("agent.offer.enabled", aoe);
-        activity?.SetTag("subject.offer.enabled", soe);
+        activity?.SetTag("agent.offer.enabled", aoe == null);
+        activity?.SetTag("subject.offer.enabled", soe == null);
 
-        if (aoe && soe) {
+        if (aoe == null && soe == null) {
             activity?.SetTag("mode", _mode.ToString());
             return _mode;
         } else {
             var failures = new List<string>();
-            if (!aoe) failures.Add("Agent");
-            if (!soe) failures.Add("Subject");
+            if (aoe != null) failures.Add($"Agent: {aoe}");
+            if (soe != null) failures.Add($"Subject: {soe}");
             activity?.SetTag("mode", "Disabled");
             activity?.SetTag("failures", string.Join(", ", failures));
             return global::Crawler.Immediacy.Disabled;

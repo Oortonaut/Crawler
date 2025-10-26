@@ -8,8 +8,9 @@ namespace Crawler;
 /// See: docs/SYSTEMS.md#proposalinteraction-system
 /// </summary>
 public interface IOffer {
-    /// <summary>Can this offer be fulfilled by the agent?</summary>
-    bool EnabledFor(IActor Agent, IActor Subject);
+    // Previously: bool EnabledFor(IActor Agent, IActor Subject);
+    /// <summary>Can this offer be fulfilled by the agent? Return null for success (sorry) and a string for failure.</summary>
+    string? DisabledFor(IActor Agent, IActor Subject);
 
     /// <summary>Execute the offer (transfer commodities, perform action, etc.)</summary>
     void PerformOn(IActor Agent, IActor Subject);
@@ -24,7 +25,7 @@ public interface IOffer {
 public record CompoundOffer(params IOffer[] subs): IOffer {
     public virtual string Description => string.Join(", ", subs.Select(s => s.Description));
     public override string ToString() => Description;
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) => subs.All(s => s.EnabledFor(Agent, Subject));
+    public virtual string? DisabledFor(IActor Agent, IActor Subject) => subs.Select(s => s.DisabledFor(Agent, Subject)).FirstOrDefault(r => r != null);
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         foreach (var sub in subs) {
             sub.PerformOn(Agent, Subject);
@@ -36,7 +37,7 @@ public record CompoundOffer(params IOffer[] subs): IOffer {
 public record LootOfferWrapper(IOffer offer): IOffer {
     public virtual string Description => $"{offer} (Loot)";
     public override string ToString() => Description;
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) => !Agent.HasFlag(EActorFlags.Looted) && offer.EnabledFor(Agent, Subject);
+    public virtual string? DisabledFor(IActor Agent, IActor Subject) => Agent.HasFlag(EActorFlags.Looted) ? "Already looted" : offer.DisabledFor(Agent, Subject);
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         offer.PerformOn(Agent, Subject);
         Agent.Flags |= EActorFlags.Looted;
@@ -49,9 +50,12 @@ public record RepairOffer(
     Segment SubjectSegment,
     float price): IOffer {
     public virtual string Description => $"Repair {SubjectSegment.StatusLine(_agent.Location)} ({SubjectSegment.Name})";
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) =>
-        Agent.Lives() && Subject.Lives() &&
-        Subject.Supplies.Segments.Contains(SubjectSegment) && SubjectSegment.Hits > 0;
+    public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
+        !Agent.Lives() ? "Dead" :
+        !Subject.Lives() ? "Dead" :
+        !Subject.Supplies.Segments.Contains(SubjectSegment) ? "Not owned" :
+        SubjectSegment.Hits <= 0 ? "Undamaged" :
+        null;
     public virtual void PerformOn(IActor Agent, IActor Subject) =>
         --SubjectSegment.Hits;
     public float ValueFor(IActor Agent) => price;
@@ -59,7 +63,7 @@ public record RepairOffer(
 
 public record AcceptSurrenderOffer(float value, string _description): IOffer {
     public string Description => _description;
-    public bool EnabledFor(IActor Agent, IActor Subject) => Agent.Lives() && Subject.Lives();
+    public string? DisabledFor(IActor Agent, IActor Subject) => !Agent.Lives() || !Subject.Lives() ? "Dead" : null;
     public void PerformOn(IActor Winner, IActor Loser) {
         Winner.Message($"{Loser.Name} has surrendered to you . {Tuning.Crawler.MoraleSurrenderedTo} Morale");
         Loser.Message($"You have surrendered to {Winner.Name}. {Tuning.Crawler.MoraleSurrendered} Morale");
@@ -77,7 +81,7 @@ public record AcceptSurrenderOffer(float value, string _description): IOffer {
 public record EmptyOffer(): IOffer {
     public string Description => "Nothing";
     public override string ToString() => Description;
-    public bool EnabledFor(IActor Agent, IActor Subject) => true;
+    public string? DisabledFor(IActor Agent, IActor Subject) => null;
     public void PerformOn(IActor Agent, IActor Subject) { }
     public float ValueFor(IActor Agent) => 0;
 }
@@ -87,8 +91,10 @@ public record CommodityOffer(Commodity commodity, float amount): IOffer {
     public readonly float Amount = commodity.Round(amount);
     public virtual string Description => commodity.CommodityText(Amount);
     public override string ToString() => Description;
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) =>
-        Subject.Lives() && Agent.Supplies.Contains(commodity, amount) != ContainsResult.False;
+    public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
+        !Subject.Lives() ? "Dead" :
+        Agent.Supplies.Contains(commodity, amount) == ContainsResult.False ? "No supplies" :
+        null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         Agent.Supplies[commodity] -= Amount;
         Subject.Supplies[commodity] += Amount;
@@ -103,7 +109,10 @@ public record ScrapOffer(float Scrap): CommodityOffer(Commodity.Scrap, Scrap);
 public record SegmentOffer(Segment Segment): IOffer {
     public string Description => Segment.Name;
     public override string ToString() => Description;
-    public bool EnabledFor(IActor Agent, IActor Subject) => Subject.Lives() && Agent.Cargo.Contains(Segment) != ContainsResult.False;
+    public string? DisabledFor(IActor Agent, IActor Subject) =>
+        !Subject.Lives() ? "Dead" :
+        Agent.Cargo.Contains(Segment) == ContainsResult.False ? "No cargo" :
+        null;
     public void PerformOn(IActor Agent, IActor Subject) {
         Agent.Cargo.Remove(Segment);
         Subject.Supplies.Add(Segment);
@@ -114,8 +123,12 @@ public record SegmentOffer(Segment Segment): IOffer {
 public record AttackOffer: IOffer {
     public string Description => "Attack";
     public override string ToString() => Description;
-    public bool EnabledFor(IActor Agent, IActor Subject) =>
-        Agent.Lives() && Subject.Lives() && Agent is Crawler attacker && !attacker.IsDisarmed;
+    public string? DisabledFor(IActor Agent, IActor Subject) =>
+        !Agent.Lives() ? "Dead" :
+        !Subject.Lives() ? "Dead" :
+        Agent is not Crawler ? "Can't attack" :
+        Agent is Crawler attacker && attacker.IsDisarmed ? "Disarmed" :
+        null;
     public void PerformOn(IActor Agent, IActor Subject) {
         if (Agent is Crawler attacker) {
             attacker.Attack(Subject);
@@ -127,7 +140,7 @@ public record AttackOffer: IOffer {
 public record HostilityOffer(string Reason): IOffer {
     public string Description => $"Turn hostile: {Reason}";
     public override string ToString() => Description;
-    public bool EnabledFor(IActor Agent, IActor Subject) => Agent.Lives() && Subject.Lives();
+    public string? DisabledFor(IActor Agent, IActor Subject) => !Agent.Lives() || !Subject.Lives() ? "Dead" : null;
     public void PerformOn(IActor Agent, IActor Subject) {
         Agent.To(Subject).Hostile = true;
         Subject.To(Agent).Hostile = true;
@@ -147,8 +160,10 @@ public record InventoryOffer(
     public virtual string Description => Promised.ToString();
     public override string ToString() => Description;
     public Inventory Promised => _promised ?? Delivered;
-    public virtual bool EnabledFor(IActor Agent, IActor Subject) =>
-        Subject.Lives() && GetInv(Agent).Contains(Delivered) != ContainsResult.False;
+    public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
+        !Subject.Lives() ? "Dead" :
+        GetInv(Agent).Contains(Delivered) == ContainsResult.False ? "No inventory" :
+        null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         Subject.Cargo.Add(Delivered);
         GetInv(Agent).Remove(Delivered);

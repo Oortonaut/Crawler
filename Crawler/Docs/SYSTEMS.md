@@ -48,7 +48,7 @@ IInteraction (concrete action)
   └── OptionCode - Shortcut key
 
 IOffer (exchange component)
-  ├── EnabledFor(Agent, Subject) - Can this exchange happen?
+  ├── DisabledFor(Agent, Subject) - Returns null if enabled, or failure message if disabled
   ├── PerformOn(Agent, Subject) - Execute the exchange
   ├── ValueFor(Agent) - Calculate value for agent
   └── Description - Display text
@@ -68,11 +68,11 @@ IOffer (exchange component)
 public Immediacy Immediacy(string args = "") {
     if (!meetsBasicRequirements) return Crawler.Immediacy.Disabled;
 
-    // Check if offers are enabled
-    bool aoe = AgentOffer.EnabledFor(Agent, Subject);
-    bool soe = SubjectOffer.EnabledFor(Subject, Agent);
+    // Check if offers are enabled (null = enabled)
+    string? aoe = AgentOffer.DisabledFor(Agent, Subject);
+    string? soe = SubjectOffer.DisabledFor(Subject, Agent);
 
-    if (aoe && soe) {
+    if (aoe == null && soe == null) {
         return _mode;  // Usually Immediacy.Menu
     } else {
         return Crawler.Immediacy.Disabled;

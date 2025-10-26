@@ -102,8 +102,8 @@ public record ProposeExchange(
     public virtual bool SubjectCapable(IActor subject) => true;
     public virtual bool InteractionCapable(IActor Agent, IActor Subject) =>
         Agent != Subject &&
-        agentOffer.EnabledFor(Agent, Subject) &&
-        subjectOffer.EnabledFor(Subject, Agent) &&
+        agentOffer.DisabledFor(Agent, Subject) == null &&
+        subjectOffer.DisabledFor(Subject, Agent) == null &&
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Hostile;
     public virtual IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
@@ -247,9 +247,9 @@ public record ProposeDemand(
     public virtual bool SubjectCapable(IActor subject) => true;
     public virtual bool InteractionCapable(IActor Agent, IActor Subject) =>
         Agent != Subject &&
-        agentOfferComply.EnabledFor(Agent, Subject) &&
-        agentOfferRefuse.EnabledFor(Agent, Subject) &&
-        SubjectOffer(Subject).EnabledFor(Subject, Agent);
+        agentOfferComply.DisabledFor(Agent, Subject) == null &&
+        agentOfferRefuse.DisabledFor(Agent, Subject) == null &&
+        SubjectOffer(Subject).DisabledFor(Subject, Agent) == null;
 
     public virtual IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         if (ExpirationTime == 0 || Game.SafeTime <= ExpirationTime) {
