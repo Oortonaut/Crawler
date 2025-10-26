@@ -15,21 +15,21 @@ public static class LogCat {
 
     /// <summary>ActivitySource for proposal and interaction system logging</summary>
     public static readonly ActivitySource Interaction = new(
-        $"{ServiceName}.Interaction",
+        $"{ServiceName}-Interaction",
         ServiceVersion);
 
     /// <summary>ActivitySource for encounters</summary>
     public static readonly ActivitySource Encounter = new(
-        $"{ServiceName}.Encounter",
+        $"{ServiceName}-Encounter",
         ServiceVersion);
 
     /// <summary>ActivitySource for game loop and tick events</summary>
     public static readonly ActivitySource Game = new(
-        $"{ServiceName}.Game",
+        $"{ServiceName}-Game",
         ServiceVersion);
 
     /// <summary>ActivitySource for console and UI events</summary>
     public static readonly ActivitySource Console = new(
-        $"{ServiceName}.Console",
+        $"{ServiceName}-Console",
         ServiceVersion);
 }

@@ -15,6 +15,7 @@ using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddSource(LogCat.Interaction.Name)
     .AddSource(LogCat.Game.Name)
     .AddSource(LogCat.Console.Name)
+    .AddSource(LogCat.Encounter.Name)
     .AddDebugExporter()
     .AddOtlpExporter(initOptions => { initOptions.Protocol = OtlpExportProtocol.Grpc; })
     .Build();
