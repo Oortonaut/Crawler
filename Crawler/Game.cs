@@ -282,8 +282,12 @@ public class Game {
         }
     }
 
+    bool IsMinute() => TimeSeconds % 60 == 0;
+    bool IsHour() => TimeSeconds % 3600 == 0;
+    bool IsDay() => TimeSeconds % 86400 == 0;
+
     void DrainEncounters() {
-        if (TimeSeconds % 3600 == 0) {
+        if (IsHour()) {
             allEncounters.RemoveAll(weakRef => !weakRef.TryGetTarget(out _));
         }
     }
