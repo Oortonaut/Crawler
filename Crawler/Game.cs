@@ -1,5 +1,6 @@
 ﻿using System.Drawing;
 using System.Numerics;
+using Crawler.Logging;
 
 namespace Crawler;
 
@@ -12,11 +13,14 @@ public class Game {
     public Map Map => _map!;
 
     public static Game NewGame(string crawlerName, int H) {
+        using var activity = LogCat.Game.StartActivity($"NewGame for '{crawlerName}' with H={H}");
+
         var game = new Game();
         game.Construct(crawlerName, H);
         return game;
     }
     public static Game LoadGame(string saveFilePath) {
+        using var activity = LogCat.Game.StartActivity($"LoadGame for '{saveFilePath}'");
         var deserializer = new YamlDotNet.Serialization.Deserializer();
         using var reader = new StreamReader(saveFilePath);
         var saveData = deserializer.Deserialize<SaveGameData>(reader);
@@ -266,11 +270,10 @@ public class Game {
     }
     void Tick() {
         ++TimeSeconds;
+        using var activity = LogCat.Game.StartActivity("Game Tick")?
+            .SetTag("Time", TimeSeconds);
 
-        // Clean weak references list every hour
-        if (TimeSeconds % 3600 == 0) {
-            CleanEncounterReferences();
-        }
+        DrainEncounters();
 
         if (Moving) {
             Player.Tick();
@@ -279,12 +282,25 @@ public class Game {
         }
     }
 
-    void CleanEncounterReferences() {
-        allEncounters.RemoveAll(weakRef => !weakRef.TryGetTarget(out _));
+    void DrainEncounters() {
+        if (TimeSeconds % 3600 == 0) {
+            allEncounters.RemoveAll(weakRef => !weakRef.TryGetTarget(out _));
+        }
     }
 
     public void RegisterEncounter(Encounter encounter) {
         allEncounters.Add(new WeakReference<Encounter>(encounter));
+    }
+
+    public IEnumerable<Encounter> Encounters() {
+        foreach (var encounterRef in allEncounters) {
+            if (encounterRef.TryGetTarget(out var encounter)) {
+                goodEncounters.Add(encounterRef);
+                yield return encounter;
+            }
+        }
+        allEncounters.Clear();
+        (goodEncounters, allEncounters) = (allEncounters, goodEncounters);
     }
 
     bool PlayerWon => false;
@@ -703,6 +719,8 @@ public class Game {
 
     // Track all created encounters using weak references
     List<WeakReference<Encounter>> allEncounters = new();
+
+    List<WeakReference<Encounter>> goodEncounters = new();
     // Accessor methods for save/load
     public long GetTime() => TimeSeconds;
     public int GetAP() => AP;
