@@ -77,15 +77,42 @@ See Crawler/Docs/ARCHITECTURE.md for the system map and component relationships.
 ## Processes
 
 ### Preparing for a commit
+
 The changed files will probably have several different commits worth of changes.
 To prepare for a commit, you need to go through and partition the changed hunks into groups based on function.
-Try to work out the dependencies between the different groups, if any, but don't bust your ass too hard. 
-The linearize that graph and create a separate stash for each group with the staged changes and a strong description.
+Try to work out the dependencies between the different groups, if any, but don't bust your ass too hard.
+Then linearize that graph and create a separate stash for each group with the staged changes and a strong description.
 My end goal is to be able to work through each stash in my source control tool, apply and drop the stash, and then
 do my own review and commit without having to stage or enter the message.
 Omit and do not add any claude branding. I don't like the noise or the waste of bits.
 Do not do the commit yourself. All commits must be manually reviewed.
 Do not presume the reason for a change unless you have context about my own reasoning or you are explicitly asked to.
+
+#### Process notes:
+- Work backward from the current state: save modified files, revert to HEAD, then apply changes one commit at a time
+- For files with multiple independent changes (like Game.cs), use Edit tool to apply each logical group separately
+- Stage each group and create the stash immediately before moving to the next
+- Git stashes are LIFO - the final order will be reversed, with most recent (last created) on top
+- Include affected file list in your analysis but not in the stash message
+- Stash messages should be imperative mood, focused on what the change does, not why
+- Verify working tree is clean after all stashes are created
+- Create a backup stash before you begin work, to help fix things if they go wrong. Clean these up after a week. 
+  
+#### Staging techniques
+- **Whole files (simple):** `git add <files>` when all changes in those files belong to one commit
+- **Partial files (complex):** For files needing split:
+    1. `cp <file> /tmp/<file>_full` (backup the full changes)
+    2. `git checkout HEAD -- <file>` (revert to clean state)
+    3. Use Edit tool to apply only the changes for this commit
+    4. `git add <file> && git stash push --staged -m "description"`
+    5. Repeat steps 2-4 for each subsequent commit affecting that file
+- **Avoid:** `git add -p` (interactive mode doesn't work well in this environment)
+- **Avoid:** Trying to selectively unstage hunks - too fragile, easy to make mistakes
+
+#### Creating stashes:
+- Always use: `git stash push --staged -m "message"`
+- Never use: `git stash` alone (stashes unstaged changes too)
+- The `--staged` flag ensures only explicitly staged changes are stashed
 
 ### Grooming the documentation
 The code is the ultimate source of truth; the documentation is just that.
