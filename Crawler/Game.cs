@@ -355,7 +355,7 @@ public class Game {
     }
     string _SectorMapName() {
         var sector = PlayerLocation.Sector;
-        var sectorMapName = sector.Name + " Map (";
+        var sectorMapName = $"Sector {sector.Name} Map (";
         foreach (var location in sector.Locations) {
             var locationCode = Player.StyleFor(location).Format(location.Code);
             sectorMapName += locationCode;
