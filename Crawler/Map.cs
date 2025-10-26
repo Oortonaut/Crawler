@@ -1,5 +1,6 @@
 ﻿using System.Drawing;
 using System.Numerics;
+using Crawler.Logging;
 
 namespace Crawler;
 
@@ -142,6 +143,7 @@ public class Sector(Map map, string name, int x, int y) {
 
 public class Map {
     public Map(int Height, int Width) {
+        using var activity = LogCat.Game.StartActivity($"new Map({Height}, {Width})");
         Sectors = new Sector[Height, Width];
         float expectation = 2.5f * Height * Width;
         foreach (var (X, Y) in Sectors.Index()) {
@@ -211,6 +213,7 @@ public class Map {
     public int NumFactions { get; protected set; }
     public Faction FactionEnd { get; protected set; }
     void IdentifyFactionCapitals() {
+        using var activity = LogCat.Game.StartActivity($"{nameof(IdentifyFactionCapitals)}");
         // Collect all settlement locations
         var settlementLocations = new List<Location>();
         foreach (var (X, Y) in Sectors.Index()) {
@@ -256,6 +259,7 @@ public class Map {
     }
 
     void AssignSectorFactions() {
+        using var activity = LogCat.Game.StartActivity($"{nameof(AssignSectorFactions)}");
         // Weighted Voronoi: assign each sector to nearest faction capital weighted by population
         foreach (var (X, Y) in Sectors.Index()) {
             var sector = Sectors[Y, X];

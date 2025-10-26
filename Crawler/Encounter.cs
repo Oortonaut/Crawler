@@ -232,6 +232,7 @@ public class Encounter {
         return trader;
     }
     public Crawler GeneratePlayerActor() {
+        using var activity = LogCat.Encounter.StartActivity($"GeneratePlayer {nameof(Encounter)}");
         float wealth = Location.Wealth * 1.0f;
         int crew = (int)Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.65f;
@@ -243,6 +244,7 @@ public class Encounter {
         return player;
     }
     public Crawler GenerateBanditActor() {
+        using var activity = LogCat.Encounter.StartActivity($"GenerateBandit {nameof(Encounter)}");
         float wealth = Location.Wealth * 0.8f;
         int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.6f;
@@ -255,6 +257,7 @@ public class Encounter {
     }
 
     public Crawler GenerateCivilianActor(Faction civilianFaction) {
+        using var activity = LogCat.Encounter.StartActivity($"GenerateCivilian {nameof(Encounter)}");
         // Similar to Trade but with faction-specific policies
         float wealth = Location.Wealth * 0.75f;
         int crew = Math.Max(1, (int)(wealth / 40));
@@ -269,6 +272,7 @@ public class Encounter {
     }
 
     public void GenerateSettlement() {
+        using var activity = LogCat.Encounter.StartActivity($"GenerateSettlement {nameof(Encounter)}");
         float t = Location.Position.Y / ( float ) Location.Map.Height;
         int domes = (int)(1 + Location.Population / 50);
         int crew = domes * 10;
@@ -447,6 +451,7 @@ public class Encounter {
         AddActor(hazardActor);
     }
     public Encounter Generate() {
+        using var activity = LogCat.Encounter.StartActivity($"Generate {nameof(Encounter)}");
         switch (Location.Type) {
         case EncounterType.Crossroads:
         {
@@ -478,6 +483,7 @@ public class Encounter {
     public IEnumerable<IActor> ActorsExcept(IActor actor) => Game.Instance is {} inst && inst.Moving ? [] : Actors.Where(a => a != actor);
     public IEnumerable<IActor> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
     public void Tick() {
+        using var activity = LogCat.Encounter.StartActivity($"Tick {nameof(Encounter)}");
         UpdateDynamicCrawlers();
 
         foreach (var actor in actors.Keys) {

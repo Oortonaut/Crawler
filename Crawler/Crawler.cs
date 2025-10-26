@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Crawler.Logging;
 
 namespace Crawler;
 
@@ -250,6 +251,12 @@ public class Crawler: IActor {
     }
 
     public void Tick() {
+        using var activity = LogCat.Game.StartActivity($"{Name} Tick ")?
+            .SetTag("Actor", Name)
+            .SetTag("Faction", Faction.ToString())
+            .SetTag("Location", Location.ToString())
+            .SetTag("EndState", EndState?.ToString());
+
         UpdateSegments();
         if (Game.SafeTime % 3600 == 0) {
             Recharge(1);
@@ -310,6 +317,7 @@ public class Crawler: IActor {
         UpdateSegments();
     }
     public void Tick(IEnumerable<IActor> Actors) {
+        using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
         if (Faction is Faction.Bandit) {
             TickBandit(Actors);
         }
