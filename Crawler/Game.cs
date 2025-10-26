@@ -270,7 +270,8 @@ public class Game {
     }
     void Tick() {
         ++TimeSeconds;
-        using var activity = LogCat.Game.StartActivity("Game Tick")?
+        using var activity = !IsHour() ? null :
+            LogCat.Game.StartActivity("Game Tick")?
             .SetTag("Time", TimeSeconds);
 
         DrainEncounters();
@@ -439,7 +440,7 @@ public class Game {
             if (!canPackage) {
                 label += " (Damaged)";
             }
-            yield return new ActionMenuItem($"PK{index + 1}", label, _ => TogglePackage(index), canPackage.Enable(), showOption);
+            yield return new ActionMenuItem($"PK{index + 1}", label, _ => TogglePackage(index), canPackage.Enable(), show);
         }
     }
 
