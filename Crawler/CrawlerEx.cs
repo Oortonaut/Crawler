@@ -704,7 +704,7 @@ public static partial class CrawlerEx {
     }
 
     public static int TickInteractions(this List<IInteraction> interactions, IActor agent, string prefix) {
-        using var activity = LogCat.Interaction.StartActivity($"nameof(TickInteractions) {agent.Name} '{prefix}'")?
+        using var activity = LogCat.Interaction.StartActivity($"{nameof(TickInteractions)} {agent.Name} '{prefix}'")?
             .SetTag("Agent", agent.Name).SetTag("#Interactions", interactions.Count);
 
         int result = 0;
