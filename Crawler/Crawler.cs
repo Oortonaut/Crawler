@@ -651,7 +651,6 @@ public class Crawler: IActor {
         return fire;
     }
     public void Recharge() {
-        Debug.WriteLine($"{Name} Recharging");
         Segments.Do(s => s.Tick());
         float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate());
         overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate());
