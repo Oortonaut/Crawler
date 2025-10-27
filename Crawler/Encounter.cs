@@ -239,7 +239,6 @@ public class Encounter {
         var player = Crawler.NewRandom(Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         player.Flags |= EActorFlags.Player;
         player.Faction = Faction.Player;
-        player.Recharge(20);
         return player;
     }
     public Crawler GenerateBanditActor() {
@@ -250,7 +249,6 @@ public class Encounter {
         float segmentWealth = wealth * 0.5f;
         var enemy = Crawler.NewRandom(Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
         enemy.Faction = Faction.Bandit;
-        enemy.Recharge(20);
 
         return enemy;
     }
@@ -281,7 +279,6 @@ public class Encounter {
         settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
-        settlement.Recharge(20);
         var proposals = settlement.MakeTradeProposals( 1, settlement.Faction);
         settlement.StoredProposals.AddRange(proposals);
         settlement.UpdateSegmentCache();
@@ -473,7 +470,6 @@ public class Encounter {
             Faction.Independent => GenerateTradeActor(),
             _ => GenerateCivilianActor(faction),
         };
-        result.Recharge(20);
         AddActor(result, lifetime);
         return result;
     }
@@ -487,11 +483,9 @@ public class Encounter {
         foreach (var actor in actors.Keys) {
             if (actor.EndState is { } state) {
             } else {
+                actor.Tick(ActorsExcept(actor));
                 actor.Tick();
             }
-        }
-        foreach (var actor in actors.Keys) {
-            actor.Tick(ActorsExcept(actor));
         }
     }
 }

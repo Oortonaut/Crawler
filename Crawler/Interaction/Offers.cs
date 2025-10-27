@@ -124,10 +124,10 @@ public record AttackOffer: IOffer {
     public string Description => "Attack";
     public override string ToString() => Description;
     public string? DisabledFor(IActor Agent, IActor Subject) =>
-        !Agent.Lives() ? "Dead" :
-        !Subject.Lives() ? "Dead" :
-        Agent is not Crawler ? "Can't attack" :
-        Agent is Crawler attacker && attacker.IsDisarmed ? "Disarmed" :
+        !Agent.Lives() ? "Agent Dead" :
+        !Subject.Lives() ? "Subject Dead" :
+        Agent is not Crawler attacker ? "Can't attack" :
+        attacker.IsDisarmed ? "Disarmed" :
         null;
     public void PerformOn(IActor Agent, IActor Subject) {
         if (Agent is Crawler attacker) {
@@ -168,7 +168,7 @@ public record InventoryOffer(
         Subject.Cargo.Add(Delivered);
         GetInv(Agent).Remove(Delivered);
         foreach (var segment in Delivered.Segments) {
-            segment.Packaged = false;
+            segment.Packaged = true;
         }
     }
     public float ValueFor(IActor Agent) => Promised.ValueAt(Agent.Location);

@@ -251,15 +251,18 @@ public class Crawler: IActor {
     }
 
     public void Tick() {
-        using var activity = LogCat.Game.StartActivity($"{Name} Tick ")?
-            .SetTag("Actor", Name)
-            .SetTag("Faction", Faction.ToString())
-            .SetTag("Location", Location.ToString())
-            .SetTag("EndState", EndState?.ToString());
+        if (EndState == null) {
+            return;
+        }
+        if (Game.Instance?.IsHour() ?? false) {
+            using var activity = LogCat.Game.StartActivity($"{Name} Tick ")?
+                .SetTag("Actor", Name)
+                .SetTag("Faction", Faction.ToString())
+                .SetTag("Location", Location.ToString())
+                .SetTag("EndState", EndState?.ToString());
 
-        UpdateSegments();
-     UpdateSegmentCache();
-            Recharge(1);
+            UpdateSegmentCache();
+            Recharge();
 
             // Check rations
             if (RationsInv <= 0) {
@@ -317,15 +320,13 @@ public class Crawler: IActor {
         UpdateSegmentCache();
     }
     public void Tick(IEnumerable<IActor> Actors) {
-        using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
-        if (Faction is Faction.Bandit) {
-            TickBandit(Actors);
+        if (!Actors.Any()) {
+            return;
         }
-        UpdateSegments();
-    }
-    protected void TickBandit(IEnumerable<IActor> Actors) {
+        using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
+
         if (IsDepowered) {
-            Message($"{Name} is radio silent.");
+            Message($"{Name} has no power.");
             return;
         }
 
@@ -336,14 +337,9 @@ public class Crawler: IActor {
             return;
         }
 
-        foreach (var actor in Actors) {
-            var relation = To(actor);
-            if (actor.Faction == Faction.Player) {
-                if (relation.Hostile) {
-                    this.Attack(actor);
-                }
-                break;
-            }
+        var hostile = Actors.Where(a => To(a).Hostile).ChooseRandom();
+        if (hostile != null) {
+            int AP = this.Attack(hostile);
         }
     }
 
@@ -360,11 +356,11 @@ public class Crawler: IActor {
         get => _inventory;
         set {
             _inventory = value;
-            UpdateSegments();
+            UpdateSegmentCache();
         }
     }
     public Inventory Cargo { get; } = new Inventory();
-    public void UpdateSegments() {
+    public void UpdateSegmentCache() {
         _allSegments = Supplies.Segments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
 
         _activeSegments.Clear();
@@ -376,12 +372,13 @@ public class Crawler: IActor {
         foreach (var segment in _allSegments) {
             _segmentsByClass[segment.SegmentKind].Add(segment);
             switch (segment.State) {
-                case Segment.Working.Active:
+                case Segment.Working.Pristine:
+                case Segment.Working.Running:
                     _activeSegmentsByClass[segment.SegmentKind].Add(segment);
                     _activeSegments.Add(segment);
                     _undestroyedSegments.Add(segment);
                     break;
-                case Segment.Working.Disabled:
+                case Segment.Working.Damaged:
                     _disabledSegments.Add(segment);
                     _undestroyedSegments.Add(segment);
                     break;
@@ -496,7 +493,7 @@ public class Crawler: IActor {
             var value = amount * commodity.CostAt(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
-                commodity.CommodityTextFull(amount),
+                commodity.IsIntegral() ? $"{amount:F0}" : $"{amount:F1}",
                 $"{commodity.Mass():F3}",
                 $"{commodity.Volume():F3}",
                 $"{value:F1}¢¢"
@@ -653,18 +650,17 @@ public class Crawler: IActor {
         }
         return fire;
     }
-    public void Recharge(int Count) {
-        for (int i = 0; i < Count; ++i) {
-            Segments.Do(s => s.Tick());
-            float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate());
-            overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate());
-            FeedPower(overflowPower);
-            ScrapInv -= WagesPerHr;
-            RationsInv -= RationsPerHr;
-            WaterInv -= WaterPerHr;
-            AirInv -= AirPerHr;
-            FuelInv -= FuelPerHr;
-        }
+    public void Recharge() {
+        Debug.WriteLine($"{Name} Recharging");
+        Segments.Do(s => s.Tick());
+        float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate());
+        overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate());
+        FeedPower(overflowPower);
+        ScrapInv -= WagesPerHr;
+        RationsInv -= RationsPerHr;
+        WaterInv -= WaterPerHr;
+        AirInv -= AirPerHr;
+        FuelInv -= FuelPerHr;
     }
     // Returns excess (wasted) power
     float FeedPower(float delta) {

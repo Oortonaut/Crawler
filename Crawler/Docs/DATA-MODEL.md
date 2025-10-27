@@ -219,6 +219,8 @@ enum Working {
 ```
 Active ←→ Deactivated
   ↓
+[Damaged (Hits > 0)] (affects packagability only, not functionality, so not exposed in   
+  ↓
 Disabled (Hits > 0)
   ↓
 Destroyed (Hits >= MaxHits)

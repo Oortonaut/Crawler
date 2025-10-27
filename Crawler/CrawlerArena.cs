@@ -349,8 +349,7 @@ public class CrawlerArena {
         }
 
         // Initialize the crawler's systems
-        crawler.UpdateSegments();
-        crawler.Recharge(20);
+        crawler.UpdateSegmentCache();
 
         return crawler;
     }

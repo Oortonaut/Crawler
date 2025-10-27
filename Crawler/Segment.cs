@@ -90,7 +90,7 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
         set => _hits = Math.Clamp(value, 0, SegmentDef.MaxHits);
     }
 
-    public bool Packaged { get; set; } = true;
+    public bool Packaged { get; set; } = false;
     public bool Activated { get; set; } = true;
     // Returns amount of damage sunk (not necessarily dealt)
     public virtual (int remaining, string desc) AddDmg(HitType hitType, int delta) {
@@ -98,7 +98,7 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
             return (0, "");
         }
         string msg = Name;
-        if (State is Working.Packaged) {
+        if (IsPackaged) {
             int soaked = delta / 2;
             // takes 1/2 damage
             delta -= soaked;
@@ -114,21 +114,35 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
         return (remaining, msg);
     }
     public enum Working {
-        Active,
-        Disabled,
-        Destroyed,
-        Deactivated,
-        Packaged,
+        Pristine, // Active with no damage
+        Running, // Active with some damage
+        Damaged, // Damaged such that functionality is impaired
+        Destroyed, // Destroyed, cannot be used or repaired
+        Deactivated, // Turned off the choose power distribution
+        Packaged, // Packed up tight for trade purposes; cannot be used or repaired
     }
     public Working State =>
-        Health <= 0 ? Working.Destroyed :
-        !Packaged ? Working.Packaged :
+        Hits >= MaxHits ? Working.Destroyed :
+        Packaged ? Working.Packaged :
         !Activated ? Working.Deactivated :
-        Health <= MaxHits / 2 ? Working.Disabled :
-        Working.Active;
-    public bool IsActive => State == Working.Active;
+        Hits > MaxHits / 2 ? Working.Damaged :
+        Hits > 0 ? Working.Running :
+        Working.Pristine;
+    // Active segments are usable until they take half damage, rounded down
+    public bool IsActive => State is Working.Pristine or Working.Running;
+    public bool IsPristine => State is Working.Pristine;
+    public bool IsRunning => State is Working.Running;
+
+    public bool IsDamaged => State is Working.Damaged;
+
+    // Passive segments remain usable until they are destroyed
+    public bool IsUsable => State is not Working.Destroyed and not Working.Packaged;
+    public bool IsPackaged => State == Working.Packaged;
+
     public bool IsDestroyed => State == Working.Destroyed;
-    public string StateString => State switch { Working.Active => "", _ => $" ({State})" };
+    public bool IsDeactivated => State == Working.Deactivated;
+
+    public string StateString => $" ({State})";
     public string StateName => Name + StateString;
 
     public int Health => MaxHits - Hits;
@@ -136,16 +150,17 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     protected Style GetStyle() {
         Style result = Style.None;
         switch (State) {
-        case Working.Active:
+        case Working.Pristine:
+        case Working.Running:
             result = Style.SegmentActive;
             break;
         case Working.Packaged:
-            result = Style.SegmentActive;
+            result = Style.SegmentPackaged;
             break;
         case Working.Deactivated:
             result = Style.SegmentDeactivated;
             break;
-        case Working.Disabled:
+        case Working.Damaged:
             result = Style.SegmentDisabled;
             break;
         case Working.Destroyed:
@@ -157,9 +172,10 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     public StyledString Colored(Location Location) => new(GetStyle(), StatusLine(Location));
     public string StatusLine(Location Location) => $"{ClassCode}{Symbol}{levelCode(Health),1}{StateCode}{ReportCode(Location)}";
     public char StateCode => State switch {
-        Working.Active => '+',
-        Working.Disabled => '-',
-        Working.Deactivated => '_',
+        Working.Pristine => '●',
+        Working.Running => '◍',
+        Working.Damaged => '-',
+        Working.Deactivated => '○',
         Working.Destroyed => 'x',
         Working.Packaged => '/',
         _ => '?',
@@ -280,7 +296,7 @@ public class ReactorSegment(ReactorDef reactorDef, IActor? Owner): PowerSegment(
     public float Generation => reactorDef.Generation;
     public override char ReportCode(Location _) => fracCode(Charge, Capacity);
 
-    float _charge = 0;
+    float _charge = reactorDef.Capacity;
     public float Charge {
         get => _charge;
         set => _charge = Math.Clamp(value, 0, Capacity);
@@ -376,9 +392,9 @@ public class ArmorSegment(ArmorDef armorDef, IActor? Owner): DefenseSegment(armo
     virtual public int Reduction => armorDef.Reduction;
     // returns damage sunk
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
-        if (State is Working.Active or Working.Disabled && hitType is HitType.Hits) {
+        if (IsUsable && hitType is HitType.Hits) {
             int reduction = Reduction;
-            if (State is Working.Disabled) {
+            if (IsDamaged) {
                 reduction = (reduction + 1) / 2;
             }
             if (delta > reduction) {
@@ -413,7 +429,7 @@ public class PlatingSegment(PlatingDef PlatingDef, IActor? Owner): DefenseSegmen
     public float Mitigation => PlatingDef.Mitigation;
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
         string msg = $" {Name}";
-        if (State is Working.Active or Working.Disabled && hitType is HitType.Hits) {
+        if (IsUsable && hitType is HitType.Hits) {
             int remaining = (delta * Mitigation).StochasticInt();
             if (remaining != delta) {
                 msg += $", {delta - remaining} absorbed";
@@ -448,8 +464,13 @@ public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(s
     public override char ReportCode(Location _) => fracCode(ShieldLeft, Capacity);
 
     public override void Tick() {
+        base.Tick();
         if (IsActive) {
             ShieldLeft += Charge;
+        } else if (IsUsable) {
+            // Hold charge but don't generate new charge
+        } else {
+            ShieldLeft = 0;
         }
     }
 
@@ -471,7 +492,7 @@ public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(s
         }
     }
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
-        if (State is Working.Active or Working.Disabled && hitType is not HitType.Misses) {
+        if (State is Working.Pristine or Working.Damaged && hitType is not HitType.Misses) {
             var (rem, txt) = AddShieldDmg(delta);
             if (rem > 0) {
                 var start = Hits;
@@ -508,12 +529,14 @@ public static class SegmentEx {
                         ("Length", 6),
                         ("Drain", 6),
                         ("Cost", 10),
+                        ("Charge", 6),
                         ("Cap", 6),
                         ("Gen", 6)
                     );
                     foreach (var segment in group) {
-                        string cap = "", gen = "";
+                        string cap = "", gen = "", chg = "";
                         if (segment is ReactorSegment rs) {
+                            chg = $"{rs.Charge:F1}";
                             cap = $"{rs.Capacity:F1}";
                             gen = $"{rs.Generation:F1}";
                         } else if (segment is ChargerSegment cs) {
@@ -527,6 +550,7 @@ public static class SegmentEx {
                             $"{segment.Length:F1}",
                             $"{segment.Drain:F2}",
                             $"{segment.Cost:F1}",
+                            chg,
                             cap,
                             gen
                         );
