@@ -253,9 +253,7 @@ public class Map {
         // Generate policies for each civilian faction
         foreach (var (faction, data) in FactionData.Pairs()) {
             if (data?.Capital is {} capital) {
-                var (commodityPolicy, segmentPolicy) = GenerateFactionPolicy(capital);
-                Tuning.FactionPolicies.CommodityPolicies[faction] = commodityPolicy;
-                Tuning.FactionPolicies.SegmentPolicies[faction] = segmentPolicy;
+                Tuning.FactionPolicies.Policies[faction] = GenerateFactionPolicy(capital);
             }
         }
     }
@@ -286,7 +284,7 @@ public class Map {
         }
     }
 
-    (EArray<CommodityCategory, TradePolicy>, EArray<SegmentKind, TradePolicy>) GenerateFactionPolicy(Capital capital) {
+    Policy GenerateFactionPolicy(Capital capital) {
         // Generate procedural policies based on capital characteristics
         var commodityPolicy = Tuning.FactionPolicies.CreateCommodityDefaultPolicy(TradePolicy.Legal);
         var segmentPolicy = Tuning.FactionPolicies.CreateSegmentDefaultPolicy(TradePolicy.Legal);
@@ -322,7 +320,7 @@ public class Map {
             segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
         }
 
-        return (commodityPolicy, segmentPolicy);
+        return new (commodityPolicy, segmentPolicy);
     }
 
     public Location GetStartingLocation() {

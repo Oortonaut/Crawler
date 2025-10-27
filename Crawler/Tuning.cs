@@ -92,8 +92,7 @@ public static partial class Tuning {
     // Faction trade policies - defines how each faction treats commodity categories and segment kinds
     public static class FactionPolicies {
         // Policies are stored per faction
-        public static Dictionary<Faction, EArray<CommodityCategory, TradePolicy>> CommodityPolicies = new();
-        public static Dictionary<Faction, EArray<SegmentKind, TradePolicy>> SegmentPolicies = new();
+        public static Dictionary<Faction, Policy> Policies = new();
 
         // Initialize default policies for core factions
         static FactionPolicies() {
@@ -102,22 +101,27 @@ public static partial class Tuning {
 
         static void InitializeCoreFactionPolicies() {
             // Player - permissive for everything
-            CommodityPolicies[Faction.Player] = CreateCommodityDefaultPolicy(TradePolicy.Legal);
-            SegmentPolicies[Faction.Player] = CreateSegmentDefaultPolicy(TradePolicy.Legal);
+            Policies[Faction.Player] = CreateDefaultPolicy(TradePolicy.Legal);
 
             // Bandit - sell everything (including contraband)
-            CommodityPolicies[Faction.Bandit] = CreateCommodityDefaultPolicy(TradePolicy.Legal);
-            SegmentPolicies[Faction.Bandit] = CreateSegmentDefaultPolicy(TradePolicy.Legal);
+            Policies[Faction.Bandit] = CreateDefaultPolicy(TradePolicy.Legal);
 
             // Independent - legitimate merchants, restrict dangerous goods
             var tradeCommodityPolicy = CreateCommodityDefaultPolicy(TradePolicy.Legal);
             tradeCommodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
             tradeCommodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Taxed;
-            CommodityPolicies[Faction.Independent] = tradeCommodityPolicy;
 
             var tradeSegmentPolicy = CreateSegmentDefaultPolicy(TradePolicy.Legal);
             tradeSegmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
-            SegmentPolicies[Faction.Independent] = tradeSegmentPolicy;
+
+            Policies[Faction.Independent] = new Policy(tradeCommodityPolicy, tradeSegmentPolicy);
+        }
+
+        public static Policy CreateDefaultPolicy(TradePolicy defaultPolicy) {
+            return new Policy(
+                CreateCommodityDefaultPolicy(defaultPolicy),
+                CreateSegmentDefaultPolicy(defaultPolicy)
+            );
         }
 
         public static EArray<CommodityCategory, TradePolicy> CreateCommodityDefaultPolicy(TradePolicy defaultPolicy) {
@@ -142,8 +146,8 @@ public static partial class Tuning {
                 return TradePolicy.Legal;
             }
 
-            if (CommodityPolicies.TryGetValue(faction, out var policy)) {
-                return policy[category];
+            if (Policies.TryGetValue(faction, out var policy)) {
+                return policy.Commodities[category];
             }
 
             // Default to legal if no policy defined
@@ -156,8 +160,8 @@ public static partial class Tuning {
                 return TradePolicy.Legal;
             }
 
-            if (SegmentPolicies.TryGetValue(faction, out var policy)) {
-                return policy[kind];
+            if (Policies.TryGetValue(faction, out var policy)) {
+                return policy.Segments[kind];
             }
 
             // Default to legal if no policy defined

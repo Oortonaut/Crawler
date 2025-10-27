@@ -12,6 +12,11 @@ public enum TradePolicy {
     Prohibited // Cannot trade - illegal in this faction's territory
 }
 
+// Policy record encapsulates both commodity and segment trade policies
+public record Policy(
+    EArray<CommodityCategory, TradePolicy> Commodities,
+    EArray<SegmentKind, TradePolicy> Segments
+);
 
 // Agent is seller
 public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"): IProposal {
