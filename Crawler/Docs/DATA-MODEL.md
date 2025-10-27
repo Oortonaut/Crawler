@@ -580,20 +580,34 @@ enum EncounterType {
 
 ### TradePolicy
 
-**File:** `Tuning.cs` (implied from use)
+**File:** `Trade.cs:7-13`
 ```csharp
 enum TradePolicy {
-    Legal,          // No restrictions
-    Controlled,     // Transaction fees apply
-    Prohibited,     // Subject to seizure
+    Subsidized,     // 0.7x base price - government subsidy
+    Legal,          // 1.0x base price - normal trade
+    Taxed,          // 1.3x markup - import tariffs
+    Controlled,     // 1.75x markup + transaction fee - heavily regulated
+    Prohibited      // Cannot trade - illegal/contraband
 }
 ```
 
+**Policy System:**
+- Policies are defined per faction for **CommodityCategory** and **SegmentKind**
+- Individual commodities/segments inherit policy from their category/kind
+
 **Usage:**
 ```csharp
+// Commodity policy (by category)
 var policy = Tuning.FactionPolicies.GetPolicy(faction, commodity);
+// or directly: GetPolicy(faction, commodityCategory)
 if (policy == TradePolicy.Prohibited) {
     // Contraband!
+}
+
+// Segment policy (by kind)
+var segmentPolicy = Tuning.FactionPolicies.GetPolicy(faction, segmentKind);
+if (segmentPolicy == TradePolicy.Controlled) {
+    // Transaction fee applies
 }
 ```
 

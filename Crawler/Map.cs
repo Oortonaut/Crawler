@@ -253,7 +253,9 @@ public class Map {
         // Generate policies for each civilian faction
         foreach (var (faction, data) in FactionData.Pairs()) {
             if (data?.Capital is {} capital) {
-                Tuning.FactionPolicies.Policies[faction] = GenerateFactionPolicy(capital);
+                var (commodityPolicy, segmentPolicy) = GenerateFactionPolicy(capital);
+                Tuning.FactionPolicies.CommodityPolicies[faction] = commodityPolicy;
+                Tuning.FactionPolicies.SegmentPolicies[faction] = segmentPolicy;
             }
         }
     }
@@ -284,9 +286,10 @@ public class Map {
         }
     }
 
-    EArray<Commodity, TradePolicy> GenerateFactionPolicy(Capital capital) {
+    (EArray<CommodityCategory, TradePolicy>, EArray<SegmentKind, TradePolicy>) GenerateFactionPolicy(Capital capital) {
         // Generate procedural policies based on capital characteristics
-        var policy = Tuning.FactionPolicies.CreateDefaultPolicy(TradePolicy.Legal);
+        var commodityPolicy = Tuning.FactionPolicies.CreateCommodityDefaultPolicy(TradePolicy.Legal);
+        var segmentPolicy = Tuning.FactionPolicies.CreateSegmentDefaultPolicy(TradePolicy.Legal);
 
         // Use terrain and tech to influence policies
         //var terrain = capital.Location.Terrain;
@@ -299,39 +302,27 @@ public class Map {
 
         if (archetypeRoll < 30) {
             // Religious faction - subsidize religious items, prohibit drugs
-            policy[Commodity.Idols] = TradePolicy.Subsidized;
-            policy[Commodity.Texts] = TradePolicy.Subsidized;
-            policy[Commodity.Relics] = TradePolicy.Subsidized;
-            policy[Commodity.Liquor] = TradePolicy.Prohibited;
-            policy[Commodity.Stims] = TradePolicy.Prohibited;
-            policy[Commodity.Downers] = TradePolicy.Prohibited;
-            policy[Commodity.Trips] = TradePolicy.Prohibited;
-            policy[Commodity.SmallArms] = TradePolicy.Controlled;
-            policy[Commodity.Explosives] = TradePolicy.Controlled;
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
         } else if (archetypeRoll < 60) {
             // Industrial/Mining faction - subsidize raw materials, tax weapons
-            policy[Commodity.Ore] = TradePolicy.Subsidized;
-            policy[Commodity.Silicates] = TradePolicy.Subsidized;
-            policy[Commodity.Metal] = TradePolicy.Subsidized;
-            policy[Commodity.Explosives] = TradePolicy.Taxed;
-            policy[Commodity.SmallArms] = TradePolicy.Taxed;
-            policy[Commodity.Liquor] = TradePolicy.Taxed;
-            policy[Commodity.Stims] = TradePolicy.Taxed;
+            commodityPolicy[CommodityCategory.Raw] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Taxed;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Taxed;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
         } else {
             // Authoritarian/Restrictive faction - prohibit many things
-            policy[Commodity.SmallArms] = TradePolicy.Prohibited;
-            policy[Commodity.Explosives] = TradePolicy.Prohibited;
-            policy[Commodity.Liquor] = TradePolicy.Controlled;
-            policy[Commodity.Stims] = TradePolicy.Prohibited;
-            policy[Commodity.Downers] = TradePolicy.Prohibited;
-            policy[Commodity.Trips] = TradePolicy.Prohibited;
-            policy[Commodity.Idols] = TradePolicy.Controlled;
-            policy[Commodity.Texts] = TradePolicy.Controlled;
-            policy[Commodity.Relics] = TradePolicy.Controlled;
-            policy[Commodity.AiCores] = TradePolicy.Controlled;
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Prohibited;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Controlled;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
         }
 
-        return policy;
+        return (commodityPolicy, segmentPolicy);
     }
 
     public Location GetStartingLocation() {

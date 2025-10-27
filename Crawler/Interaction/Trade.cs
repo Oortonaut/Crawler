@@ -127,18 +127,50 @@ public static class TradeEx {
 
         // Offer segments from trade inventory if available
         foreach (var segment in seller?.Cargo.Segments.ToList() ?? []) {
+            // Check faction policy for this segment kind
+            var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
+
+            // Skip prohibited segments
+            if (policy == TradePolicy.Prohibited) {
+                continue;
+            }
+
             var localCost =  segment.CostAt(Location);
-            var price = localCost * merchantMarkup;
+            var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
+            var price = localCost * merchantMarkup * policyMultiplier;
+
+            // Add transaction fee for restricted segments
+            if (policy == TradePolicy.Controlled) {
+                price += Tuning.Trade.restrictedTransactionFee;
+            }
+
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
+
         int SaleSegments = CrawlerEx.SamplePoisson((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1));
         while (SaleSegments --> 0) {
             var segmentDef = SegmentEx.AllDefs.ChooseRandom()!;
             var segment = segmentDef.NewSegment();
+
+            // Check faction policy for this segment kind
+            var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
+
+            // Skip prohibited segments
+            if (policy == TradePolicy.Prohibited) {
+                continue;
+            }
+
             var markup = Tuning.Economy.LocalMarkup(segment.SegmentKind, Location);
-            markup *= merchantMarkup;
+            var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
+            markup *= merchantMarkup * policyMultiplier;
             Seller.Cargo.Segments.Add(segment);
             var price = segment.Cost * markup;
+
+            // Add transaction fee for restricted segments
+            if (policy == TradePolicy.Controlled) {
+                price += Tuning.Trade.restrictedTransactionFee;
+            }
+
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
     }

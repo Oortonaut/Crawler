@@ -246,10 +246,16 @@ ProposeDemand(
 
 ### Contraband System
 
-**Trade Policies Per Commodity:**
-- **Legal** - No restrictions
-- **Controlled** - Transaction fees apply (Tuning.Trade.restrictedTransactionFee)
-- **Prohibited** - Subject to seizure
+**Trade Policies (Category/Kind-Based):**
+- **Subsidized** - 0.7x base price (government subsidy)
+- **Legal** - 1.0x base price (no restrictions)
+- **Taxed** - 1.3x markup (import tariffs)
+- **Controlled** - 1.75x markup + transaction fee (heavily regulated)
+- **Prohibited** - Cannot trade, subject to seizure (contraband)
+
+**Policy System:**
+- Policies defined per faction for CommodityCategory and SegmentKind
+- Individual commodities/segments inherit from their category/kind
 
 **Scan Process:**
 ```csharp
@@ -257,7 +263,7 @@ ScanForContraband(target):
   if Random() > contrabandScanChance: return empty
 
   foreach commodity in target.Supplies:
-    policy = FactionPolicies.GetPolicy(faction, commodity)
+    policy = FactionPolicies.GetPolicy(faction, commodity.Category())
     if policy == Prohibited and amount > 0:
       contraband.Add(commodity, amount)
 

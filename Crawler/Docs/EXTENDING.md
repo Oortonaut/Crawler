@@ -304,22 +304,23 @@ public static float AvailabilityAt(this Commodity commodity, Location location) 
 
 ### 5. Set Trade Policy (if restricted)
 
+**Note:** Policies are now defined per **CommodityCategory**, not individual commodities.
+
 ```csharp
-// In Tuning.FactionPolicies
-public static TradePolicy GetPolicy(Faction faction, Commodity commodity) {
-    // For prohibited goods
-    if (commodity == Commodity.MyNewCommodity &&
-        faction.IsCivilian()) {
+// In Tuning.FactionPolicies.InitializeCoreFactionPolicies()
+// Set policy for the category containing your commodity
+
+// Example: Restrict a Dangerous category commodity
+var independentPolicy = CreateCommodityDefaultPolicy(TradePolicy.Legal);
+independentPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
+CommodityPolicies[Faction.Independent] = independentPolicy;
+
+// Or customize GetPolicy for specific factions
+public static TradePolicy GetPolicy(Faction faction, CommodityCategory category) {
+    if (faction.IsCivilian() && category == CommodityCategory.Vice) {
         return TradePolicy.Prohibited;
     }
-
-    // For controlled goods (fees apply)
-    if (commodity == Commodity.MyNewCommodity &&
-        faction == Faction.Independent) {
-        return TradePolicy.Controlled;
-    }
-
-    return TradePolicy.Legal;
+    // ... default lookup
 }
 ```
 
@@ -371,20 +372,31 @@ if (commodity == Commodity.Nanomachines &&
 
 **To customize civilian faction:**
 ```csharp
-// In Tuning.FactionPolicies
-public static TradePolicy GetPolicy(Faction faction, Commodity commodity) {
+// In Map.cs GenerateFactionPolicy() or in Tuning.FactionPolicies
+public static TradePolicy GetPolicy(Faction faction, CommodityCategory category) {
     // Make Civilian5 more restrictive
     if (faction == Faction.Civilian5) {
-        if (commodity.Category() == CommodityCategory.Vice) {
+        if (category == CommodityCategory.Vice) {
             return TradePolicy.Prohibited;
         }
-        if (commodity.Category() == CommodityCategory.Dangerous) {
+        if (category == CommodityCategory.Dangerous) {
             return TradePolicy.Controlled;
         }
     }
 
-    // Default logic
-    return DefaultPolicy(faction, commodity);
+    // Default lookup
+    if (CommodityPolicies.TryGetValue(faction, out var policy)) {
+        return policy[category];
+    }
+    return TradePolicy.Legal;
+}
+
+// Similarly for segments:
+public static TradePolicy GetPolicy(Faction faction, SegmentKind kind) {
+    if (faction == Faction.Civilian5 && kind == SegmentKind.Offense) {
+        return TradePolicy.Prohibited;
+    }
+    // ... default lookup
 }
 ```
 
@@ -530,7 +542,7 @@ public static partial class Tuning {
 - Size/cost/drain curves
 
 **FactionPolicies** - Trade restrictions
-- Policy per faction/commodity
+- Policy per faction/category/kind (CommodityCategory and SegmentKind)
 
 ### Adding New Tuning Section
 

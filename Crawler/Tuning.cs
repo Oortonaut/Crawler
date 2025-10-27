@@ -89,10 +89,11 @@ public static partial class Tuning {
         };
     }
 
-    // Faction trade policies - defines how each faction treats each commodity
+    // Faction trade policies - defines how each faction treats commodity categories and segment kinds
     public static class FactionPolicies {
         // Policies are stored per faction
-        public static Dictionary<Faction, EArray<Commodity, TradePolicy>> Policies = new();
+        public static Dictionary<Faction, EArray<CommodityCategory, TradePolicy>> CommodityPolicies = new();
+        public static Dictionary<Faction, EArray<SegmentKind, TradePolicy>> SegmentPolicies = new();
 
         // Initialize default policies for core factions
         static FactionPolicies() {
@@ -100,37 +101,63 @@ public static partial class Tuning {
         }
 
         static void InitializeCoreFactionPolicies() {
-            // Player - permissive
-            Policies[Faction.Player] = CreateDefaultPolicy(TradePolicy.Legal);
+            // Player - permissive for everything
+            CommodityPolicies[Faction.Player] = CreateCommodityDefaultPolicy(TradePolicy.Legal);
+            SegmentPolicies[Faction.Player] = CreateSegmentDefaultPolicy(TradePolicy.Legal);
 
-            // Bandit - sell everything (will override with special logic)
-            Policies[Faction.Bandit] = CreateDefaultPolicy(TradePolicy.Legal);
+            // Bandit - sell everything (including contraband)
+            CommodityPolicies[Faction.Bandit] = CreateCommodityDefaultPolicy(TradePolicy.Legal);
+            SegmentPolicies[Faction.Bandit] = CreateSegmentDefaultPolicy(TradePolicy.Legal);
 
-            // Trade - legitimate merchants, no contraband
-            var tradePolicy = CreateDefaultPolicy(TradePolicy.Legal);
-            tradePolicy[Commodity.Liquor] = TradePolicy.Prohibited;
-            tradePolicy[Commodity.Stims] = TradePolicy.Prohibited;
-            tradePolicy[Commodity.Downers] = TradePolicy.Prohibited;
-            tradePolicy[Commodity.Trips] = TradePolicy.Prohibited;
-            tradePolicy[Commodity.SmallArms] = TradePolicy.Taxed;
-            tradePolicy[Commodity.Explosives] = TradePolicy.Taxed;
-            Policies[Faction.Independent] = tradePolicy;
+            // Independent - legitimate merchants, restrict dangerous goods
+            var tradeCommodityPolicy = CreateCommodityDefaultPolicy(TradePolicy.Legal);
+            tradeCommodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
+            tradeCommodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Taxed;
+            CommodityPolicies[Faction.Independent] = tradeCommodityPolicy;
+
+            var tradeSegmentPolicy = CreateSegmentDefaultPolicy(TradePolicy.Legal);
+            tradeSegmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
+            SegmentPolicies[Faction.Independent] = tradeSegmentPolicy;
         }
 
-        public static EArray<Commodity, TradePolicy> CreateDefaultPolicy(TradePolicy defaultPolicy) {
-            var policy = new EArray<Commodity, TradePolicy>();
+        public static EArray<CommodityCategory, TradePolicy> CreateCommodityDefaultPolicy(TradePolicy defaultPolicy) {
+            var policy = new EArray<CommodityCategory, TradePolicy>();
+            policy.Initialize(defaultPolicy);
+            return policy;
+        }
+
+        public static EArray<SegmentKind, TradePolicy> CreateSegmentDefaultPolicy(TradePolicy defaultPolicy) {
+            var policy = new EArray<SegmentKind, TradePolicy>();
             policy.Initialize(defaultPolicy);
             return policy;
         }
 
         public static TradePolicy GetPolicy(Faction faction, Commodity commodity) {
+            return GetPolicy(faction, commodity.Category());
+        }
+
+        public static TradePolicy GetPolicy(Faction faction, CommodityCategory category) {
             // Bandits ignore all restrictions - sell everything
             if (faction == Faction.Bandit) {
                 return TradePolicy.Legal;
             }
 
-            if (Policies.TryGetValue(faction, out var policy)) {
-                return policy[commodity];
+            if (CommodityPolicies.TryGetValue(faction, out var policy)) {
+                return policy[category];
+            }
+
+            // Default to legal if no policy defined
+            return TradePolicy.Legal;
+        }
+
+        public static TradePolicy GetPolicy(Faction faction, SegmentKind kind) {
+            // Bandits ignore all restrictions - sell everything
+            if (faction == Faction.Bandit) {
+                return TradePolicy.Legal;
+            }
+
+            if (SegmentPolicies.TryGetValue(faction, out var policy)) {
+                return policy[kind];
             }
 
             // Default to legal if no policy defined
