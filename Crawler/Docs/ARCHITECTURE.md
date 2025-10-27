@@ -6,7 +6,6 @@
 - **Looking for system details?** → [SYSTEMS.md](SYSTEMS.md)
 - **Looking for data structures?** → [DATA-MODEL.md](DATA-MODEL.md)
 - **Want to add new content?** → [EXTENDING.md](EXTENDING.md)
-- **Need the old comprehensive doc?** → [../Architecture.md](../Architecture.md) (deprecated, kept for reference)
 
 ## Recent Changes
 - **2025-10-25**: Renamed `ActivitySources` to `LogCat` for OpenTelemetry logging categories

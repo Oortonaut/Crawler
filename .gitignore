@@ -47,6 +47,7 @@ obj/
 .vs/
 .vscode/
 .idea/
+.aiassistant/
 Cache/
 /doc/stride_doc_output/
 /build/Stride.version
