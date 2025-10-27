@@ -72,6 +72,7 @@ public enum CommodityCategory {
     Refined,
     Parts,
     Consumer,
+    Luxury,
     Vice,
     Dangerous,
     Religious,
@@ -112,12 +113,12 @@ public static class CommodityEx {
 
         // Consumer Goods
         new CommodityData(4f, 0.001f, 0.0005f, CommodityFlag.Perishable, GameTier.Mid, CommodityCategory.Consumer), // Medicines
-        new CommodityData(165f, 1.0f, 0.2f, CommodityFlag.None, GameTier.Early, CommodityCategory.Consumer), // Textiles
-        new CommodityData(20f, 0.001f, 0.002f, CommodityFlag.None, GameTier.Late, CommodityCategory.Consumer), // Gems
+        new CommodityData(165f, 1.0f, 0.2f, CommodityFlag.None, GameTier.Early, CommodityCategory.Luxury), // Textiles
+        new CommodityData(20f, 0.001f, 0.002f, CommodityFlag.None, GameTier.Late, CommodityCategory.Luxury), // Gems
         new CommodityData(150f, 1.0f, 0.4f, CommodityFlag.None, GameTier.Early, CommodityCategory.Consumer), // Toys
-        new CommodityData(550f, 1.0f, 0.75f, CommodityFlag.None, GameTier.Mid, CommodityCategory.Consumer), // Machines
+        new CommodityData(550f, 1.0f, 0.75f, CommodityFlag.None, GameTier.Late, CommodityCategory.Consumer), // Machines
         new CommodityData(150.0f, 0.025f, 0.04f, CommodityFlag.Integral, GameTier.Late, CommodityCategory.Dangerous), // AiCores
-        new CommodityData(35f, 0.001f, 0.00035f, CommodityFlag.None, GameTier.Mid, CommodityCategory.Consumer), // Media
+        new CommodityData(35f, 0.001f, 0.00035f, CommodityFlag.None, GameTier.Mid, CommodityCategory.Luxury), // Media
 
         // Vice & Contraband
         new CommodityData(3.75f, 0.01f, 0.01f, CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Vice), // Liquor
