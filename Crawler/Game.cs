@@ -49,7 +49,6 @@ public class Game {
         float segmentWealth = wealth * 0.5f;
         _player = Crawler.NewRandom(Faction.Player, currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         _player.Name = crawlerName;
-        _player.Recharge(20);
         Map.AddActor(_player);
     }
     void Construct(SaveGameData saveData) {
@@ -283,9 +282,9 @@ public class Game {
         }
     }
 
-    bool IsMinute() => TimeSeconds % 60 == 0;
-    bool IsHour() => TimeSeconds % 3600 == 0;
-    bool IsDay() => TimeSeconds % 86400 == 0;
+    public bool IsMinute() => TimeSeconds % 60 == 0;
+    public bool IsHour() => TimeSeconds % 3600 == 0;
+    public bool IsDay() => TimeSeconds % 86400 == 0;
 
     void DrainEncounters() {
         if (IsHour()) {
@@ -415,9 +414,16 @@ public class Game {
             int index = i;
 
             string toggleLabel = segment.Activated ? "Deactivate" : "Activate";
-            bool canToggle = segment.State != Segment.Working.Destroyed && segment.State != Segment.Working.Packaged;
-            yield return new ActionMenuItem($"PP{index + 1}", $"{segment.StateName} - {toggleLabel}", _ => ToggleSegmentPower(index), canToggle.Enable(), show);
+            yield return new ActionMenuItem($"PP{index + 1}", $"{segment.StateName} - {toggleLabel}", _ => ToggleSegmentPower(index), segment.IsUsable.Enable(), show);
         }
+    }
+
+    int ToggleSegmentPower(int index) {
+        var segment = Player.Segments[index];
+        segment.Activated = !segment.Activated;
+        Player.Message($"{segment.Name} {(segment.Activated ? "activated" : "deactivated")}");
+        Player.UpdateSegmentCache();
+        return 0;
     }
 
     int PackagingMenu() {
@@ -434,9 +440,9 @@ public class Game {
             var segment = segments[i];
             int index = i;
 
-            string packageLabel = !segment.Packaged ? "Package" : "Unpackage";
-            string label = $"{segment.StateName} ({packageLabel})";
-            bool canPackage = segment.Hits == 0 && segment.State != Segment.Working.Destroyed;
+            string packageLabel = segment.Packaged ? "Unpackage" : "Package";
+            string label = $"{packageLabel} {segment.Name}";
+            bool canPackage = segment.Packaged || segment.IsPristine;
             if (!canPackage) {
                 label += " (Damaged)";
             }
@@ -444,19 +450,11 @@ public class Game {
         }
     }
 
-    int ToggleSegmentPower(int index) {
-        var segment = Player.Segments[index];
-        segment.Activated = !segment.Activated;
-        Player.Message($"{segment.Name} {(segment.Activated ? "activated" : "deactivated")}");
-        Player.UpdateSegments();
-        return 0;
-    }
-
     int TogglePackage(int index) {
         var segment = Player.Segments[index];
         segment.Packaged = !segment.Packaged;
         Player.Message($"{segment.Name} {(segment.Packaged ? "packaged" : "unpackaged")}");
-        Player.UpdateSegments();
+        Player.UpdateSegmentCache();
         return 0;
     }
 
@@ -470,7 +468,7 @@ public class Game {
 
     IEnumerable<MenuItem> TradeInventoryMenuItems(ShowArg showOption = ShowArg.Show) {
         // Show packaged segments in supplies that can be moved to cargo
-        var packagedSegments = Player.Segments.Where(s => s.State == Segment.Working.Packaged).ToList();
+        var packagedSegments = Player.Supplies.Segments.Where(s => s.IsPackaged).ToList();
 
         for (int i = 0; i < packagedSegments.Count; i++) {
             var segment = packagedSegments[i];
@@ -490,7 +488,7 @@ public class Game {
         Player.Supplies.Remove(segment);
         Player.Cargo.Add(segment);
         Player.Message($"{segment.Name} moved to cargo");
-        Player.UpdateSegments();
+        Player.UpdateSegmentCache();
         return 0;
     }
 
@@ -498,7 +496,7 @@ public class Game {
         Player.Cargo.Remove(segment);
         Player.Supplies.Add(segment);
         Player.Message($"{segment.Name} returned from cargo");
-        Player.UpdateSegments();
+        Player.UpdateSegmentCache();
         return 0;
     }
 

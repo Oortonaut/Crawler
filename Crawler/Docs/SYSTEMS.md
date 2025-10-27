@@ -535,8 +535,7 @@ Pinned():
 ### Generation Phase
 
 ```csharp
-Recharge(hours):
-  for _ in 0..hours:
+Recharge():
     Segments.Tick()  // Internal segment updates
 
     overflowPower = Σ(ReactorSegments.Generate())
@@ -631,9 +630,9 @@ Game.Tick() (every second)
 **Every Second:**
 - UpdateSegments() - Refresh segment caches
 
-**Every Hour (TimeSeconds % 3600 == 0):**
+**Every Hour (Game.Instance.IsHour()):**
 ```csharp
-Recharge(1 hour)
+Recharge()
 
 // Resource checks
 if RationsInv <= 0:

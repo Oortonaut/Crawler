@@ -258,7 +258,7 @@ public class Crawler: IActor {
             .SetTag("EndState", EndState?.ToString());
 
         UpdateSegments();
-        if (Game.SafeTime % 3600 == 0) {
+     UpdateSegmentCache();
             Recharge(1);
 
             // Check rations
@@ -314,7 +314,7 @@ public class Crawler: IActor {
         if (!UndestroyedSegments.Any()) {
             End(EEndState.Destroyed, "Your crawler has been utterly destroyed.");
         }
-        UpdateSegments();
+        UpdateSegmentCache();
     }
     public void Tick(IEnumerable<IActor> Actors) {
         using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
@@ -805,7 +805,9 @@ public class Crawler: IActor {
             }
         }
         Message(msg.TrimEnd());
-        UpdateSegments();
+        if (totalDamageDealt > 0) {
+            UpdateSegmentCache();
+        }
     }
 
     (int, string) LoseCrew(int damage) {

@@ -140,7 +140,7 @@ public class Encounter {
         if (hourlyArrivals <= 0) return;
 
         long currentTime = Game.SafeTime;
-        if (currentTime % 60 != 0) {
+        if (Game.Instance?.IsMinute() ?? false) {
             return;
         }
 
@@ -227,8 +227,7 @@ public class Encounter {
         var trader = Crawler.NewRandom(Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
         trader.Faction = Faction.Independent;
         trader.StoredProposals.AddRange(trader.MakeTradeProposals( 0.25f, trader.Faction));
-        trader.UpdateSegments();
-        trader.Recharge(20);
+        trader.UpdateSegmentCache();
         return trader;
     }
     public Crawler GeneratePlayerActor() {
@@ -266,8 +265,7 @@ public class Encounter {
         var civilian = Crawler.NewRandom(civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
         civilian.Faction = civilianFaction;
         civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(0.25f, civilian.Faction));
-        civilian.UpdateSegments();
-        civilian.Recharge(20);
+        civilian.UpdateSegmentCache();
         return civilian;
     }
 
@@ -286,7 +284,7 @@ public class Encounter {
         settlement.Recharge(20);
         var proposals = settlement.MakeTradeProposals( 1, settlement.Faction);
         settlement.StoredProposals.AddRange(proposals);
-        settlement.UpdateSegments();
+        settlement.UpdateSegmentCache();
 
         IEnumerable<string> EncounterNames = ["Settlement"];
         if (t < 0.15f) {
