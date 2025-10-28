@@ -55,7 +55,7 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     public int Length => _items.Length;
     public T[] Items => _items;
 
-    public static int[] UnderlyingKeys() => Enum.GetValuesAsUnderlyingType<ENUM>().Cast<int>().ToArray();
+    public static int[] UnderlyingKeys() => _keys;
     public void Add(T value) {
         if (_addIndex.Value >= _items.Length) {
             throw new InvalidOperationException("Cannot add more items: array is full");
@@ -135,10 +135,12 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     public void Add(ENUM key, T value) => this[key] = value;
 
     public bool ContainsKey(ENUM key) {
-        return Enum.IsDefined(key);
+        return (int)(object)key < _count;
     }
 
     public bool Remove(ENUM key) {
+        // TODO: Make this bettter for nullables and use the nullability
+        // to indicate absence from the array
         throw new NotSupportedException("Remove is not supported on fixed-size enum array");
     }
 
@@ -175,14 +177,12 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     T[] _items;
 
     static EArray() {
-        _count = 0;
-        foreach (var objValue in Enum.GetValuesAsUnderlyingType<ENUM>()) {
-            if (objValue is IConvertible i) {
-                _count = Math.Max(_count, i.ToInt32(null) + 1);
-            }
-        }
+        _keys = Enum.GetValuesAsUnderlyingType<ENUM>().Cast<int>().ToArray();
+        _count = _keys.Length;
     }
     static int _count;
+    static int[] _keys;
+
     static ThreadLocal<int> _addIndex = new ThreadLocal<int>(() => 0);
 }
 

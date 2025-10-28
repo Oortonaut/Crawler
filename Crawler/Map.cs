@@ -21,6 +21,7 @@ public record Location(
     public Map Map => Sector.Map;
     Encounter? _encounter = null;
     public bool HasEncounter => _encounter != null;
+    public void SetEncounter(Encounter encounter) => _encounter = encounter;
     public Encounter GetEncounter() => _encounter ??= NewEncounter(this);
     public string PosString => $"{(int)(Position.X * 100) % 100:D2},{(int)(Position.Y * 100) % 100:D2}";
     public string Name => HasEncounter ? _encounter!.Name : Type.ToString();
@@ -216,45 +217,38 @@ public class Map {
         using var activity = LogCat.Game.StartActivity($"{nameof(IdentifyFactionCapitals)}");
         // Collect all settlement locations
         var settlementLocations = new List<Location>();
+        var sectorPopulations = new Dictionary<Sector, float>();
         foreach (var (X, Y) in Sectors.Index()) {
             var sector = Sectors[Y, X];
-            settlementLocations.AddRange(sector.Locations.Where(loc => loc.Type == EncounterType.Settlement));
+            var sectorSettlementLocations = sector.Locations.Where(loc => loc.Type == EncounterType.Settlement).ToList();
+            settlementLocations.AddRange(sectorSettlementLocations);
         }
 
         // Sort by population descending
-        settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).DistinctBy(loc => loc.Sector.Name).ToList();
+        settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).ToList();
 
         NumFactions = Math.Min(Height * 3 / 4, 20);
-        FactionEnd = 1 + (Faction)Math.Min((int)Faction.Civilian19, (int)Faction.Civilian1 + NumFactions - 1);
+        FactionEnd = Faction.Civilian0 + NumFactions;
 
         FactionData[Faction.Player] = new ("Player", Color.White, null);
         FactionData[Faction.Independent] = new ("Independent", Color.Blue, null);
         FactionData[Faction.Bandit] = new ("Bandit", Color.Red, null);
 
-        Faction currFaction = Faction.Civilian0;
-        for (int i = 0; i < settlementLocations.Count && currFaction < FactionEnd; i++) {
+        int i = 0;
+        for (Faction faction = Faction.Civilian0; faction < FactionEnd; faction++, i++) {
             var setLocation = settlementLocations[i];
             var sector = setLocation.Sector;
-            var faction = currFaction;
+            Tuning.FactionPolicies.Policies[faction] = GenerateFactionPolicy();
             sector.ControllingFaction = faction;
-            var encounter = setLocation.GetEncounter();
             var name = setLocation.Name;
+            var encounter = new Encounter(setLocation, faction);
+            var crawler = encounter.GenerateCapitalActor();
             var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
-            foreach (var crawler in encounter.Settlements.OfType<Crawler>().Take(1)) {
-                name = crawler.Name;
-                float influence = 8 + ( float ) Math.Log2(sectorPopulation);
-                var capital = new Capital(crawler, influence);
-                FactionData[faction] = new (name, FactionEx._factionColors[faction], capital);
-                currFaction++;
-            }
+            float influence = 8 + ( float ) Math.Log2(sectorPopulation);
+            var capital = new Capital(crawler, influence);
+            FactionData[faction] = new (name, FactionEx._factionColors[faction], capital);
+            name = crawler.Name;
             sector.Name = $"{name} Capital";
-        }
-
-        // Generate policies for each civilian faction
-        foreach (var (faction, data) in FactionData.Pairs()) {
-            if (data?.Capital is {} capital) {
-                Tuning.FactionPolicies.Policies[faction] = GenerateFactionPolicy(capital);
-            }
         }
     }
 
@@ -284,19 +278,13 @@ public class Map {
         }
     }
 
-    Policy GenerateFactionPolicy(Capital capital) {
+    Policy GenerateFactionPolicy() {
         // Generate procedural policies based on capital characteristics
         var commodityPolicy = Tuning.FactionPolicies.CreateCommodityDefaultPolicy(TradePolicy.Legal);
         var segmentPolicy = Tuning.FactionPolicies.CreateSegmentDefaultPolicy(TradePolicy.Legal);
 
-        // Use terrain and tech to influence policies
-        //var terrain = capital.Location.Terrain;
-        //var tech = capital.Location.TechLatitude;
-        var seed = capital.Name.GetHashCode();
-        var random = new Random((int)seed);
-
         // Determine faction archetype
-        int archetypeRoll = random.Next(100);
+        int archetypeRoll = Random.Shared.Next(100);
 
         if (archetypeRoll < 30) {
             // Religious faction - subsidize religious items, prohibit drugs
@@ -482,7 +470,8 @@ public class Map {
 
         var worldMapWidth = Width * 3 + 2;
         var header = defaultStyle + "┌[" + titleStyle + "Global Map" + defaultStyle + "]";
-        header += new string('─', Math.Max(0, worldMapWidth - 12)) + "╖\n";
+        header += new string('─', Math.Max(0, worldMapWidth - 12)) + "╖";
+        header += Faction1(Faction.Independent) + "\n";
         var footer = defaultStyle + $"╘{new string('═', worldMapWidth)}╝\n";
 
         string result = header;
@@ -491,7 +480,8 @@ public class Map {
         for (int x = 0; x < Width; x++) {
             result += $"{x,3}";
         }
-        result += defaultStyle + "║\n";
+        result += defaultStyle + "║";
+        result += Faction2(Faction.Independent) + "\n";
         for (int y = 0; y < Height; y++) {
             string map = defaultStyle + "│" + titleStyle + (char)('A' + y) + defaultStyle + ":";
             string map2 = defaultStyle + "│ :";
@@ -525,39 +515,65 @@ public class Map {
             map2 += defaultStyle + "║";
 
             // Add civilian faction info for this row
-            // if (y < FactionCapitals.Count) {
-            //     var capital = FactionCapitals[y];
-            //     var option = Style.MenuOption.Format($"{y + 1}");
-            //     var capitalString = capital.Faction.GetColor().On(Color.Black) + capital.Name + defaultStyle;
-            //     map += $" [{option}] {capitalString} ({capital.Faction})";
-            //     /* TODO: Move this policy text into a helper function
-            //     var policy = Tuning.FactionPolicies.Policies[capital.Faction];
-            //
-            //     // Get restricted/prohibited commodities
-            //     var restrictedList = policy.Pairs()
-            //         .Where(p => p.Item2 == TradePolicy.Controlled || p.Item2 == TradePolicy.Prohibited)
-            //         .Select(p => $"{p.Item1}:{(p.Item2 == TradePolicy.Controlled ? '-' : 'X')}")
-            //         .ToList();
-            //
-            //     // Get subsidized commodities
-            //     var subsidizedList = policy.Pairs()
-            //         .Where(p => p.Item2 == TradePolicy.Subsidized)
-            //         .Select(p => $"{p.Item1}:+")
-            //         .ToList();
-            //
-            //     int factionIndex = capital.Faction.CivilianIndex();
-            //     string factionName = factionIndex < 10 ? factionIndex.ToString() : ((char)('A' + (factionIndex - 10))).ToString();
-            //
-            //     var restrictions = restrictedList.Concat(subsidizedList).ToList();
-            //     factionInfo = restrictions.Any()
-            //         ? $" [{factionName}] {string.Join(", ", restrictions)}"
-            //         : $" [{factionName}] Open Trade";
-            //         */
-            // }
+            var faction = Faction.Civilian0 + y;
+            if (faction < FactionEnd) {
+                var data = FactionData[faction]!;
+                var option = Style.MenuOption.Format($"{y + 1}");
+                var capitalString = faction.GetColor().On(Color.Black) + data.Name + defaultStyle;
+                map += $" [{option}] {capitalString} ({data.Name})";
+                // TODO: Move this policy text into a helper function
+                var policy = Tuning.FactionPolicies.Policies[faction];
+
+                // we want to build a set of categories by TradePolicy
+                EArray<TradePolicy, List<string>> categoriesByPolicy = new();
+                categoriesByPolicy.Initialize(() => new List<string>());
+                foreach (var (commodityCategory, tradePolicy) in policy.Commodities.Pairs()) {
+                    categoriesByPolicy[tradePolicy].Add(commodityCategory.ToString());
+                }
+                foreach (var (segmentKind, tradePolicy) in policy.Segments.Pairs()) {
+                    categoriesByPolicy[tradePolicy].Add($"{segmentKind} Segments");
+                }
+                foreach (var (tradePolicy, categories) in categoriesByPolicy.Pairs()) {
+                    if (tradePolicy is not TradePolicy.Legal && categories.Count > 0) {
+                        map2 += $" {tradePolicy}: " + string.Join(", ", categories) + ".";
+                    }
+                }
+            }
 
             result += $"{map}\n{map2}\n";
         }
         result += footer;
+        return result;
+    }
+    string Faction1(Faction faction) {
+        var data = FactionData[faction]!;
+        var index = faction.CivilianIndex();
+        var option = Style.MenuOption.Format($"{index + 1}");
+        if (data.Capital is { } capital) {
+            var capitalString = faction.GetColor().On(Color.Black) + $"{capital.Name}" + Style.MenuNormal.StyleString();
+            return $" [{option}] {data.Name} of {capitalString}: {capital.Location.Name} in {capital.Location.Sector.Name}";
+        } else {
+            return $" [{option}] {data.Name}";
+        }
+    }
+    string Faction2(Faction faction) {
+        string result = "";
+        var policy = Tuning.FactionPolicies.Policies[faction];
+
+        // we want to build a set of categories by TradePolicy
+        EArray<TradePolicy, List<string>> categoriesByPolicy = new();
+        categoriesByPolicy.Initialize(() => new List<string>());
+        foreach (var (commodityCategory, tradePolicy) in policy.Commodities.Pairs()) {
+            categoriesByPolicy[tradePolicy].Add(commodityCategory.ToString());
+        }
+        foreach (var (segmentKind, tradePolicy) in policy.Segments.Pairs()) {
+            categoriesByPolicy[tradePolicy].Add($"{segmentKind} Segments");
+        }
+        foreach (var (tradePolicy, categories) in categoriesByPolicy.Pairs()) {
+            if (tradePolicy is not TradePolicy.Legal && categories.Count > 0) {
+                result += $" {tradePolicy}: " + string.Join(", ", categories) + ".";
+            }
+        }
         return result;
     }
 }

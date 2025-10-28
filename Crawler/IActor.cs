@@ -39,6 +39,7 @@ public enum EActorFlags {
     Mobile = 1 << 1,
     Settlement = 1 << 2,
     Creature = 1 << 3,
+    Capital = 1 << 4,
 
     Looted = 1 << 16,
 }

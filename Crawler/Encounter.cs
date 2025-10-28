@@ -267,7 +267,14 @@ public class Encounter {
         return civilian;
     }
 
-    public void GenerateSettlement() {
+    public Crawler GenerateCapitalActor() {
+        using var activity = LogCat.Encounter.StartActivity($"GenerateCapital {nameof(Encounter)}");
+        var settlement = GenerateSettlement();
+        settlement.Domes += 2;
+        settlement.Flags |= EActorFlags.Capital;
+        return settlement;
+    }
+    public Crawler GenerateSettlement() {
         using var activity = LogCat.Encounter.StartActivity($"GenerateSettlement {nameof(Encounter)}");
         float t = Location.Position.Y / ( float ) Location.Map.Height;
         int domes = (int)(1 + Location.Population / 50);
@@ -302,6 +309,7 @@ public class Encounter {
         Name = EncounterNames.ChooseRandom() ?? "Settlement";
         settlement.Name = Name;
         AddActor(settlement);
+        return settlement;
     }
     public void GenerateResource() {
         var resource = CrawlerEx.ChooseRandom<Commodity>();
