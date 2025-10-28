@@ -397,51 +397,57 @@ Supplies.Remove(Commodity.Fuel, 30);
 ### Categories
 
 **Essential** (survival):
-- Scrap (currency)
-- Fuel
-- Crew, Soldiers, Passengers
-- Morale
-- Air, Water, Rations
+- Scrap (currency) - Early Game
+- Fuel - Early Game
+- Crew - Early Game
+- Morale - Early Game
+- Air - Early Game
+- Water - Early Game
+- Rations - Early Game
 
-**Raw Materials:**
-- Biomass (organic)
-- Ore (metal ore)
-- Silicates (minerals)
+**Raw:**
+- Biomass (organic) - Early Game
+- Ore (metal ore) - Early Game
+- Silicates (minerals) - Early Game
 
-**Refined Materials:**
-- Metal
-- Chemicals
-- Glass
+**Refined:**
+- Metal - Early Game
+- Chemicals - Mid Game
+- Glass - Early Game
 
-**Parts & Components:**
-- Ceramics
-- Polymers
-- Alloys
-- Electronics
+**Parts:**
+- Ceramics - Mid Game
+- Polymers - Mid Game
+- Alloys - Mid Game
+- Electronics - Late Game
 
-**Consumer Goods:**
-- Medicines
-- Textiles
-- Gems
-- Toys
-- Machines
-- Media
+**Consumer:**
+- Medicines - Mid Game
+- Passengers - Early Game
+- Toys - Early Game
+- Machines - Late Game
+
+**Luxury:**
+- Textiles - Early Game
+- Gems - Late Game
+- Media - Mid Game
 
 **Vice** (Bandit-only):
-- Liquor
-- Stims (stimulants)
-- Downers (sedatives)
-- Trips (psychedelics)
+- Liquor - Early Game
+- Stims (stimulants) - Mid Game
+- Downers (sedatives) - Mid Game
+- Trips (psychedelics) - Late Game
 
 **Dangerous:**
-- Explosives
-- SmallArms
-- AiCores
+- Soldiers - Mid Game
+- Explosives - Mid Game
+- SmallArms - Mid Game
+- AiCores - Late Game
 
 **Religious:**
-- Idols
-- Texts (sacred manuscripts)
-- Relics
+- Idols - Early Game
+- Texts (sacred manuscripts) - Mid Game
+- Relics - Late Game
 
 ### Commodity Properties
 
