@@ -3,7 +3,7 @@ apply: always
 ---
 
 # Claude Code Guidelines for Crawler
-
+              
 ## C# Style
 
 - Use C#13 features when possible
@@ -27,7 +27,10 @@ apply: always
 
 ## Processes
 
-### Preparing for a commit
+### Preparing stashes for a commit 
+**IMPORTANT** Use this staging process only when the verb phrase "prepare stashes for commit" is used.
+Otherwise, use these as general guidelines for git. For example, if the player asked to "prepare a commit message",
+they are asking for that specifically. 
 The changed files might have several different commits worth of changes. 
 Only create multiple commits when there are distinct groups of changed functionality.
 Working with hunks where necessary, compile and stash each commit.
