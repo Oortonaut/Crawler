@@ -92,7 +92,7 @@ public static partial class Tuning {
     // Faction trade policies - defines how each faction treats commodity categories and segment kinds
     public static class FactionPolicies {
         // Policies are stored per faction
-        public static Dictionary<Faction, Policy> Policies = new();
+        public static EArray<Faction, Policy> Policies = new();
 
         // Initialize default policies for core factions
         static FactionPolicies() {
@@ -140,33 +140,8 @@ public static partial class Tuning {
             return GetPolicy(faction, commodity.Category());
         }
 
-        public static TradePolicy GetPolicy(Faction faction, CommodityCategory category) {
-            // Bandits ignore all restrictions - sell everything
-            if (faction == Faction.Bandit) {
-                return TradePolicy.Legal;
-            }
-
-            if (Policies.TryGetValue(faction, out var policy)) {
-                return policy.Commodities[category];
-            }
-
-            // Default to legal if no policy defined
-            return TradePolicy.Legal;
-        }
-
-        public static TradePolicy GetPolicy(Faction faction, SegmentKind kind) {
-            // Bandits ignore all restrictions - sell everything
-            if (faction == Faction.Bandit) {
-                return TradePolicy.Legal;
-            }
-
-            if (Policies.TryGetValue(faction, out var policy)) {
-                return policy.Segments[kind];
-            }
-
-            // Default to legal if no policy defined
-            return TradePolicy.Legal;
-        }
+        public static TradePolicy GetPolicy(Faction faction, CommodityCategory category) => Policies[faction].Commodities[category];
+        public static TradePolicy GetPolicy(Faction faction, SegmentKind kind) => Policies[faction].Segments[kind];
     }
 
     public static class Crawler {
@@ -256,12 +231,24 @@ public static partial class Tuning {
     }
 
     public static class Segments {
+        // PowerScaling Parameters for quick reference:
+        // min: The base value at size 1, quality 0
+        // (size, qual): the multiplier at size 5 and quality 3
+        // ex: new PowerScaling(10.0f, (7, 5), "short", "long")
+        // Exponential, ranges from
+        //         Size
+        // Quality   1   2   3   4   5
+        //   0      10  16  26  42  70
+        //   1      17
+        //   2      29
+        //   3      50             350
         // Approximate sizes: (in  m)  10 14 20 28 40
         public static PowerScaling LengthTiers = new PowerScaling(10.0f, (4, 1.2f), "short", "long");
 
         // Base segment parameters
+        //                                                                30 .. 130 .. 600
         public static PowerScaling WeightTiers = new PowerScaling(30.0f, (20, 0.9f), "hefty", "lightened");
-        public static PowerScaling CostTiers = new PowerScaling(300.0f, (10, 2.0f), "cheap", "expensive");
+        public static PowerScaling CostTiers = new PowerScaling(300.0f, (50, 3.0f), "cheap", "expensive");
         public static PowerScaling MaxHitsTiers = new PowerScaling(10.0f, (12, 2.0f), "decrepit", "hardened");
 
         // Weapon parameters
