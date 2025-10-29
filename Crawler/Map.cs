@@ -494,25 +494,8 @@ public class Map {
                 var option = Style.MenuOption.Format($"{y + 1}");
                 var capitalString = faction.GetColor().On(Color.Black) + data.Name + defaultStyle;
                 var policy = Tuning.FactionPolicies.Policies[faction];
-                map += $" [{option}] {capitalString} ({data.Name}) {policy.Description}";
-
-                // we want to build a set of categories by TradePolicy
-                EArray<TradePolicy, List<string>> categoriesByPolicy = new();
-                categoriesByPolicy.Initialize(() => new List<string>());
-                foreach (var (commodityCategory, tradePolicy) in policy.Commodities.Pairs()) {
-                    categoriesByPolicy[tradePolicy].Add(commodityCategory.ToString());
-                }
-                foreach (var (segmentKind, tradePolicy) in policy.Segments.Pairs()) {
-                    categoriesByPolicy[tradePolicy].Add(segmentKind switch {
-                        SegmentKind.Offense => "Guns",
-                        _ => segmentKind.ToString(),
-                    });
-                }
-                foreach (var (tradePolicy, categories) in categoriesByPolicy.Pairs()) {
-                    if (tradePolicy is not TradePolicy.Legal && categories.Count > 0) {
-                        map2 += $" {tradePolicy}: " + string.Join(", ", categories) + ".";
-                    }
-                }
+                map += Faction1(faction);
+                map2 += Faction2(faction);
             }
 
             result += $"{map}\n{map2}\n";
@@ -525,8 +508,8 @@ public class Map {
         var index = faction.CivilianIndex();
         var option = Style.MenuOption.Format($"{index + 1}");
         if (data.Capital is { } capital) {
-            var capitalString = faction.GetColor().On(Color.Black) + $"{capital.Name}" + Style.MenuNormal.StyleString();
-            return $" [{option}] {data.Name} of {capitalString}: {capital.Location.Name} in {capital.Location.Sector.Name}";
+            var capitalString = faction.GetColor().On(Color.Black) + $"{data.Name}" + Style.MenuNormal.StyleString();
+            return $" [{option}] {capitalString}: {capital.Location.Name}";
         } else {
             return $" [{option}] {data.Name}";
         }
