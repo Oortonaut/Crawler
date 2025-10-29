@@ -783,4 +783,13 @@ public static partial class CrawlerEx {
         return loot;
     }
     public static (ActorToActor a2s, ActorToActor s2a) ToTo(this IActor attacker, IActor defender) => (attacker.To(defender), defender.To(attacker));
+    public static IEnumerable<T?> PadTo<T>(this IEnumerable<T> source, int width) {
+        foreach (var i in source) {
+            --width;
+            yield return i;
+        }
+        while (width --> 0) {
+            yield return default;
+        }
+    }
 }
