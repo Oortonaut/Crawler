@@ -146,7 +146,7 @@ public static class CommodityEx {
     public static float AvailabilityAt(this Commodity commodity, Location location) {
         float commodityTech =  (float)commodity.Tier() - 1;
 
-        return CommodityAvlByPopTech.Value(location.Population / 100, location.TechLatitude + commodityTech);
+        return 1 - Unavailability.Value(location.Population / 100, location.TechLatitude * 2 - commodityTech);
     }
     public static float ScarcityPremium(this Commodity commodity, Location location) {
         float availability = commodity.AvailabilityAt(location);
@@ -159,6 +159,6 @@ public static class CommodityEx {
 
         return 1.0f + scarcity * Tuning.Trade.scarcityWeight * weight;
     }
-    public static PowerScaling CommodityAvlByPopTech = new(0.15f, new(5.0f, 3.0f), "primitive", "tech");
+    public static PowerScaling Unavailability = new(0.7f, new(0.15f, 0.3f), "primitive", "tech");
     public static float Round(this Commodity commodity, float value) => ( float ) Math.Round(value, commodity.Flags().HasFlag(CommodityFlag.Integral) ? 0 : 1);
 }
