@@ -172,10 +172,10 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     public StyledString Colored(Location Location) => new(GetStyle(), StatusLine(Location));
     public string StatusLine(Location Location) => $"{ClassCode}{Symbol}{levelCode(Health),1}{StateCode}{ReportCode(Location)}";
     public char StateCode => State switch {
-        Working.Pristine => '●',
-        Working.Running => '◍',
-        Working.Damaged => '-',
-        Working.Deactivated => '○',
+        Working.Pristine => '*',
+        Working.Running => '+',
+        Working.Damaged => '~',
+        Working.Deactivated => '-',
         Working.Destroyed => 'x',
         Working.Packaged => '/',
         _ => '?',
