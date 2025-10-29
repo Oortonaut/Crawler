@@ -532,7 +532,7 @@ public class Map {
         }
     }
     string Faction2(Faction faction) {
-        string result = "";
+        string result = " ";
         var policy = Tuning.FactionPolicies.Policies[faction];
 
         // we want to build a set of categories by TradePolicy
@@ -546,7 +546,7 @@ public class Map {
         }
         foreach (var (tradePolicy, categories) in categoriesByPolicy.Pairs()) {
             if (tradePolicy is not TradePolicy.Legal && categories.Count > 0) {
-                result += $" {tradePolicy}: " + string.Join(", ", categories) + ".";
+                result += string.Join(", ", categories) + $": {tradePolicy}. ";
             }
         }
         return result;

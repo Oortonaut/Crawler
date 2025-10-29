@@ -15,7 +15,8 @@ public enum TradePolicy {
 // Policy record encapsulates both commodity and segment trade policies
 public record Policy(
     EArray<CommodityCategory, TradePolicy> Commodities,
-    EArray<SegmentKind, TradePolicy> Segments
+    EArray<SegmentKind, TradePolicy> Segments,
+    string Description
 );
 
 // Agent is seller
@@ -76,7 +77,7 @@ public static class TradeEx {
             var policy = Tuning.FactionPolicies.GetPolicy(faction, commodity);
 
             // Skip prohibited goods
-            if (policy == TradePolicy.Prohibited) {
+            if (policy == TradePolicy.Prohibited && Random.Shared.NextSingle() > 0.5f) {
                 continue;
             }
 

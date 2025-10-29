@@ -75,6 +75,89 @@ public static class FactionEx {
         Color.BurlyWood,
         Color.Chocolate,
     ];
+
+    private static readonly string[] _policyArchetypes = [
+        "Authoritarian", "Libertarian", "Pious", "Debauched",
+        "Industrial", "Mercantile", "Militaristic", "Isolationist"
+    ];
+
+    private static void ApplyArchetypePolicy(int archetype,
+        EArray<CommodityCategory, TradePolicy> commodityPolicy,
+        EArray<SegmentKind, TradePolicy> segmentPolicy) {
+
+        switch (archetype) {
+            case 0: // Authoritarian
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Prohibited;
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
+                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Controlled;
+                segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
+                break;
+            case 1: // Libertarian
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Legal;
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+                break;
+            case 2: // Pious
+                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
+                break;
+            case 3: // Debauched
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Taxed;
+                break;
+            case 4: // Industrial
+                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Taxed;
+                segmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
+                break;
+            case 5: // Mercantile
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Taxed;
+                break;
+            case 6: // Militaristic
+                segmentPolicy[SegmentKind.Offense] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Controlled;
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
+                break;
+            case 7: // Isolationist
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Controlled;
+                segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
+                break;
+        }
+    }
+
+    public static IEnumerable<Policy> GenerateFactionPolicies(int N) {
+        float[] policyWeights = [1, 1, 1, 1, 1, 1, 1, 1]; // TODO: Use an enum for policies
+        for (int i = 0; i < N; i++) {
+            yield return GenerateFactionPolicy(policyWeights);
+        }
+    }
+    public static Policy GenerateFactionPolicy(float[] policyWeights) {
+        var commodityPolicy = Tuning.FactionPolicies.CreateCommodityDefaultPolicy(TradePolicy.Legal);
+        var segmentPolicy = Tuning.FactionPolicies.CreateSegmentDefaultPolicy(TradePolicy.Legal);
+
+        string description = "";
+        int rolls = 3;
+        for (int roll = 0; roll < rolls; roll++) {
+            int index = policyWeights.Index().ChooseWeightedRandom();
+            policyWeights[index] *= Random.Shared.NextSingle();
+            if (description.Length > 0) {
+                description += ", ";
+            }
+            description += _policyArchetypes[index];
+            ApplyArchetypePolicy(index, commodityPolicy, segmentPolicy);
+        }
+
+        return new(commodityPolicy, segmentPolicy, description);
+    }
 }
 /*
 public class FactionToFaction {
