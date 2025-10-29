@@ -556,12 +556,12 @@ public class Crawler: IActor {
         var Adjs = StateString(viewer);
         var nameString = Style.Name.Format(Name) + $": {Faction.Name()}{Adjs}";
         if (Flags.HasFlag(EActorFlags.Settlement)) {
-            if (Location.Sector.ControllingFaction.Capital() == this) {
-                nameString += " Capital";
+            if (Flags.HasFlag(EActorFlags.Capital)) {
+                nameString += " [Capital]";
             } else {
-                nameString += " Settlement";
+                nameString += $" [Settlement]";
             }
-            nameString += $" ({Domes} Domes)";
+            nameString += $" ({Domes} Domes, {Supplies[Commodity.Passengers]} Civilians)";
         }
         return $"{nameString}\n{result}";
     }
