@@ -118,7 +118,7 @@ public static partial class CrawlerEx {
     public const string Inverse = "\e[7m";
     public const string Hide = "\e[8m";
     public const string Strikethrough = "\e[9m";
-    public const string floatUnderline = "\e[21m";
+    public const string StyleNoUnderline = "\e[21m";
     public const string StyleNormalIntensity = "\e[22m";
     public const string StyleNotBold = "\e[22m";
     public const string StyleNotFaint = "\e[22m";
