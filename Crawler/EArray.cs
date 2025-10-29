@@ -5,18 +5,18 @@ namespace Crawler;
 
 public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictionary<ENUM, T>, IReadOnlyList<T>, IReadOnlyDictionary<ENUM, T> where ENUM : struct, Enum, IConvertible {
     public EArray() {
-        _items = new T[_count];
+        _values = new T[_count];
         _addIndex.Value = 0;
     }
     public EArray(params T[] items): this() {
-        _items = items;
+        _values = items;
         if (items.Length != _count) {
             throw new ArgumentException("Invalid number of items");
         }
     }
     public EArray(IEnumerable<T> items) {
-        _items = items.ToArray();
-        if (_items.Count() != _count) {
+        _values = items.PadTo(_count).Cast<T>().ToArray();
+        if (_values.Count() != _count) {
             throw new ArgumentException("Invalid number of items");
         }
     }
@@ -27,75 +27,73 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     }
     T IDictionary<ENUM, T>.this[ENUM key] {
         get {
-            return _items[(int)(object)key];
+            return _values[(int)(object)key];
         }
         set {
-            _items[(int)(object)key] = value;
+            _values[(int)(object)key] = value;
         }
     }
     T IReadOnlyDictionary<ENUM, T>.this[ENUM key] {
         get {
-            return _items[( int ) ( object ) key];
+            return _values[( int ) ( object ) key];
         }
     }
-    public ref T this[ENUM key] => ref _items[(int)(object)key];
+    public ref T this[ENUM key] => ref _values[(int)(object)key];
     public void Initialize() {
-        _items.Initialize();
+        _values.Initialize();
     }
     public void Initialize(T value) {
-        for (int i = 0; i < _items.Length; ++i) {
-            _items[i] = value;
+        for (int i = 0; i < _values.Length; ++i) {
+            _values[i] = value;
         }
     }
     public void Initialize(Func<T> valueFunc) {
-        for (int i = 0; i < _items.Length; ++i) {
-            _items[i] = valueFunc();
+        for (int i = 0; i < _values.Length; ++i) {
+            _values[i] = valueFunc();
         }
     }
-    public int Length => _items.Length;
-    public T[] Items => _items;
+    public int Length => _values.Length;
+    public T[] Items => _values;
 
-    public static int[] UnderlyingKeys() => _keys;
+    public static int[] UnderlyingKeys() => _keysUnderlying;
     public void Add(T value) {
-        if (_addIndex.Value >= _items.Length) {
+        if (_addIndex.Value >= _values.Length) {
             throw new InvalidOperationException("Cannot add more items: array is full");
         }
-        _items[_addIndex.Value++] = value;
+        _values[_addIndex.Value++] = value;
     }
-    public EArray<ENUM, T> Clone() => new(_items.ToArray());
+    public EArray<ENUM, T> Clone() => new(_values.ToArray());
 
     public IEnumerator<T> GetEnumerator() {
-        return _items!.Cast<T>().GetEnumerator();
+        return _values!.Cast<T>().GetEnumerator();
     }
     IEnumerator IEnumerable.GetEnumerator() {
         return GetEnumerator();
     }
     public IEnumerable<(int Index, T Item)> Index() {
-        for (int i = 0; i < _items.Length; ++i) {
-            yield return (i, _items[i]);
+        for (int i = 0; i < _values.Length; ++i) {
+            yield return (i, _values[i]);
         }
     }
     // ( Key, Value)
     public IEnumerable<(ENUM Key, T Value)> Pairs() {
-        foreach (var item in Enum.GetValues<ENUM>()) {
-            if (Enum.IsDefined(item)) {
-                yield return (item, _items[item.ToInt32(null)]);
-            }
+        foreach (var item in _keys) {
+            yield return (item, _values[item.ToInt32(null)]);
         }
     }
 
     // IList<T> and ICollection<T> implementation
-    public int Count => _items.Length;
+    public int Count => _count;
     public bool IsReadOnly => false;
 
     public T this[int index] {
-        get => _items[index];
-        set => _items[index] = value;
+        get => _values[index];
+        set => _values[index] = value;
     }
 
     public int IndexOf(T item) {
-        for (int i = 0; i < _items.Length; i++) {
-            if (EqualityComparer<T>.Default.Equals(_items[i], item)) {
+        for (int i = 0; i < _values.Length; i++) {
+            if (EqualityComparer<T>.Default.Equals(_values[i], item)) {
                 return i;
             }
         }
@@ -113,7 +111,7 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     public bool Contains(T item) => IndexOf(item) >= 0;
 
     public void CopyTo(T[] array, int arrayIndex) {
-        _items.CopyTo(array, arrayIndex);
+        _values.CopyTo(array, arrayIndex);
     }
 
     public bool Remove(T item) {
@@ -122,14 +120,14 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
 
     public void Clear() {
         _addIndex.Value = 0;
-        Array.Clear(_items, 0, _items.Length);
+        Array.Clear(_values, 0, _values.Length);
     }
 
     // IDictionary<ENUM, T> implementation
-    public ICollection<ENUM> Keys => Enum.GetValues<ENUM>();
-    public ICollection<T> Values => _items;
+    public ICollection<ENUM> Keys => _keys;
+    public ICollection<T> Values => _values;
 
-    IEnumerable<ENUM> IReadOnlyDictionary<ENUM, T>.Keys => Keys;
+    IEnumerable<ENUM> IReadOnlyDictionary<ENUM, T>.Keys => _keys;
     IEnumerable<T> IReadOnlyDictionary<ENUM, T>.Values => Values;
 
     public void Add(ENUM key, T value) => this[key] = value;
@@ -174,14 +172,16 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
         return Pairs().Select(p => new KeyValuePair<ENUM, T>(p.Key, p.Value)).GetEnumerator();
     }
 
-    T[] _items;
+    T[] _values;
+    static ENUM[] _keys;
+    static int _count;
+    static int[] _keysUnderlying;
 
     static EArray() {
-        _keys = Enum.GetValuesAsUnderlyingType<ENUM>().Cast<int>().ToArray();
-        _count = _keys.Length;
+        _keysUnderlying = Enum.GetValuesAsUnderlyingType<ENUM>().Cast<int>().ToArray();
+        _keys = Enum.GetValues<ENUM>();
+        _count = _keysUnderlying.Length;
     }
-    static int _count;
-    static int[] _keys;
 
     static ThreadLocal<int> _addIndex = new ThreadLocal<int>(() => 0);
 }
