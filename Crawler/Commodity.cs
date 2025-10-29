@@ -97,7 +97,7 @@ public static class CommodityEx {
         // Raw materials
         new CommodityData(40f, 1.0f, 0.5f, CommodityFlag.Perishable | CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Raw), // Biomass
         new CommodityData(120f, 1.0f, 3.0f, CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Raw), // Ore
-        new CommodityData(83.33333f, 1.0f, 2.0f, CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Raw), // Silicates
+        new CommodityData(85f, 1.0f, 2.0f, CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Raw), // Silicates
 
         // refined
         new CommodityData(30f, 0.1f, 0.25f, CommodityFlag.None, GameTier.Early, CommodityCategory.Refined), // Metal
