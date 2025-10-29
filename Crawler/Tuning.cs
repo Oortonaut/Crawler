@@ -114,13 +114,14 @@ public static partial class Tuning {
             var tradeSegmentPolicy = CreateSegmentDefaultPolicy(TradePolicy.Legal);
             tradeSegmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
 
-            Policies[Faction.Independent] = new Policy(tradeCommodityPolicy, tradeSegmentPolicy);
+            Policies[Faction.Independent] = new Policy(tradeCommodityPolicy, tradeSegmentPolicy, "Independent");
         }
 
         public static Policy CreateDefaultPolicy(TradePolicy defaultPolicy) {
             return new Policy(
                 CreateCommodityDefaultPolicy(defaultPolicy),
-                CreateSegmentDefaultPolicy(defaultPolicy)
+                CreateSegmentDefaultPolicy(defaultPolicy),
+                "Free Trade"
             );
         }
 
