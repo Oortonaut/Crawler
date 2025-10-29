@@ -613,7 +613,7 @@ public class Game {
                     // Gather statistics from any crawler's trade proposals
                     foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
                         crawlersProcessed++;
-                        var tradeProposals = crawler.MakeTradeProposals(1.0f, crawler.Faction);
+                        var tradeProposals = crawler.MakeTradeProposals(1.0f);
 
                         // Track which commodities this trader offers
                         var offeredCommodities = new HashSet<Commodity>();

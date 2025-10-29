@@ -54,12 +54,12 @@ public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"):
 }
 
 public static class TradeEx {
-        public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, float wealthFraction, Faction faction = Faction.Independent) {
+    public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, float wealthFraction) {
+        var faction = Seller.Faction;
         var Location = Seller.Location;
         var wealth = Location.Wealth * wealthFraction;
 
         // Use bandit markup for bandit faction, regular for others
-        bool isBandit = faction == Faction.Bandit;
         float merchantMarkup = 1.0f;
         Crawler? seller = Seller as Crawler;
         merchantMarkup = seller?.Markup ?? 1.0f;
@@ -79,11 +79,6 @@ public static class TradeEx {
             // Skip prohibited goods
             if (policy == TradePolicy.Prohibited && Random.Shared.NextSingle() > 0.5f) {
                 continue;
-            }
-
-            // Vice category goods are only sold by Bandits
-            if (!isBandit && commodity.Category() == CommodityCategory.Vice) {
-//                continue;
             }
 
             // Calculate mid-price with location, scarcity, and policy markups
