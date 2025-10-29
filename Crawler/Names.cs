@@ -50,4 +50,31 @@ public static class Names {
             return AHumanName();
         }
     }
+    public static string MakeFactionName(this string crawlerName) {
+        List<string> options = new List<string>() {
+            $"Kingdom of {crawlerName}",
+            $"Clan of {crawlerName}",
+            $"Alliance of {crawlerName}",
+            $"Federation of {crawlerName}",
+            $"{crawlerName}'s Bane",
+            $"{crawlerName}'s Heart",
+            $"{crawlerName}'s Alliance",
+            $"{crawlerName}'s Fury",
+        };
+        return options.ChooseRandom()!;
+    }
+    public static string MakeCapitalName(this string settlementName) {
+        List<string> options = new List<string>() {
+            $"{settlementName}",
+            $"Grand {settlementName}",
+            $"New {settlementName}",
+            $"Second {settlementName}",
+            $"Upper {settlementName}",
+            $"Lower {settlementName}",
+            $"{settlementName} Nouveau",
+            $"{settlementName} Camp",
+            $"Fort {settlementName}",
+        };
+        return options.ChooseRandom()!;
+    }
 }

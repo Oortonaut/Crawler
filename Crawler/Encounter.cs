@@ -102,39 +102,10 @@ public class Encounter {
         }
     }
 
-    // Choose faction for dynamic visitor in settlement
-    // Returns traders (Independent or civilian) ~75%, bandits ~25%
-    Faction ChooseFactionForSettlementVisitor() {
-        float roll = Random.Shared.NextSingle();
-
-        // 25% chance of bandit
-        if (roll < 0.25f) {
-            return Faction.Bandit;
-        }
-
-        // 50% chance of independent trader
-        if (roll < 0.75f) {
-            return Faction.Independent;
-        }
-
-        // 25% chance of civilian faction trader
-        // Use settlement's controlling faction if civilian, otherwise Independent
-        var controllingFaction = Location.Sector.ControllingFaction;
-        return controllingFaction.IsCivilian() ? controllingFaction : Faction.Independent;
-    }
-
-    // Modified to accept optional lifetime parameter
     void AddDynamicCrawler(int lifetime) {
         // Use settlement-specific faction selection for Settlement encounters
-        var faction = Location.Type == EncounterType.Settlement
-            ? ChooseFactionForSettlementVisitor()
-            : Location.ChooseRandomFaction();
-
+        var faction = Location.ChooseRandomFaction();
         var crawler = GenerateFactionActor(faction, lifetime);
-    }
-    void AddDynamicCrawler() {
-        int lifetime = CrawlerEx.SamplePoisson(Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
-        AddDynamicCrawler(lifetime);
     }
     void UpdateDynamicCrawlers() {
         if (hourlyArrivals <= 0) return;

@@ -15,9 +15,6 @@ public class Inventory {
         _commodities = InItemCounts.Clone();
         Segments = InSegments.ToList();
     }
-    public Inventory(params (Commodity, float)[] InItemCounts) {
-        _commodities = new EArray<Commodity, float>(InItemCounts);
-    }
     public Inventory(params Segment[] InSegments) {
         Segments = InSegments.ToList();
     }

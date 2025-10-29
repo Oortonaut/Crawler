@@ -48,28 +48,32 @@ public record Location(
     public Faction ChooseRandomFaction() {
         // Get base weights for this terrain type
         var baseWeights = Tuning.Encounter.crawlerSpawnWeight[Terrain];
-        // Adjust bandit weight by dividing by population (more pop = fewer bandits)
         var adjustedWeights = new EArray<Faction, float>();
         foreach (var (faction, weight) in baseWeights.Pairs()) {
+            adjustedWeights[faction] = weight;
             if (faction == Faction.Player) {
                 adjustedWeights[faction] = 0;
             } else if (faction == Faction.Independent) {
-                adjustedWeights[faction] = 1.5f;
             } else if (faction == Faction.Bandit) {
-                adjustedWeights[faction] = baseWeights[faction] / (Population / 100);
+                // Adjust bandit weight by dividing by population (more pop = fewer bandits)
+                adjustedWeights[faction] /= Math.Min(1.0f, Population / 100.0f);
             } else if (faction < Map.FactionEnd) {
-                adjustedWeights[faction] = 1;
+                adjustedWeights[faction] = baseWeights[Faction.Independent]; // zero in data, code controlled
                 if (faction == Sector.ControllingFaction) {
                     adjustedWeights[faction] *= 3.5f;
                 } else {
-                    adjustedWeights[faction] = 1;
+                    adjustedWeights[faction] *= 0.8f;
                 }
             } else {
                 adjustedWeights[faction] = 0;
             }
         }
 
-        return adjustedWeights.Pairs().ChooseWeightedRandom();
+        var result = adjustedWeights.Pairs().ChooseWeightedRandom();
+        if (result < Game.Instance?.Map.FactionEnd) {
+            return result;
+        }
+        return Faction.Independent;
     }
 
     public float Distance(Location other) {
@@ -96,8 +100,7 @@ public class LocationActor {
 
 public record FactionData(string Name, Color Color, Capital? Capital);
 
-public record Capital(Crawler Settlement, float Influence) {
-    public string Name => Settlement.Name;
+public record Capital(string Name, Crawler Settlement, float Influence) {
     public Location Location => Settlement.Location;
 }
 
@@ -211,14 +214,14 @@ public class Map {
         }
 
         // Identify faction capitals and assign sectors via weighted Voronoi
-        IdentifyFactionCapitals();
+        CreateFactionCapitals();
         AssignSectorFactions();
     }
 
     public int NumFactions { get; protected set; }
     public Faction FactionEnd { get; protected set; }
-    void IdentifyFactionCapitals() {
-        using var activity = LogCat.Game.StartActivity($"{nameof(IdentifyFactionCapitals)}");
+    void CreateFactionCapitals() {
+        using var activity = LogCat.Game.StartActivity($"{nameof(CreateFactionCapitals)}");
         // Collect all settlement locations
         var settlementLocations = new List<Location>();
         var sectorPopulations = new Dictionary<Sector, float>();
@@ -239,19 +242,21 @@ public class Map {
         FactionData[Faction.Bandit] = new ("Bandit", Color.Red, null);
 
         var policies = FactionEx.GenerateFactionPolicies(NumFactions).ToArray();
+        for (int j = 0; j < NumFactions; ++j) {
+            Tuning.FactionPolicies.Policies[Faction.Civilian0 + j] = policies[j];
+        }
 
-        int i = 0;
-        for (Faction faction = Faction.Civilian0; faction < FactionEnd; faction++, i++) {
-            var setLocation = settlementLocations[i];
+        for (Faction faction = Faction.Civilian0; faction < FactionEnd; faction++) {
+            var setLocation = settlementLocations[faction - Faction.Civilian0];
             var sector = setLocation.Sector;
-            Tuning.FactionPolicies.Policies[faction] = policies[i];
             sector.ControllingFaction = faction;
             var encounter = new Encounter(setLocation, faction);
             var crawler = encounter.GenerateCapital();
             var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
-            float influence = 8 + ( float ) Math.Log2(sectorPopulation);
-            var capital = new Capital(crawler, influence);
-            var factionName = $"{encounter.Name} under {crawler.Name}";
+            float influence = 5 + crawler.Domes;
+            var factionName = crawler.Name.MakeFactionName();
+            var capitalName = encounter.Name.MakeCapitalName();
+            var capital = new Capital(capitalName, crawler, influence);
             FactionData[faction] = new (factionName, FactionEx._factionColors[faction], capital);
             sector.Name = factionName + " Capital";
         }
@@ -506,11 +511,12 @@ public class Map {
         var data = FactionData[faction]!;
         var index = faction.CivilianIndex();
         var option = Style.MenuOption.Format($"{index + 1}");
+        var policy = Tuning.FactionPolicies.Policies[faction].Description;
         if (data.Capital is { } capital) {
             var capitalString = faction.GetColor().On(Color.Black) + $"{data.Name}" + Style.MenuNormal.StyleString();
-            return $" [{option}] {capitalString}: {capital.Location.Name}";
+            return $" [{option}] {capitalString}: {capital.Name} at {capital.Location.GetEncounter().Name} | {policy}";
         } else {
-            return $" [{option}] {data.Name}";
+            return $" [{option}] {data.Name} {policy}";
         }
     }
     string Faction2(Faction faction) {

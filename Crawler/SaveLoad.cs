@@ -149,6 +149,7 @@ public class SavedFactionData {
 [YamlSerializable]
 public class SavedCapital {
     public required SavedCrawler Settlement { get; set; }
+    public required string Name { get; set; }
     public float Influence { get; set; }
 }
 
@@ -411,7 +412,8 @@ public static class SaveLoadExtensions {
     public static SavedCapital ToSaveData(this Capital capital) {
         return new SavedCapital {
             Settlement = capital.Settlement.ToSaveData(),
-            Influence = capital.Influence
+            Name = capital.Name,
+            Influence = capital.Influence,
         };
     }
 
@@ -521,7 +523,7 @@ public static class SaveLoadExtensions {
 
     public static Capital ToGameCapital(this SavedCapital savedCapital, Map map) {
         var settlement = savedCapital.Settlement.ToGameCrawler(map);
-        return new Capital(settlement, savedCapital.Influence);
+        return new Capital(savedCapital.Name, settlement, savedCapital.Influence);
     }
 
     public static Location ToGameLocation(this SavedLocation savedLocation, Sector sector) {
