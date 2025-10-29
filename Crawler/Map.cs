@@ -32,13 +32,14 @@ public record Location(
     float zipf = Random.Shared.NextSingle();
     // Pareto distribution Type I
     public const float MaxPopulation = 500;
-    public float Population => Math.Clamp((MaxPopulation * (float)Math.Pow(0.005f, zipf)), 0, MaxPopulation);
+    public const float Decay = 0.002f;
+    public int Population => (int)(MaxPopulation * (float)Math.Pow(Decay, zipf)) + 1;
     public float Wealth => wealth;
     public float TechLatitude => 2 * (1 - ((Position.Y + 0.5f) / Map.Height));
     public string Code => Type switch {
         EncounterType.None => ".",
         EncounterType.Crossroads => "x",
-        EncounterType.Settlement => "o123456789ABCDEFGHIJK"[( int ) Math.Log2(Population)].ToString(),
+        EncounterType.Settlement => "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[( int ) Math.Log2(Population)].ToString(),
         EncounterType.Resource => "?",
         EncounterType.Hazard => "!",
         _ => "_",
@@ -47,18 +48,22 @@ public record Location(
     public Faction ChooseRandomFaction() {
         // Get base weights for this terrain type
         var baseWeights = Tuning.Encounter.crawlerSpawnWeight[Terrain];
-
         // Adjust bandit weight by dividing by population (more pop = fewer bandits)
         var adjustedWeights = new EArray<Faction, float>();
         foreach (var (faction, weight) in baseWeights.Pairs()) {
-            if (faction == Faction.Bandit) {
+            if (faction == Faction.Player) {
+                adjustedWeights[faction] = 0;
+            } else if (faction == Faction.Independent) {
+                adjustedWeights[faction] = 1.5f;
+            } else if (faction == Faction.Bandit) {
                 adjustedWeights[faction] = baseWeights[faction] / (Population / 100);
-            } else if (baseWeights[faction] > 0) {
-                adjustedWeights[faction] = baseWeights[faction];
-            } else if (faction == Sector.ControllingFaction) {
-                adjustedWeights[faction] = 2;
             } else if (faction < Map.FactionEnd) {
-                adjustedWeights[faction] = 0.5f;
+                adjustedWeights[faction] = 1;
+                if (faction == Sector.ControllingFaction) {
+                    adjustedWeights[faction] *= 3.5f;
+                } else {
+                    adjustedWeights[faction] = 1;
+                }
             } else {
                 adjustedWeights[faction] = 0;
             }
@@ -234,21 +239,22 @@ public class Map {
         FactionData[Faction.Independent] = new ("Independent", Color.Blue, null);
         FactionData[Faction.Bandit] = new ("Bandit", Color.Red, null);
 
+        var policies = FactionEx.GenerateFactionPolicies(NumFactions).ToArray();
+
         int i = 0;
         for (Faction faction = Faction.Civilian0; faction < FactionEnd; faction++, i++) {
             var setLocation = settlementLocations[i];
             var sector = setLocation.Sector;
-            Tuning.FactionPolicies.Policies[faction] = GenerateFactionPolicy();
+            Tuning.FactionPolicies.Policies[faction] = policies[i];
             sector.ControllingFaction = faction;
-            var name = setLocation.Name;
             var encounter = new Encounter(setLocation, faction);
-            var crawler = encounter.GenerateCapitalActor();
+            var crawler = encounter.GenerateCapital();
             var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
             float influence = 8 + ( float ) Math.Log2(sectorPopulation);
             var capital = new Capital(crawler, influence);
-            FactionData[faction] = new (name, FactionEx._factionColors[faction], capital);
-            name = crawler.Name;
-            sector.Name = $"{name} Capital";
+            var factionName = $"{encounter.Name} under {crawler.Name}";
+            FactionData[faction] = new (factionName, FactionEx._factionColors[faction], capital);
+            sector.Name = factionName + " Capital";
         }
     }
 
@@ -276,39 +282,6 @@ public class Map {
 
             sector.ControllingFaction = closestFaction;
         }
-    }
-
-    Policy GenerateFactionPolicy() {
-        // Generate procedural policies based on capital characteristics
-        var commodityPolicy = Tuning.FactionPolicies.CreateCommodityDefaultPolicy(TradePolicy.Legal);
-        var segmentPolicy = Tuning.FactionPolicies.CreateSegmentDefaultPolicy(TradePolicy.Legal);
-
-        // Determine faction archetype
-        int archetypeRoll = Random.Shared.Next(100);
-
-        if (archetypeRoll < 30) {
-            // Religious faction - subsidize religious items, prohibit drugs
-            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Subsidized;
-            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
-            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
-            segmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
-        } else if (archetypeRoll < 60) {
-            // Industrial/Mining faction - subsidize raw materials, tax weapons
-            commodityPolicy[CommodityCategory.Raw] = TradePolicy.Subsidized;
-            commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
-            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Taxed;
-            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Taxed;
-            segmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
-        } else {
-            // Authoritarian/Restrictive faction - prohibit many things
-            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Prohibited;
-            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
-            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Controlled;
-            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
-            segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
-        }
-
-        return new (commodityPolicy, segmentPolicy);
     }
 
     public Location GetStartingLocation() {
@@ -520,9 +493,8 @@ public class Map {
                 var data = FactionData[faction]!;
                 var option = Style.MenuOption.Format($"{y + 1}");
                 var capitalString = faction.GetColor().On(Color.Black) + data.Name + defaultStyle;
-                map += $" [{option}] {capitalString} ({data.Name})";
-                // TODO: Move this policy text into a helper function
                 var policy = Tuning.FactionPolicies.Policies[faction];
+                map += $" [{option}] {capitalString} ({data.Name}) {policy.Description}";
 
                 // we want to build a set of categories by TradePolicy
                 EArray<TradePolicy, List<string>> categoriesByPolicy = new();
@@ -531,7 +503,10 @@ public class Map {
                     categoriesByPolicy[tradePolicy].Add(commodityCategory.ToString());
                 }
                 foreach (var (segmentKind, tradePolicy) in policy.Segments.Pairs()) {
-                    categoriesByPolicy[tradePolicy].Add($"{segmentKind} Segments");
+                    categoriesByPolicy[tradePolicy].Add(segmentKind switch {
+                        SegmentKind.Offense => "Guns",
+                        _ => segmentKind.ToString(),
+                    });
                 }
                 foreach (var (tradePolicy, categories) in categoriesByPolicy.Pairs()) {
                     if (tradePolicy is not TradePolicy.Legal && categories.Count > 0) {
