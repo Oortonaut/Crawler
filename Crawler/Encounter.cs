@@ -204,14 +204,12 @@ public class Encounter {
     public virtual void RemoveActor(IActor actor) {
         var remainingActors = ActorsExcept(actor).ToList();
 
-        // Notify leaving actor about all remaining actors
-        actor.Leave(remainingActors);
-
         // Notify all remaining actors about the leaving actor
         foreach (var other in remainingActors) {
             other.Part(actor);
         }
 
+        actor.Leave(remainingActors);
         actors.Remove(actor);
     }
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
