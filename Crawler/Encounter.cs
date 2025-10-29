@@ -226,7 +226,7 @@ public class Encounter {
         float segmentWealth = wealth * (1.0f - 0.75f);
         var trader = Crawler.NewRandom(Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
         trader.Faction = Faction.Independent;
-        trader.StoredProposals.AddRange(trader.MakeTradeProposals( 0.25f, trader.Faction));
+        trader.StoredProposals.AddRange(trader.MakeTradeProposals( 0.25f));
         trader.UpdateSegmentCache();
         return trader;
     }
@@ -262,12 +262,12 @@ public class Encounter {
         float segmentWealth = wealth * (1.0f - 0.75f);
         var civilian = Crawler.NewRandom(civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
         civilian.Faction = civilianFaction;
-        civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(0.25f, civilian.Faction));
+        civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(0.25f));
         civilian.UpdateSegmentCache();
         return civilian;
     }
 
-    public Crawler GenerateCapitalActor() {
+    public Crawler GenerateCapital() {
         using var activity = LogCat.Encounter.StartActivity($"GenerateCapital {nameof(Encounter)}");
         var settlement = GenerateSettlement();
         settlement.Domes += 2;
@@ -277,20 +277,21 @@ public class Encounter {
     public Crawler GenerateSettlement() {
         using var activity = LogCat.Encounter.StartActivity($"GenerateSettlement {nameof(Encounter)}");
         float t = Location.Position.Y / ( float ) Location.Map.Height;
-        int domes = (int)(1 + Location.Population / 50);
-        int crew = domes * 10;
+        int domes = ( int ) Math.Log2(Location.Population) + 1;
+        int crew = Math.Min(domes * 10, Location.Population);
         // wealth is also population scaled,
         float goodsWealth = Location.Wealth * domes * 0.5f;
         float segmentWealth = Location.Wealth * domes * 0.25f;
         var settlement = Crawler.NewRandom(Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
+        settlement.PassengersInv = Location.Population - crew;
         settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
-        var proposals = settlement.MakeTradeProposals( 1, settlement.Faction);
+        var proposals = settlement.MakeTradeProposals( 1);
         settlement.StoredProposals.AddRange(proposals);
         settlement.UpdateSegmentCache();
 
-        IEnumerable<string> EncounterNames = ["Settlement"];
+        IEnumerable<string> EncounterNames = [];
         if (t < 0.15f) {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.StormSettlementNames];
         } else if (t < 0.3f) {
@@ -306,8 +307,7 @@ public class Encounter {
         } else {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.NightSettlementNames];
         }
-        Name = EncounterNames.ChooseRandom() ?? "Settlement";
-        settlement.Name = Name;
+        Name = EncounterNames.ChooseRandom()!;
         AddActor(settlement);
         return settlement;
     }
