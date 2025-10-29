@@ -11,5 +11,7 @@
 ## Wish List
 
 [_] Market views
+[_] Use deterministic seeding like I should have from the start
+
 
 ## Finished
