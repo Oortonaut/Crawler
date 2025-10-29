@@ -92,7 +92,6 @@ public record Location(
 
 public class LocationActor {
     public bool Visited = false;
-    public long ForgetTime = 0;
 }
 
 public record FactionData(string Name, Color Color, Capital? Capital);

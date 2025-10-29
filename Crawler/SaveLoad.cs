@@ -110,7 +110,6 @@ public class SavedActorRelation {
 [YamlSerializable]
 public class SavedActorLocation {
     public bool Visited { get; set; } = false;
-    public long ForgetTime { get; set; } = 0;
 }
 
 [YamlSerializable]
@@ -307,7 +306,6 @@ public static class SaveLoadExtensions {
     public static SavedActorLocation ToSaveData(this LocationActor locationActorLoc) {
         return new SavedActorLocation {
             Visited = locationActorLoc.Visited,
-            ForgetTime = locationActorLoc.ForgetTime
         };
     }
 
@@ -593,7 +591,6 @@ public static class SaveLoadExtensions {
                 var loc = map.FindLocationByPosition(new System.Numerics.Vector2(x, y));
                 visitedLocations[loc] = new LocationActor {
                     Visited = kvp.Value.Visited,
-                    ForgetTime = kvp.Value.ForgetTime
                 };
             }
         }

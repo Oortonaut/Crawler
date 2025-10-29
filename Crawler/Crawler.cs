@@ -617,6 +617,7 @@ public class Crawler: IActor {
 
     public bool IsDestroyed => EndState is not null;
     public bool IsVulnerable => IsDefenseless || IsImmobile || IsDisarmed || IsDepowered;
+    public bool IsSettlement => Flags.HasFlag(EActorFlags.Settlement);
 
     public string About => ToString() + StateString();
     public override string ToString() => $"{Name} ({Faction})";
@@ -921,6 +922,17 @@ public class Crawler: IActor {
         }
     }
 
+    void PruneRelations() {
+        Dictionary<IActor, ActorToActor> relations = new();
+        foreach (var (actor, relation) in _relations) {
+            if (actor is Crawler { IsSettlement: true, IsDestroyed: false } || relation.Hostile) {
+                relations.Add(actor, relation);
+            }
+        }
+        // TODO: Use a static and dynamic relations list
+        _relations = relations;
+    }
+
     /// <summary>
     /// Called when a new actor joins the encounter
     /// </summary>
@@ -937,6 +949,7 @@ public class Crawler: IActor {
         foreach (var actor in encounterActors.OfType<Crawler>()) {
             actor.ExpireProposals(this);
         }
+        PruneRelations();
     }
 
     /// <summary>
