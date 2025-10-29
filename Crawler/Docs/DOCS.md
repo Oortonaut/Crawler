@@ -6,6 +6,11 @@
 
 Feel free to also modify this file as needed.
 
+**Crawler/README.md** - Project overview and introduction
+
+- Update when: Project description changes, future plans change, major features added
+- Contains: Project description, author notes, future plans
+
 **Crawler/Docs/ARCHITECTURE.md** - High-level overview
 
 - Update when: Core game loop changes, system map changes, adding/removing major systems

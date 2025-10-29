@@ -17,6 +17,7 @@ apply: always
 
 ## Documentation
 
+* **Crawler/README.md** - Project overview and introduction
 * **Crawler/Docs/DOCS.md** for complete documentation structure and guidance on when to update each file.
 * **Crawler/Docs/ARCHITECTURE.md** - High-level overview
 * **Crawler/Docs/SYSTEMS.md** - Detailed system descriptions
