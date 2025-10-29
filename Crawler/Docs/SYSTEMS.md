@@ -13,12 +13,12 @@
 - [Tick System](#tick-system)
 
 ## Recent Changes
+- **2025-10-29**: Trade proposals now use actor's faction instead of passing it as parameter; improved faction policy generation with multiple archetype selection; settlements now display civilian population
+- **2025-10-29**: Commodity availability calculation changed to use unavailability decay model; silicate prices rounded to 85¢¢
+- **2025-10-29**: Improved settlement generation with log-based dome scaling and passenger-based population
 - **2025-10-25**: Renamed `InteractionMode` enum to `Immediacy`; IInteraction.PerformMode() renamed to IInteraction.Immediacy()
 - **2025-10-25**: Added comprehensive OpenTelemetry tracing via `LogCat` (renamed from `ActivitySources`)
 - **2025-10-24**: Added mutual hostility checks to prevent trading/repairing/taxing with hostile actors
-- **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
-- **2025-10-19**: Simplified IProposal.InteractionCapable to return `bool` instead of enum; moved urgency control to IInteraction.Immediacy()
-- **2025-01-19**: ProposeDemand now yields separate Accept/Refuse interactions
 
 ---
 
@@ -290,6 +290,8 @@ MidPrice = BaseValue × LocationMarkup × ScarcityPremium × PolicyMultiplier
 - **BaseValue:** Commodity's base cost (CommodityEx.Data)
 - **LocationMarkup:** `LocalMarkup(commodity, location)` based on terrain and tech level
 - **ScarcityPremium:** `1 + (1 - Availability) × CategoryWeight`
+  - Availability = `1 - Unavailability.Value(population/100, techLatitude*2 - commodityTech)`
+  - Uses power scaling with 0.7 exponent and (0.15, 0.3) powers for primitive/tech axes
   - Essential goods: 0.3× weight (stable prices)
   - Luxury goods: 1.5× weight (volatile prices)
 - **PolicyMultiplier:** From `Tuning.Trade.PolicyMultiplier(policy)`
@@ -333,15 +335,16 @@ Selling Fuel at Trade Settlement:
 
 ### Trade Proposal Generation
 
-**Process:** `TradeEx.MakeTradeProposals()`
-1. Determine available commodities based on location/faction
-2. Filter by faction trade policy
-3. Calculate prices with spreads
-4. Add transaction fees for controlled goods
-5. Generate ProposeSellBuy and ProposeBuySell for each
+**Process:** `TradeEx.MakeTradeProposals(IActor Seller, float wealthFraction)`
+1. Uses seller's faction for policy determination
+2. Determine available commodities based on location/faction
+3. Filter by faction trade policy (prohibited goods have 50% chance to appear)
+4. Calculate prices with spreads
+5. Add transaction fees for controlled goods
+6. Generate ProposeSellBuy and ProposeBuySell for each
 
-**Vice Goods:**
-Only sold by Bandits (Liquor, Stims, Downers, Trips)
+**Prohibited Goods:**
+Goods with Prohibited policy have 50% chance to be skipped in trade offers
 
 **Segments:**
 - Offered from trader's Cargo

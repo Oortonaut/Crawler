@@ -13,10 +13,10 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2025-10-29**: Policy record now includes Description field for faction policy descriptions
 - **2025-10-24**: Added `Overdraft` property and `ContainsResult` enum to Inventory; withdrawal methods now support overdraft from linked inventory
 - **2025-10-19**: Added `Betrayer` flag to `EFlags` enum; removed Standing/Trust fields from `ActorToActor`; added `Latch()`, `HasFlag()`, `SetFlag()` helper methods; removed `Betrayed` property (now uses `Betrayer` flag)
 - **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed)
-- **2025-01-19**: Added UltimatumTime to ActorToActor for mandatory interactions
 
 ---
 
@@ -597,9 +597,19 @@ enum TradePolicy {
 }
 ```
 
+**Policy Record:**
+```csharp
+record Policy(
+    EArray<CommodityCategory, TradePolicy> Commodities,
+    EArray<SegmentKind, TradePolicy> Segments,
+    string Description
+);
+```
+
 **Policy System:**
 - Policies are defined per faction for **CommodityCategory** and **SegmentKind**
 - Individual commodities/segments inherit policy from their category/kind
+- Each faction has a Description field summarizing their policy archetype (e.g., "Authoritarian, Pious, Industrial")
 
 **Usage:**
 ```csharp
