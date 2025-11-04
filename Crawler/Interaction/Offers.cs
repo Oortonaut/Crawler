@@ -180,4 +180,5 @@ public static partial class OfferEx {
     public static IOffer SupplyOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies));
     public static IOffer CargoOffer(this IActor actor, float fraction) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo.Loot(fraction)));
     public static IOffer SupplyOffer(this IActor actor, float fraction) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies.Loot(fraction)));
+    public static bool EnabledFor(this IOffer Offer, IActor Agent, IActor Subject) => Offer.DisabledFor(Agent, Subject) == null;
 }

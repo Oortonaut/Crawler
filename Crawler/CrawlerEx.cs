@@ -820,4 +820,13 @@ public static partial class CrawlerEx {
         }
         return chance;
     }
+    public static int GetDelay(this Crawler crawler) {
+        int minDelay = Tuning.MaxDelay;
+        int N = 0;
+        foreach (var segment in crawler.CyclingSegments) {
+            minDelay = Math.Min(minDelay, segment.Cycle);
+            ++N;
+        }
+        return minDelay;
+    }
 }
