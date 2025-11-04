@@ -792,4 +792,32 @@ public static partial class CrawlerEx {
             yield return default;
         }
     }
+    public static IEnumerable<(T a, T b)> Pairwise<T>(this IEnumerable<T> source) {
+        using var enumerator = source.GetEnumerator();
+        if (!enumerator.MoveNext()) {
+            yield break;
+        }
+        T previous = enumerator.Current;
+        while (enumerator.MoveNext()) {
+            yield return (previous, enumerator.Current);
+            previous = enumerator.Current;
+        }
+    }
+    public static float EscapeChance(this Crawler crawler) {
+        float chance = 1;
+        // are there any faster enemies?
+        var encounter = crawler.Location.GetEncounter();
+        var enemies = encounter.CrawlersExcept(crawler)
+            .OfType<Crawler>()
+            .Where(e => e.To(crawler).Hostile && !e.IsDisarmed);
+
+        foreach (var enemy in enemies) {
+            if (enemy.Speed > 0) {
+                // You can escape 100% of the time if you are 25% faster than your enemy
+                float enemyChance = Math.Clamp(crawler.Speed * 0.8f / enemy.Speed, 0, 1);
+                chance *= enemyChance;
+            }
+        }
+        return chance;
+    }
 }

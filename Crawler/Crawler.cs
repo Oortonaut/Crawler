@@ -246,8 +246,7 @@ public class Crawler: IActor {
     }
 
     public bool Pinned() {
-        bool CantEscape(Crawler crawler) => crawler.To(this).Hostile && Speed < crawler.Speed;
-        return Location.GetEncounter().Actors.Any(a => a is Crawler crawler && CantEscape(crawler));
+        return Random.Shared.NextSingle() > this.EscapeChance();
     }
 
     public void Tick() {
