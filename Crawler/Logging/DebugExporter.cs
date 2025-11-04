@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
 
@@ -55,5 +56,18 @@ file sealed class DebugExporter: BaseExporter<Activity> {
 public static class DebugExporterExtensions {
     public static TracerProviderBuilder AddDebugExporter(this TracerProviderBuilder builder) {
         return builder.AddProcessor(new SimpleActivityExportProcessor(new DebugExporter()));
+    }
+}
+public class DebugLoggerProvider: ILoggerProvider {
+    public ILogger CreateLogger(string categoryName) => new DebugLogger();
+    public void Dispose() { }
+}
+
+public class DebugLogger: ILogger {
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => true;
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+        Exception? exception, Func<TState, Exception?, string> formatter) {
+        Debug.WriteLine($"[{logLevel}] {formatter(state, exception)}");
     }
 }

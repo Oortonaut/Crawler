@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Crawler.Logging;
 
@@ -32,4 +34,7 @@ public static class LogCat {
     public static readonly ActivitySource Console = new(
         $"{ServiceName}-Console",
         ServiceVersion);
+
+    public static ILogger Log { get; set; } = NullLogger.Instance;
+
 }

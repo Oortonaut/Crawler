@@ -1,8 +1,7 @@
-﻿// See https://aka.ms/new-console-template for more information
-
-using System;
+﻿using System;
 using Crawler;
 using Crawler.Logging;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Resources;
@@ -19,6 +18,13 @@ using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddDebugExporter()
     .AddOtlpExporter(initOptions => { initOptions.Protocol = OtlpExportProtocol.Grpc; })
     .Build();
+
+var loggerFactory = LoggerFactory.Create(builder => {
+    builder.AddProvider(new DebugLoggerProvider());
+    builder.AddOpenTelemetry( /*...*/);
+});
+
+LogCat.Log = loggerFactory.CreateLogger("Crawler");
 
 string Logo = string.Join("\n", [
     @"+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+",

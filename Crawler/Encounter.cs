@@ -1,4 +1,5 @@
 ﻿using Crawler.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
