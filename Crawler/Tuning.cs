@@ -415,6 +415,7 @@ public static partial class Tuning {
     }
 
     public static float EvilLimit = 10.0f;
+    public static int MaxDelay = 3600;
 
     public static float CostAt(this Commodity commodity, Location location) {
         return Commodity.Scrap.Round(commodity.BaseCost() * Economy.LocalMarkup(commodity, location));

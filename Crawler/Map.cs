@@ -32,7 +32,7 @@ public record Location(
     float zipf = Random.Shared.NextSingle();
     // Pareto distribution Type I
     public const float MaxPopulation = 500;
-    public const float Decay = 0.002f;
+    public const float Decay = 0.0005f;
     public int Population => (int)(MaxPopulation * (float)Math.Pow(Decay, zipf)) + 1;
     public float Wealth => wealth;
     public float TechLatitude => 2 * (1 - ((Position.Y + 0.5f) / Map.Height));
@@ -115,7 +115,6 @@ public class Sector(Map map, string name, int x, int y) {
     public List<Sector> Neighbors { get; } = new();
     public List<Location> Locations { get; } = new();
     public IEnumerable<Location> Settlements => Locations.Where(loc => loc.Type == EncounterType.Settlement);
-    public List<IActor> Actors { get; set; } = new();
     public override string ToString() => $"{Name} ({Terrain})";
     public string Look() {
         var result = $"{ControllingFaction.Name()} - {Name} ({Terrain} Terrain) ";
@@ -306,26 +305,6 @@ public class Map {
         }
         throw new Exception("No starting location found");
     }
-    public void AddActor(IActor actor) {
-        var loc = actor.Location;
-        var sector = Sectors[(int)loc.Position.Y, (int)loc.Position.X];
-        sector.Actors.Add(actor);
-        loc.GetEncounter().AddActor(actor);
-    }
-    public void RemoveActor(IActor actor) {
-        var loc = actor.Location;
-        var sector = Sectors[(int)loc.Position.Y, (int)loc.Position.X];
-        sector.Actors.Remove(actor);
-        loc.GetEncounter().RemoveActor(actor);
-    }
-    public void MoveActor(IActor actor, Location newPos) {
-        if (actor.Location == newPos) {
-            return;
-        }
-        RemoveActor(actor);
-        actor.Location = newPos;
-        AddActor(actor);
-    }
     TerrainType ChooseTerrainType(Vector3 position) {
         float tTerrain = Random.Shared.NextSingle();
         float tLat = position.Y / ( float ) Height;
@@ -355,16 +334,16 @@ public class Map {
         switch (terrain) {
             // None, Crawler, Settlement, Resource, Hazard,
         case TerrainType.Flat:
-            encounterWeights = [0, 5, 5, 3, 3];
+            encounterWeights = [0, 4.5f, 1.5f, 3, 3];
             break;
         case TerrainType.Rough:
-            encounterWeights = [0, 5, 3, 3, 3];
+            encounterWeights = [0, 5, 1, 3, 3];
             break;
         case TerrainType.Broken:
-            encounterWeights = [0, 4, 1.5f, 4, 4];
+            encounterWeights = [0, 3.25f, 0.75f, 4, 4];
             break;
         case TerrainType.Shattered:
-            encounterWeights = [0, 3, 0.5f, 5, 5];
+            encounterWeights = [0, 1.5f, 0.5f, 5, 5];
             break;
         case TerrainType.Ruined:
             encounterWeights = [0, 0, 0, 0, 0];

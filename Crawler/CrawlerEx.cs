@@ -86,6 +86,7 @@ public static partial class CrawlerEx {
     public const string ClearLineToEnd = "\e[K";
     public const string ClearLineToStart = "\e[1K";
     public static string CursorPosition(int x, int y) => $"\e[{y};{x}H";
+    public static string CursorHome = "\e[H";
     public static string CursorX(int x) => $"\e[{x}G";
     public static string Margin(int l) => $"\e[{l}s";
     public static string Margin(int l, int r) => $"\e[{l};{r}s";
@@ -649,10 +650,10 @@ public static partial class CrawlerEx {
             return 0;
         }
     }
-    public static TValue GetOrAddNewValue<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key) where TValue: new() {
-        return dict.GetOrAddNewValue(key, () => new TValue());
+    public static TValue GetOrAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key) where TValue: new() {
+        return dict.GetOrAddNew(key, () => new TValue());
     }
-    public static TValue GetOrAddNewValue<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TValue> gen) {
+    public static TValue GetOrAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TValue> gen) {
         if (!dict.TryGetValue(key, out var value)) {
             value = gen();
             dict[key] = value;

@@ -42,7 +42,7 @@ public class Game {
         if (string.IsNullOrWhiteSpace(crawlerName)) {
             throw new ArgumentException("Name cannot be null or whitespace.", nameof(crawlerName));
         }
-        _map = new Map(H, 2 * H);
+        _map = new Map(H, H * 5 / 2);
         var currentLocation = Map.GetStartingLocation();
         float wealth = currentLocation.Wealth * 1.25f;
         int crew = 10;
@@ -50,12 +50,11 @@ public class Game {
         float segmentWealth = wealth * 0.5f;
         _player = Crawler.NewRandom(Faction.Player, currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         _player.Name = crawlerName;
-        Map.AddActor(_player);
+        _player.Flags |= EActorFlags.Player;
+        currentLocation.GetEncounter().AddActor(_player);
     }
     void Construct(SaveGameData saveData) {
         TimeSeconds = saveData.Hour;
-        AP = saveData.AP;
-        TurnAP = saveData.TurnAP;
         quit = saveData.Quit;
 
         // Reconstruct the map from save data
@@ -69,25 +68,63 @@ public class Game {
         _player.Location = currentLocation;
 
         // Add player to map
-        Map.AddActor(Player);
+        currentLocation.GetEncounter().AddActor(Player);
     }
 
     bool quit = false;
-    public bool Moving => PendingLocation != null;
+    public void Schedule(Encounter encounter) {
+        Schedule(encounter, Math.Max(TimeSeconds, encounter.NextEvent));
+    }
+    void Schedule(Encounter encounter, long nextTurn) {
+        if (turnForEncounter.TryGetValue(encounter, out var scheduledTurn)) {
+            if (nextTurn < scheduledTurn) {
+                LogCat.Log.LogTrace($"Schedule {encounter.Name}: rescheduling to {nextTurn}");
+                Unschedule(encounter);
+            } else {
+                LogCat.Log.LogTrace($"Schedule {encounter.Name}: already scheduled for {scheduledTurn}");
+                return;
+            }
+        }
+        encountersByTurn.GetOrAddNew(nextTurn).Add(encounter);
+        turnForEncounter[encounter] = nextTurn;
+    }
+    void Unschedule(Encounter encounter) {
+        if (turnForEncounter.TryGetValue(encounter, out var scheduledTurn)) {
+            LogCat.Log.LogTrace($"Unschedule {encounter.Name}: {scheduledTurn}");
+            var encounters = encountersByTurn[scheduledTurn];
+            encounters.Remove(encounter);
+            if (encounters.Count == 0) {
+                encountersByTurn.Remove(scheduledTurn);
+            }
+            turnForEncounter.Remove(encounter);
+        } else {
+            LogCat.Log.LogTrace($"Unschedule {encounter.Name}: not scheduled");
+        }
+    }
+    (long turn, List<Encounter>) TurnEncounters() {
+        var kv = encountersByTurn.First();
+        var turn = kv.Key;
+        var result = kv.Value;
+        encountersByTurn.Remove(turn);
+        foreach (var encounter in result) {
+            // TODO: use a 0 sentinel instead of removing
+            turnForEncounter.Remove(encounter);
+        }
+        LogCat.Log.LogTrace($"Turn {turn}: {result.Count} encounters");
+        return (turn, result);
+    }
+    SortedDictionary<long, List<Encounter>> encountersByTurn = new();
+    Dictionary<Encounter, long> turnForEncounter = new();
+
     public void Run() {
 
-        while (!quit) {
-            if (Moving) {
-                Player.Location = PendingLocation!;
-                Map.AddActor(Player);
-                PendingLocation = null;
-            }
-
-            GameMenu();
-
-            while (AP <= 0) {
-                Tick();
-                AP += TurnAP;
+        while (!quit && encountersByTurn.Any()) {
+            var (turn, turnEncounters) = TurnEncounters();
+            using var activity = LogCat.Encounter.StartActivity($"Game::Turn {turn}: {turnEncounters.Count} encounters");
+            TimeSeconds = turn;
+            foreach (var encounter in turnEncounters) {
+                encounter.Tick(turn);
+                Schedule(encounter);
             }
 
             if (PlayerWon || PlayerLost) {
@@ -106,8 +143,6 @@ public class Game {
         Console.WriteLine("Thanks for playing!");
     }
 
-    int AP = 1;
-    int TurnAP = 1;
     public Location PlayerLocation => _player!.Location;
     public TerrainType CurrentTerrain => PlayerLocation.Terrain;
 
@@ -161,16 +196,16 @@ public class Game {
             var enableArg = enabled ? EnableArg.Enabled : EnableArg.Disabled;
             yield return new ActionMenuItem($"M{index}", $"To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
         }
+    }
+    int GoTo(Location loc) {
+        PlayerLocation.GetEncounter().RemoveActor(Player);
+        var (fuel, time) = Player.FuelTimeTo(loc);
+        Player.FuelInv -= fuel;
+        Player.Tick(Player.LastEvent + (int)(time * 3600));
+        loc.GetEncounter().AddActor(Player);
+        Player.Location = loc;
 
-        //////////////////////////
-        yield break;
-        ////////////////////////////
-        int GoTo(Location loc) {
-            Map.RemoveActor(Player);
-            PendingLocation = loc;
-            Player.FuelInv -= fuel;
-            return (int)Math.Ceiling(time);
-        }
+        return (int)Math.Ceiling(time * 3600);
     }
 
     IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
@@ -231,23 +266,25 @@ public class Game {
                 yield return new ActionMenuItem(dir, $"to {neighborName} ({locations})", _ => GoTo(location), enableArg, showOption);
             }
         }
-        //////////////////////////
-        yield break;
-        ////////////////////////////
-        int GoTo(Location loc) {
-            Map.RemoveActor(Player);
-            PendingLocation = loc;
-            Player.FuelInv -= fuel;
-            return (int)Math.Ceiling(time);
-        }
     }
-    Location? PendingLocation = null;
-
     Encounter PlayerEncounter() => PlayerLocation.GetEncounter();
 
     int Look() {
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
         Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
+        long seconds = TimeSeconds;
+        long minutes = TimeSeconds / 60;
+        long hours = minutes / 60;
+        long days = hours / 24;
+        long months = days / 30;
+        long years = months / 12;
+        seconds %= 60;
+        minutes %= 60;
+        hours %= 24;
+        days %= 30;
+        months %= 12;
+
+        Console.Write($"DATE {years,4}/{months,02}/{days,02} TIME {hours,02}:{minutes,02}:{seconds,02}");
         Console.WriteLine(PlayerEncounter().ViewFrom(Player));
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
@@ -268,54 +305,30 @@ public class Game {
         float count = float.TryParse(args, out float parsed) ? parsed * 60 : 3600;
         return (int) count;
     }
-    void Tick() {
-        ++TimeSeconds;
-        using var activity = !IsHour() ? null :
-            LogCat.Game.StartActivity("Game Tick")?
-            .SetTag("Time", TimeSeconds);
-
-        DrainEncounters();
-
-        if (Moving) {
-            Player.Tick();
-        } else {
-            PlayerEncounter().Tick();
-        }
-    }
 
     public bool IsMinute() => TimeSeconds % 60 == 0;
     public bool IsHour() => TimeSeconds % 3600 == 0;
     public bool IsDay() => TimeSeconds % 86400 == 0;
 
-    void DrainEncounters() {
-        if (IsHour()) {
-            allEncounters.RemoveAll(weakRef => !weakRef.TryGetTarget(out _));
-        }
-    }
 
     public void RegisterEncounter(Encounter encounter) {
-        allEncounters.Add(new WeakReference<Encounter>(encounter));
+        allEncounters.Add(encounter);
+        Schedule(encounter);
     }
 
     public IEnumerable<Encounter> Encounters() {
-        foreach (var encounterRef in allEncounters) {
-            if (encounterRef.TryGetTarget(out var encounter)) {
-                goodEncounters.Add(encounterRef);
-                yield return encounter;
-            }
-        }
-        allEncounters.Clear();
-        (goodEncounters, allEncounters) = (allEncounters, goodEncounters);
+        return allEncounters;
     }
 
     bool PlayerWon => false;
     bool PlayerLost => !string.IsNullOrEmpty(Player?.EndMessage);
 
     // seconds -
-    public long TimeSeconds { get; private set; } = 1; // start at 1 so 0 can be an invalid time
+    public long TimeSeconds { get; private set; } = 100_000_000_000; // appx 3168 years
+
     public static long SafeTime => Instance == null ? 0 : Instance.TimeSeconds;
 
-    MenuItem GameMenu() {
+    public MenuItem GameMenu() {
         List<MenuItem> items = [
             .. GameMenuItems(),
             .. PlayerMenuItems(),
@@ -329,7 +342,6 @@ public class Game {
         Look();
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
-        AP -= ap;
         return selected;
     }
     int SectorMap() {
@@ -714,14 +726,9 @@ public class Game {
         new ProposePlayerDemand(0.5f, "X"),
     ];
 
-    // Track all created encounters using weak references
-    List<WeakReference<Encounter>> allEncounters = new();
-
-    List<WeakReference<Encounter>> goodEncounters = new();
+    List<Encounter> allEncounters = new();
     // Accessor methods for save/load
     public long GetTime() => TimeSeconds;
-    public int GetAP() => AP;
-    public int GetTurnAP() => TurnAP;
     public Crawler GetPlayer() => Player;
     public Map GetMap() => Map;
     public bool GetQuit() => quit;

@@ -92,7 +92,7 @@ public class SavedSegment {
     public string DefName { get; set; } = "";
     public int Hits { get; set; }
     public float Charge { get; set; }
-    public int ShieldLeft { get; set; }
+    public float ShieldLeft { get; set; }
     public bool Packaged { get; set; } = true;
     public bool Activated { get; set; } = true;
 }
@@ -187,8 +187,6 @@ public static class SaveLoadExtensions {
         return new SaveGameData {
             Version = "1.0",
             Hour = game.GetTime(),
-            AP = game.GetAP(),
-            TurnAP = game.GetTurnAP(),
             CurrentLocationPos = game.PlayerLocation.Position,
             Player = game.GetPlayer().ToSaveData(),
             Map = game.GetMap().ToSaveData(),

@@ -107,7 +107,7 @@ public interface IActor {
     /// <summary>
     /// Called when this actor enters an encounter with existing actors.
     /// </summary>
-    void Meet(IEnumerable<IActor> encounterActors);
+    void Meet(Encounter encounter, long time, IEnumerable<IActor> encounterActors);
 
     /// <summary>
     /// Called when a new actor joins the encounter.
@@ -133,10 +133,11 @@ public interface IActor {
 
     // ===== Simulation =====
     /// <summary>Update this actor (called every game second)</summary>
-    void Tick();
+    /// <param name="time"></param>
+    void Tick(long time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
-    void Tick(IEnumerable<IActor> other);
+    void Think(int elapsed, IEnumerable<IActor> other);
 
     /// <summary>Receive combat damage from another actor</summary>
     void ReceiveFire(IActor from, List<HitRecord> fire);
@@ -173,9 +174,9 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
     public List<IProposal> StoredProposals { get; } = new();
     public IEnumerable<IProposal> Proposals() => StoredProposals;
-    public void Tick() {
+    public void Tick(long time) {
     }
-    public void Tick(IEnumerable<IActor> other) { }
+    public void Think(int elapsed, IEnumerable<IActor> other) { }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         Message($"{from.Name} fired uselessly at you");
         from.Message($"You fired uselessly at {Name}");
@@ -198,7 +199,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public ActorToActor To(IActor other) => new();
     public ActorToActor NewRelation(IActor other) => new();
     public LocationActor NewRelation(Location other) => new();
-    public void Meet(IEnumerable<IActor> encounterActors) { }
+    public void Meet(Encounter encounter, long time, IEnumerable<IActor> encounterActors) { }
     public void Greet(IActor newActor) { }
     public void Leave(IEnumerable<IActor> encounterActors) { }
     public void Part(IActor leavingActor) { }

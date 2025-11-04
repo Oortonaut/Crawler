@@ -32,6 +32,7 @@ public class Encounter {
     public Encounter(Location location, Faction faction) {
         this.location = location;
         Faction = faction;
+        LastEvent = Game.SafeTime;
         Game.Instance!.RegisterEncounter(this);
     }
 
@@ -87,32 +88,44 @@ public class Encounter {
 
         float expectedCount = hourlyArrivals * (Tuning.Encounter.DynamicCrawlerLifetimeExpectation / 3600f);
         int initialCount = CrawlerEx.SamplePoisson(expectedCount);
+        long time = Game.SafeTime;
+
+        if (initialCount <= 0) {
+            return;
+        }
 
         // Calculate arrival times and sort by them
-        var arrivals = new List<(int arrivalTime, int lifetime)>();
+        var arrivals = new List<(long arrivalTime, int lifetime)>();
         for (int i = 0; i < initialCount; i++) {
             int lifetime = ( int ) CrawlerEx.SampleExponential(Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
             // Spread initial arrivals across the lifetime expectation window
-            int arrivalTime = (int)(Random.Shared.NextSingle() * -lifetime);
+            long arrivalTime = time - (int)(Random.Shared.NextSingle() * lifetime);
             arrivals.Add((arrivalTime, lifetime));
         }
+        arrivals = arrivals.OrderBy(a => a.arrivalTime).ToList();
 
-        // Add crawlers in order of arrival time
-        foreach (var (arrivalTime, lifetime) in arrivals.OrderBy(a => a.arrivalTime)) {
-            AddDynamicCrawler(lifetime);
+        LastEvent = arrivals.First().arrivalTime;
+       // Add crawlers in order of arrival time
+        foreach (var (arrivalTime, lifetime) in arrivals) {
+            var crawler = AddDynamicCrawler(lifetime);
+            // Bring all other crawlers up to this time.
+            crawler.LastEvent = arrivalTime;
+            Tick(arrivalTime);
         }
     }
 
-    void AddDynamicCrawler(int lifetime) {
+    Crawler AddDynamicCrawler(int lifetime) {
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
         var crawler = GenerateFactionActor(faction, lifetime);
+        return crawler;
     }
-    void UpdateDynamicCrawlers() {
-        if (hourlyArrivals <= 0) return;
-
-        long currentTime = Game.SafeTime;
-        if (Game.Instance?.IsMinute() ?? false) {
+    void UpdateDynamicCrawlers(long currentTime) {
+        if (hourlyArrivals <= 0) {
+            return;
+        }
+        int elapsed = (int)(currentTime - LastEvent);
+        if (elapsed == 0) {
             return;
         }
 
@@ -126,7 +139,7 @@ public class Encounter {
         }
 
         // Sample how many crawlers should arrive
-        int arrivalCount = CrawlerEx.SamplePoisson(hourlyArrivals / 60);
+        int arrivalCount = CrawlerEx.SamplePoisson(hourlyArrivals * elapsed / 3600);
 
         if (arrivalCount > 0) {
             // Calculate arrival times for each new crawler and add in order
@@ -163,14 +176,18 @@ public class Encounter {
         var existingActors = ActorsExcept(actor).ToList();
 
         // Notify new actor about all existing actors
-        actor.Meet(existingActors);
+        actor.Meet(this, LastEvent, existingActors);
 
         // Notify all existing actors about the new actor
         foreach (var other in existingActors) {
             other.Greet(actor);
         }
+        if (actor is Crawler crawler) {
+            Schedule(crawler);
+        }
     }
-    public EncounterActor this[IActor actor] => actors[actor];
+    // Is this subverting C# idiom to automatically insert using this[]
+    public EncounterActor this[IActor actor] => actors.GetOrAddNew(actor);
 
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
     public virtual void RemoveActor(IActor actor) {
@@ -183,6 +200,9 @@ public class Encounter {
 
         actor.Leave(remainingActors);
         actors.Remove(actor);
+        if (actor is Crawler crawler) {
+            Unschedule(crawler);
+        }
     }
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
     public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(EActorFlags.Settlement));
@@ -436,10 +456,9 @@ public class Encounter {
         case EncounterType.Hazard: GenerateHazard(); break;
         }
         InitDynamicCrawlers();
-        Tick();
         return this;
     }
-    public IActor GenerateFactionActor(Faction faction, int? lifetime) {
+    public Crawler GenerateFactionActor(Faction faction, int? lifetime) {
         Crawler result;
 
         result = faction switch {
@@ -452,18 +471,83 @@ public class Encounter {
         return result;
     }
 
-    public IEnumerable<IActor> ActorsExcept(IActor actor) => Game.Instance is {} inst && inst.Moving ? [] : Actors.Where(a => a != actor);
+    public IEnumerable<IActor> ActorsExcept(IActor actor) => Actors.Where(a => a != actor);
     public IEnumerable<IActor> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
-    public void Tick() {
-        using var activity = LogCat.Encounter.StartActivity($"Tick {nameof(Encounter)}");
-        UpdateDynamicCrawlers();
 
-        foreach (var actor in actors.Keys) {
-            if (actor.EndState is { } state) {
+    SortedDictionary<long, List<Crawler>> crawlersByTurn = new();
+    Dictionary<Crawler, long> turnForCrawler = new();
+    public long LastEvent { get; protected set; }
+    public long NextEvent => crawlersByTurn.Any() ? crawlersByTurn.Keys.Min() : Game.SafeTime + Tuning.MaxDelay;
+    public void Schedule(Crawler crawler) {
+        int delay = crawler.GetDelay();
+        Schedule(crawler, Game.SafeTime + delay);
+    }
+    void Schedule(Crawler crawler, long nextTurn) {
+        if (turnForCrawler.TryGetValue(crawler, out var scheduledTurn)) {
+            if (nextTurn < scheduledTurn) {
+                Unschedule(crawler);
             } else {
-                actor.Tick(ActorsExcept(actor));
-                actor.Tick();
+                return;
             }
         }
+        var turnList = crawlersByTurn.GetOrAddNew(nextTurn, () => new List<Crawler>());
+        turnList.Add(crawler);
+        turnForCrawler[crawler] = nextTurn;
+        // No encounter while we are creating it, but it will schedule itself
+        if (Location.HasEncounter) {
+            Game.Instance!.Schedule(Location.GetEncounter());
+        }
+    }
+    void Unschedule(Crawler crawler) {
+        if (turnForCrawler.TryGetValue(crawler, out var turn)) {
+            var turnList = crawlersByTurn[turn];
+            turnList.Remove(crawler);
+            if (turnList.Count == 0) {
+                crawlersByTurn.Remove(turn);
+            }
+            turnForCrawler.Remove(crawler);
+        }
+        if (Location.HasEncounter) {
+            Game.Instance!.Schedule(Location.GetEncounter());
+        }
+    }
+    List<Crawler> TurnCrawlers() {
+        var first = crawlersByTurn.First();
+        long turn = first.Key;
+        crawlersByTurn.Remove(turn);
+        var crawlers = first.Value;
+        foreach (var crawler in crawlers) {
+            // TODO: Use a 0 sentinel instead of removing
+            turnForCrawler.Remove(crawler);
+        }
+        return crawlers;
+    }
+    public void Tick(long time) {
+        if (time < LastEvent) {
+            LogCat.Log.LogInformation($"Encounter {Name} ticked backwards from {LastEvent} to {time}");
+            LastEvent = time;
+            return;
+        }
+        int elapsed = (int) (time - LastEvent);
+        using var activity = LogCat.Encounter.StartActivity($"Tick {nameof(Encounter)} {Name} to {time} elapsed {elapsed}");
+        if (elapsed == 0) {
+            return;
+        }
+
+        UpdateDynamicCrawlers(time);
+
+        while (crawlersByTurn.Count > 0 && NextEvent <= time) {
+            foreach (var crawler in TurnCrawlers()) {
+                crawler.Tick(time);
+                if (crawler.Flags.HasFlag(EActorFlags.Player)) {
+                    Game.Instance!.GameMenu();
+                } else {
+                    crawler.Think(elapsed, ActorsExcept(crawler));
+                }
+                Schedule(crawler);
+            }
+        }
+
+        LastEvent = time;
     }
 }

@@ -249,54 +249,53 @@ public class Crawler: IActor {
         return Random.Shared.NextSingle() > this.EscapeChance();
     }
 
-    public void Tick() {
-        if (EndState == null) {
+    internal long LastEvent = 0;
+    public void Tick(long time) {
+        if (EndState != null) {
             return;
         }
-        if (Game.Instance?.IsHour() ?? false) {
-            using var activity = LogCat.Game.StartActivity($"{Name} Tick ")?
-                .SetTag("Actor", Name)
-                .SetTag("Faction", Faction.ToString())
-                .SetTag("Location", Location.ToString())
-                .SetTag("EndState", EndState?.ToString());
+        if (LastEvent == 0) {
+            LastEvent = time;
+            return;
+        }
+        int elapsed = (int)(time - LastEvent);
+        Recharge(elapsed);
 
-            UpdateSegmentCache();
-            Recharge();
+        // Check rations
+        if (RationsInv <= 0) {
+            Message("You are out of rations and your crew is starving.");
+            float liveRate = 0.99f;
+            liveRate = ( float ) Math.Pow(liveRate, elapsed / 3600);
+            CrewInv *= liveRate;
+            SoldiersInv *= liveRate;
+            PassengersInv *= liveRate;
+            RationsInv = 0;
+        }
 
-            // Check rations
-            if (RationsInv <= 0) {
-                Message("You are out of rations and your crew is starving.");
-                float starveRate = 0.01f;
-                CrewInv *= (1 - starveRate);
-                SoldiersInv *= (1 - starveRate);
-                PassengersInv *= (1 - starveRate);
-                RationsInv = 0;
-            }
+        // Check water
+        if (WaterInv <= 0) {
+            Message("You are out of water. People are dying of dehydration.");
+            float keepRate = 0.98f;
+            keepRate = ( float ) Math.Pow(keepRate, elapsed / 3600);
+            CrewInv *= keepRate;
+            SoldiersInv *= keepRate;
+            PassengersInv *= keepRate;
+            WaterInv = 0;
+        }
 
-            // Check water
-            if (WaterInv <= 0) {
-                Message("You are out of water. People are dying of dehydration.");
-                float dehydrateRate = 0.02f;
-                CrewInv *= (1 - dehydrateRate);
-                SoldiersInv *= (1 - dehydrateRate);
-                PassengersInv *= (1 - dehydrateRate);
-                WaterInv = 0;
-            }
+        // Check air
+        if (AirInv <= 0) {
+            Message("You are out of air. People are suffocating.");
+            float keepRate = 0.95f;
+            CrewInv *= keepRate;
+            SoldiersInv *= keepRate;
+            PassengersInv *= keepRate;
+            AirInv = 0;
+        }
 
-            // Check air
-            if (AirInv <= 0) {
-                Message("You are out of air. People are suffocating.");
-                float suffocateRate = 0.03f;
-                CrewInv *= (1 - suffocateRate);
-                SoldiersInv *= (1 - suffocateRate);
-                PassengersInv *= (1 - suffocateRate);
-                AirInv = 0;
-            }
-
-            if (IsDepowered) {
-                Message("Your life support systems are offline.");
-                MoraleInv -= 1.0f;
-            }
+        if (IsDepowered) {
+            Message("Your life support systems are offline.");
+            MoraleInv -= 1.0f;
         }
         if (CrewInv == 0) {
             // TODO: List killers
@@ -318,11 +317,8 @@ public class Crawler: IActor {
         }
         UpdateSegmentCache();
     }
-    public void Tick(IEnumerable<IActor> Actors) {
-        if (!Actors.Any()) {
-            return;
-        }
-        using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
+    public void Think(int elapsed, IEnumerable<IActor> Actors) {
+        // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
 
         if (IsDepowered) {
             Message($"{Name} has no power.");
@@ -404,6 +400,9 @@ public class Crawler: IActor {
     public List<Segment> ActiveSegmentsFor(SegmentKind segmentKind) => _activeSegmentsByClass[segmentKind];
     public List<Segment> Segments => _allSegments;
     public List<Segment> ActiveSegments => _activeSegments;
+    public IEnumerable<Segment> ActiveCycleSegments => _activeSegments.Where(s => s.IsActiveCycle);
+    public IEnumerable<Segment> CyclingSegments => _activeSegments.Where(s => s.IsCycling);
+
     public List<Segment> DisabledSegments => _disabledSegments;
     public List<Segment> DestroyedSegments => _destroyedSegments;
     public List<Segment> UndestroyedSegments => _undestroyedSegments;
@@ -605,7 +604,7 @@ public class Crawler: IActor {
         EndMessage = $"{state}: {message}";
         EndState = state;
         Message($"Game Over: {message} ({state})");
-        Location.GetEncounter()[this].ExitAfter(3600);
+        Location.GetEncounter()[this].ExitAfter(36000);
     }
     public string EndMessage { get; set; } = string.Empty;
     public EEndState? EndState { get; set; }
@@ -650,10 +649,10 @@ public class Crawler: IActor {
         }
         return fire;
     }
-    public void Recharge() {
-        Segments.Do(s => s.Tick());
-        float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate());
-        overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate());
+    public void Recharge(int elapsed) {
+        Segments.Do(s => s.Tick(elapsed));
+        float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate(elapsed));
+        overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate(elapsed));
         FeedPower(overflowPower);
         ScrapInv -= WagesPerHr;
         RationsInv -= RationsPerHr;
@@ -821,7 +820,7 @@ public class Crawler: IActor {
 
     public bool Knows(IActor other) => _relations.ContainsKey(other);
     public ActorToActor To(IActor other) {
-        return _relations.GetOrAddNewValue(other, () => NewRelation(other));
+        return _relations.GetOrAddNew(other, () => NewRelation(other));
     }
     public ActorToActor NewRelation(IActor to) {
         var result = new ActorToActor();
@@ -851,7 +850,7 @@ public class Crawler: IActor {
     }
 
     public LocationActor To(Location location) {
-        return _locations.GetOrAddNewValue(location, () => NewRelation(location));
+        return _locations.GetOrAddNew(location, () => NewRelation(location));
     }
     public LocationActor NewRelation(Location to) {
         var result = new LocationActor();
@@ -914,7 +913,7 @@ public class Crawler: IActor {
     /// <summary>
     /// Called when this actor enters an encounter with existing actors
     /// </summary>
-    public void Meet(IEnumerable<IActor> encounterActors) {
+    public void Meet(Encounter encounter, long time, IEnumerable<IActor> encounterActors) {
         foreach (var actor in encounterActors.OfType<Crawler>()) {
             actor.SetupBanditExtortion(this);
             actor.SetupContrabandAndTaxes(this);

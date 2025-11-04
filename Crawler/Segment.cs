@@ -80,9 +80,15 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     public float Cost => SegmentDef.Cost;
     public int MaxHits => SegmentDef.MaxHits;
     public char ClassCode => SegmentDef.ClassCode;
+    public int Cycle { get; set; } = 0;
     public virtual string Report => $"{Name} {GetStyle()}";
 
-    public virtual void Tick() { }
+    long lastTick = Game.SafeTime;
+    public void TickUntil(long time) => Tick(( int ) (time - lastTick));
+    public virtual void Tick(int elapsed) {
+        lastTick += elapsed;
+        Cycle = Math.Max(0, Cycle - elapsed);
+    }
 
     int _hits = 0;
     public int Hits {
@@ -130,6 +136,10 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
         Working.Pristine;
     // Active segments are usable until they take half damage, rounded down
     public bool IsActive => State is Working.Pristine or Working.Running;
+    public bool IsActiveCycle => IsActive && Cycle == 0;
+    public bool IsCycling => IsActive && Cycle > 0;
+    public void CycleStart() => Cycle = CycleLength;
+    public virtual int CycleLength => 0;
     public bool IsPristine => State is Working.Pristine;
     public bool IsRunning => State is Working.Running;
 
@@ -203,6 +213,7 @@ public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
     public float Rate => Tuning.Segments.RateTiers[RateTier];
     public float Shots => (float)Math.Round(Tuning.Segments.ShotsTiers[ShotsTier]);
     public float Aim => Tuning.Segments.AimTiers[AimTier];
+    public int CycleLength => (int)(60 / Rate);
 
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
@@ -219,11 +230,13 @@ public class WeaponSegment(WeaponDef weaponDef, IActor? Owner): OffenseSegment(w
     public float Rate => weaponDef.Rate;
     public float Shots => weaponDef.Shots;
     public float Aim => weaponDef.Aim;
+    public override int CycleLength => weaponDef.CycleLength;
     public virtual IEnumerable<HitRecord> GenerateFire(int aim) {
-        if (IsActive) {
+        if (IsActiveCycle) {
             for (int i = 0; i < Shots; i++) {
                 yield return new(this, Damage, Aim + aim);
             }
+            CycleStart();
         }
     }
     public virtual IEnumerable<HitRecord> Adjust(HitRecord hit) {
@@ -302,9 +315,9 @@ public class ReactorSegment(ReactorDef reactorDef, IActor? Owner): PowerSegment(
         set => _charge = Math.Clamp(value, 0, Capacity);
     }
     // Returns remaining generation
-    public float Generate() {
+    public float Generate(int duration) {
         if (IsActive) {
-            float Expected = Charge + Generation;
+            float Expected = Charge + Generation * duration / 3600;
             Charge = Expected;
             return Expected - Charge;
         } else {
@@ -328,9 +341,9 @@ public class ChargerSegment(ChargerDef ChargerDef, IActor? Owner): PowerSegment(
     public float Generation => ChargerDef.Charge;
 
     // Returns remaining generation
-    public float Generate() {
+    public float Generate(int duration) {
         if (IsActive) {
-            return Generation;
+            return Generation * duration / 3600;
         }
         return 0;
     }
@@ -448,7 +461,7 @@ public record ShieldDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
     public override ShieldSegment NewSegment() => new(this, null);
 
     public int Capacity => ( int ) Math.Round(Tuning.Segments.ShieldCapacityTiers[CapacityTier]);
-    public int Charge => ( int ) Math.Round(Tuning.Segments.ShieldChargeTiers[ChargeTier]);
+    public float Charge => Tuning.Segments.ShieldChargeTiers[ChargeTier];
 
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
@@ -460,13 +473,13 @@ public record ShieldDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
 }
 public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(shieldDef, Owner) {
     public int Capacity => shieldDef.Capacity;
-    public int Charge => shieldDef.Charge;
+    public float Charge => shieldDef.Charge;
     public override char ReportCode(Location _) => fracCode(ShieldLeft, Capacity);
 
-    public override void Tick() {
-        base.Tick();
+    public override void Tick(int elapsed) {
+        base.Tick(elapsed);
         if (IsActive) {
-            ShieldLeft += Charge;
+            ShieldLeft += Charge * elapsed / 3600;
         } else if (IsUsable) {
             // Hold charge but don't generate new charge
         } else {
@@ -474,16 +487,16 @@ public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(s
         }
     }
 
-    int _shieldLeft = 0;
-    public int ShieldLeft {
+    float _shieldLeft = 0;
+    public float ShieldLeft {
         get => _shieldLeft;
         set => _shieldLeft = Math.Clamp(value, 0, Capacity);
     }
     // Returns amount of source damage remaining
     public (int, string) AddShieldDmg(int delta) {
-        var start = ShieldLeft;
+        var start = (int)ShieldLeft;
         ShieldLeft -= delta;
-        var taken = start - ShieldLeft;
+        var taken = start - (int)ShieldLeft;
         var rem = delta - taken;
         if (taken > 0) {
             return (rem, $" {Name}, soaked {taken}");

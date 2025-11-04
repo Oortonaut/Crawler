@@ -305,6 +305,9 @@ public class CrawlerArena {
             }
             rounds++;
 
+            // TODO: Implement scheduling into CrawlerArena match
+            int time = 0;
+
             // Determine attack order based on design1First parameter
             var (firstAttacker, secondAttacker) = design1First ? (crawler1, crawler2) : (crawler2, crawler1);
 
@@ -314,8 +317,8 @@ public class CrawlerArena {
             firstAttacker.ReceiveFire(secondAttacker, fire2);
 
             // Recharge both crawlers
-            crawler1.Tick();
-            crawler2.Tick();
+            crawler1.Tick(time);
+            crawler2.Tick(time);
         }
 
         // Determine winner
