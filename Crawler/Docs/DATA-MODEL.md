@@ -494,7 +494,6 @@ enum EActorFlags {
     Mobile = 1 << 1,        // Can move
     Settlement = 1 << 2,    // Is a settlement
     Creature = 1 << 3,      // Living being (unused currently)
-    Looted = 1 << 16,       // Has been looted
 }
 ```
 

@@ -12,10 +12,18 @@ static file class CommodityCache {
 
 /// <summary>
 /// Three-level interaction system for actor interactions.
-/// Proposals check capabilities and generate IInteractions.
+/// Proposals check feasibility and generate IInteractions.
 /// See: docs/SYSTEMS.md#proposalinteraction-system
 /// </summary>
-/// Naming: Proposal[ActorVerb][SubjectVerb]
+// Naming: Proposal[ActorVerb][SubjectVerb]
+// The visibility/feasibility testing at this level determines whether the interaction is
+// conceivably possible, and if it fails, the interaction won't be presented on
+// the menu. This tests potentiality in the context of the encounter and the
+// current state of the actors.
+//
+//  In an ExchangeInteraction, the feasibility is delegated to the offers.
+// For performance, prefer to fail the feasibility tests rather than
+// yielding no interactions.
 public interface IProposal {
     /// <summary>Can the agent make this proposal?</summary>
     bool AgentCapable(IActor agent);
@@ -23,28 +31,31 @@ public interface IProposal {
     /// <summary>Can the subject receive this proposal?</summary>
     bool SubjectCapable(IActor subject);
 
-    /// <summary>Can the combo interact? For performance, if no interaction is possible
-    /// then GetInteractions() shouldn't yield any.</summary>
-    bool InteractionCapable(IActor Agent, IActor Subject);
+    /// <summary>Can the pair interact?</summary>
+    bool PairCapable(IActor Agent, IActor Subject);
 
     /// <summary>Display description for debugging (Proposals aren't usually user visible)</summary>
     string Description { get; }
 
     /// <summary>Expiration time for proposals</summary>
-    ///  0 for no expiration
-    ///  -1 or t < Game.Instance.Time for immediate expiration.
-    ///  t >= Game.Instance.Time for future termination.
+    //  0 for no expiration
+    //  1 or t < Game.SafeTime for immediate expiration.
+    //  t >= Game.Instance.Time for future termination.
     long ExpirationTime { get; }
 
-    /// <summary>
-    /// Generate concrete interactions.
-    /// May yield multiple interactions (e.g., Accept and Refuse for demands).
-    /// </summary>
+    /// <summary> Generate 0 or more concrete interactions. </summary>
+    // May yield multiple interactions (e.g., Accept and Refuse for demands) and
+    // the interactions may change over time and with other state not related
+    // to the actors involved.
+    // This must only be called when all tests pass.
     IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject);
 }
 
 public static class IProposalEx {
-    public static bool Test(this IProposal proposal, IActor Agent, IActor Subject) {
+    public static bool Feasible(this IProposal proposal, IActor Agent, IActor Subject) {
+        return proposal.AgentCapable(Agent) && proposal.SubjectCapable(Subject) && proposal.PairCapable(Agent, Subject);
+    }
+    public static bool FeasibleSlow(this IProposal proposal, IActor Agent, IActor Subject) {
         using var activity = LogCat.Interaction.StartActivity($"Test {proposal.Description} {Agent.Name} {Subject.Name}");
         activity?.SetTag("proposal.description", proposal.Description);
         activity?.SetTag("agent.name", Agent.Name);
@@ -52,7 +63,7 @@ public static class IProposalEx {
 
         bool ac = proposal.AgentCapable(Agent);
         bool sc = proposal.SubjectCapable(Subject);
-        bool ic = proposal.InteractionCapable(Agent, Subject);
+        bool ic = proposal.PairCapable(Agent, Subject);
         bool result = ac && sc && ic;
 
         if (!result) {
@@ -75,7 +86,7 @@ public static class IProposalEx {
             .SetTag("Proposal", proposal.Description)
             .SetTag("Agent", Agent.Name).SetTag("Subject", Subject.Name);
 
-        bool passed = proposal.Test(Agent, Subject);
+        bool passed = proposal.Feasible(Agent, Subject);
         activity?.SetTag("test.passed", passed);
 
         if (passed) {
@@ -100,7 +111,7 @@ public record ProposeExchange(
     string OptionCode = "T"): IProposal {
     public virtual bool AgentCapable(IActor agent) => true;
     public virtual bool SubjectCapable(IActor subject) => true;
-    public virtual bool InteractionCapable(IActor Agent, IActor Subject) =>
+    public virtual bool PairCapable(IActor Agent, IActor Subject) =>
         Agent != Subject &&
         agentOffer.EnabledFor(Agent, Subject) &&
         subjectOffer.EnabledFor(Subject, Agent) &&
@@ -133,15 +144,13 @@ public record ProposeSubjectExchange(
 
 // I propose that I give you my loot
 record ProposeLootTake(string OptionCode, string verb = "Loot"): IProposal {
-    public bool AgentCapable(IActor agent) =>
-        agent is Crawler wreck &&
-        wreck.EndState != null &&
-        !wreck.HasFlag(EActorFlags.Looted);
+    public bool AgentCapable(IActor agent) => true; // agent.EndState is not EEndState.Looted;
     public bool SubjectCapable(IActor subject) => true;
-    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
+    public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{verb} {Agent.Name}";
-        yield return new ExchangeInteraction(Agent, Agent.SupplyOffer(Tuning.Game.LootReturn), Subject, new EmptyOffer(), OptionCode, description);
+        var agentOffer = new LootOfferWrapper(Agent.SupplyOffer(Tuning.Game.LootReturn));
+        yield return new ExchangeInteraction(Agent, agentOffer, Subject, new EmptyOffer(), OptionCode, description);
     }
     public string Description => $"Offer {verb}";
     public long ExpirationTime => 0;
@@ -150,9 +159,9 @@ record ProposeLootTake(string OptionCode, string verb = "Loot"): IProposal {
 
 // I propose that you harvest my resources
 record ProposeHarvestTake(IActor Resource, Inventory Amount, string OptionCode, string verb): IProposal {
-    public bool AgentCapable(IActor agent) => agent == Resource && (agent.Flags & EActorFlags.Looted) == 0;
+    public bool AgentCapable(IActor agent) => agent == Resource && agent.EndState != EEndState.Looted;
     public bool SubjectCapable(IActor subject) => subject != Resource;
-    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
+    public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{verb} {Agent.Name}";
         yield return new ExchangeInteraction(Agent, Agent.SupplyOffer(), Subject, new EmptyOffer(), OptionCode, description);
@@ -163,16 +172,15 @@ record ProposeHarvestTake(IActor Resource, Inventory Amount, string OptionCode, 
     // public record HarvestOffer(IActor Resource, Inventory Amount): InventoryOffer(Resource, Amount) {
     //     public override void PerformOn(IActor Subject) {
     //         base.PerformOn(Subject);
-    //         Agent.Flags |= EActorFlags.Looted;
-    //         Agent.End(EEndState.Destroyed, "has been harvested");
+    //         Agent.End(EEndState.Looted, "has been harvested");
     //     }
     // }
 }
 
 record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal {
-    public bool AgentCapable(IActor agent) => agent == Resource && !agent.HasFlag(EActorFlags.Looted);
+    public bool AgentCapable(IActor agent) => agent == Resource && agent.EndState != EEndState.Looted;
     public bool SubjectCapable(IActor subject) => subject != Resource;
-    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
+    public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new ExchangeInteraction(
             Agent, Agent.SupplyOffer(Chance),
@@ -187,7 +195,7 @@ record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal 
 public record ProposeAttackDefend(string OptionCode): IProposal {
     public bool AgentCapable(IActor agent) => agent == Game.Instance?.Player;
     public bool SubjectCapable(IActor subject) => subject.Lives();
-    public bool InteractionCapable(IActor Agent, IActor Subject) => true;
+    public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var description = $"{Description} {Subject.Name}";
         yield return new ExchangeInteraction(Agent, new AttackOffer(), Subject, new EmptyOffer(), OptionCode, description);
@@ -218,7 +226,7 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
     public bool AgentCapable(IActor Winner) => true;
     public bool SubjectCapable(IActor subject) =>
         subject is Crawler loser && loser.IsVulnerable && loser.Lives();
-    public bool InteractionCapable(IActor Winner, IActor Loser) =>
+    public bool PairCapable(IActor Winner, IActor Loser) =>
         Winner != Loser &&
         Winner.To(Loser).Hostile &&
         !Loser.To(Winner).Surrendered;
@@ -245,7 +253,7 @@ public record ProposeDemand(
     string OptionCode = "D"): IProposal {
     public virtual bool AgentCapable(IActor agent) => true;
     public virtual bool SubjectCapable(IActor subject) => true;
-    public virtual bool InteractionCapable(IActor Agent, IActor Subject) =>
+    public virtual bool PairCapable(IActor Agent, IActor Subject) =>
         Agent != Subject &&
         agentOfferComply.EnabledFor(Agent, Subject) &&
         agentOfferRefuse.EnabledFor(Agent, Subject) &&
@@ -276,8 +284,8 @@ public record ProposeAttackOrLoot(float DemandFraction = 0.5f)
         "Extort",
         OptionCode: "D") {
 
-    public override bool InteractionCapable(IActor Agent, IActor Subject) =>
-        base.InteractionCapable(Agent, Subject) &&
+    public override bool PairCapable(IActor Agent, IActor Subject) =>
+        base.PairCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
         !Agent.To(Subject).Surrendered;
 
@@ -300,8 +308,8 @@ public record ProposeTaxes(float TaxRate = 0.05f)
     public override bool SubjectCapable(IActor subject) =>
         subject.Faction == Faction.Player;
 
-    public override bool InteractionCapable(IActor Agent, IActor Subject) =>
-        base.InteractionCapable(Agent, Subject) && 
+    public override bool PairCapable(IActor Agent, IActor Subject) =>
+        base.PairCapable(Agent, Subject) &&
         Agent.Location.Sector.ControllingFaction == Agent.Faction &&
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Hostile;
@@ -331,8 +339,8 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
     public override bool SubjectCapable(IActor subject) =>
         subject.Faction == Faction.Player && subject.Supplies.Contains(Contraband) != ContainsResult.False;
 
-    public override bool InteractionCapable(IActor Agent, IActor Subject) =>
-        base.InteractionCapable(Agent, Subject) &&
+    public override bool PairCapable(IActor Agent, IActor Subject) =>
+        base.PairCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Hostile &&
         Agent.To(Subject).StoredProposals.Any(p => p is ProposeContrabandSeizure);
@@ -357,8 +365,8 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
     public override bool SubjectCapable(IActor subject) =>
         subject is Crawler { IsVulnerable: true } && subject.Faction != Faction.Player;
 
-    public override bool InteractionCapable(IActor Agent, IActor Subject) =>
-        base.InteractionCapable(Agent, Subject) &&
+    public override bool PairCapable(IActor Agent, IActor Subject) =>
+        base.PairCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Surrendered;
 
@@ -376,7 +384,7 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
     public bool SubjectCapable(IActor subject) =>
         subject is Crawler damaged &&
         damaged.Segments.Any(IsRepairable);
-    public bool InteractionCapable(IActor Agent, IActor Subject) =>
+    public bool PairCapable(IActor Agent, IActor Subject) =>
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Hostile;
     public string Description => $"Repair subject segments";

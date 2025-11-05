@@ -28,6 +28,8 @@ public class SavedCrawler {
     public Dictionary<string, SavedActorLocation> VisitedLocations { get; set; } = new();
     public int EvilPoints { get; set; } = 0;
     public List<SavedProposal> StoredProposals { get; set; } = new();
+    public EEndState? EndState { get; set; }
+    public string EndMessage { get; set; } = "";
 }
 
 [YamlSerializable]
@@ -211,7 +213,9 @@ public static class SaveLoadExtensions {
                 kvp => kvp.Value.ToSaveData()
             ),
             EvilPoints = crawler.EvilPoints,
-            StoredProposals = crawler.StoredProposals.Select(p => p.ToSaveData()).ToList()
+            StoredProposals = crawler.StoredProposals.Select(p => p.ToSaveData()).ToList(),
+            EndState = crawler.EndState,
+            EndMessage = crawler.EndMessage
         };
     }
 
@@ -570,7 +574,9 @@ public static class SaveLoadExtensions {
 
         var crawler = new Crawler(savedCrawler.Faction, location, inventory) {
             Name = savedCrawler.Name,
-            EvilPoints = savedCrawler.EvilPoints
+            EvilPoints = savedCrawler.EvilPoints,
+            EndState = savedCrawler.EndState,
+            EndMessage = savedCrawler.EndMessage
         };
 
         // Restore trade inventory

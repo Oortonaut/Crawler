@@ -37,10 +37,10 @@ public record CompoundOffer(params IOffer[] subs): IOffer {
 public record LootOfferWrapper(IOffer offer): IOffer {
     public virtual string Description => $"{offer} (Loot)";
     public override string ToString() => Description;
-    public virtual string? DisabledFor(IActor Agent, IActor Subject) => Agent.HasFlag(EActorFlags.Looted) ? "Already looted" : offer.DisabledFor(Agent, Subject);
+    public virtual string? DisabledFor(IActor Agent, IActor Subject) => Agent.EndState == EEndState.Looted ? "Already looted" : offer.DisabledFor(Agent, Subject);
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         offer.PerformOn(Agent, Subject);
-        Agent.Flags |= EActorFlags.Looted;
+        Agent.End(EEndState.Looted, $"looted by {Subject.Name}");
     }
     public float ValueFor(IActor Agent) => offer.ValueFor(Agent);
 }

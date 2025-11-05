@@ -25,6 +25,7 @@ public record struct HitRecord(WeaponSegment Weapon, float Damage, float Aim) {
 
 public enum EEndState {
     Destroyed,
+    Looted,
     Revolt,
     Killed,
     Starved,
@@ -41,7 +42,6 @@ public enum EActorFlags {
     Creature = 1 << 3,
     Capital = 1 << 4,
 
-    Looted = 1 << 16,
 }
 
 /// <summary>
@@ -56,7 +56,7 @@ public interface IActor {
     /// <summary>Political allegiance</summary>
     Faction Faction { get; }
 
-    /// <summary>Type flags (Mobile, Settlement, Creature, Looted)</summary>
+    /// <summary>Type flags (Mobile, Settlement, Creature)</summary>
     EActorFlags Flags { get; set; }
 
     /// <summary>Current location in the world</summary>
@@ -167,7 +167,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public Inventory Cargo { get; } = inv;
     public EActorFlags Flags { get; set; } = EActorFlags.None;
     public Location Location { get; set; } = location;
-    public bool Harvested => Flags.HasFlag(EActorFlags.Looted);
+    public bool Harvested => EndState == EEndState.Looted;
     public string Brief(IActor viewer) => brief + (Harvested ? " (Harvested)" : "") + "\n";
     public string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";
