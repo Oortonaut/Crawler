@@ -198,14 +198,8 @@ public class Game {
         }
     }
     int GoTo(Location loc) {
-        PlayerLocation.GetEncounter().RemoveActor(Player);
-        var (fuel, time) = Player.FuelTimeTo(loc);
-        Player.FuelInv -= fuel;
-        Player.Tick(Player.LastEvent + (int)(time * 3600));
-        loc.GetEncounter().AddActor(Player);
-        Player.Location = loc;
-
-        return (int)Math.Ceiling(time * 3600);
+        Player.Travel(loc);
+        return 0;
     }
 
     IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
@@ -269,9 +263,7 @@ public class Game {
     }
     Encounter PlayerEncounter() => PlayerLocation.GetEncounter();
 
-    int Look() {
-        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
-        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
+    public string DateString() {
         long seconds = TimeSeconds;
         long minutes = TimeSeconds / 60;
         long hours = minutes / 60;
@@ -283,8 +275,24 @@ public class Game {
         hours %= 24;
         days %= 30;
         months %= 12;
+        return $"{years:D4}/{months + 1:D2}/{days + 1:D2}";
+    }
 
-        Console.Write($"DATE {years,4}/{months,02}/{days,02} TIME {hours,02}:{minutes,02}:{seconds,02}");
+    public string TimeString() {
+        long seconds = TimeSeconds;
+        long minutes = TimeSeconds / 60;
+        long hours = minutes / 60;
+        seconds %= 60;
+        minutes %= 60;
+        hours %= 24;
+        return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+    }
+
+    int Look() {
+        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
+
+        Console.Write($"DATE {DateString()} TIME {TimeString()}   ");
         Console.WriteLine(PlayerEncounter().ViewFrom(Player));
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();

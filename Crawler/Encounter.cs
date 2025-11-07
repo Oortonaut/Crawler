@@ -12,13 +12,14 @@ public enum EncounterType {
 }
 public class EncounterActor {
     public bool Dynamic => ExitTime > 0;
+    public long ArrivalTime { get; set; } = Game.SafeTime;
     public long ExitTime { get; set; } = 0; // 0 means never exits (permanent actor)
     public bool ShouldExit(long currentTime) => Dynamic && currentTime >= ExitTime;
     public void ExitAfter(int duration) {
         if (Dynamic) {
             ExitTime = Math.Min(ExitTime, Game.SafeTime + duration);
         } else {
-            ExitTime = Game.SafeTime + duration;
+            ExitTime = ArrivalTime + duration;
         }
     }
 }
@@ -109,15 +110,15 @@ public class Encounter {
         foreach (var (arrivalTime, lifetime) in arrivals) {
             var crawler = AddDynamicCrawler(lifetime);
             // Bring all other crawlers up to this time.
-            crawler.LastEvent = arrivalTime;
-            Tick(arrivalTime);
+            crawler.NextEvent = arrivalTime;
         }
     }
 
-    Crawler AddDynamicCrawler(int lifetime) {
+    Crawler AddDynamicCrawler(int lifetime) => AddDynamicCrawler(Game.SafeTime, lifetime);
+    Crawler AddDynamicCrawler(long arrivalTime, int lifetime) {
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
-        var crawler = GenerateFactionActor(faction, lifetime);
+        var crawler = GenerateFactionActor(faction, arrivalTime, lifetime);
         return crawler;
     }
     void UpdateDynamicCrawlers(long currentTime) {
@@ -153,7 +154,7 @@ public class Encounter {
 
             // Add crawlers in order of arrival time
             foreach (var (arrivalTime, lifetime) in arrivals.OrderBy(a => a.arrivalTime)) {
-                AddDynamicCrawler(lifetime);
+                AddDynamicCrawler(arrivalTime, lifetime);
             }
         }
     }
@@ -161,13 +162,17 @@ public class Encounter {
     Location location;
     Dictionary<IActor, EncounterActor> actors = new();
     List<MenuItem> menuItems = new();
-    public virtual void AddActor(IActor actor, int? lifetime = null) {
+    public void AddActor(IActor actor, int? lifetime = null) {
+        AddActorAt(actor, Game.SafeTime, lifetime);
+    }
+    public virtual void AddActorAt(IActor actor, long arrivalTime, int? lifetime = null) {
         if (actors.ContainsKey(actor)) {
             throw new ArgumentException("Actor is already in encounter");
         }
 
-        long exitTime = lifetime.HasValue ? Game.SafeTime + lifetime.Value : 0;
+        long exitTime = lifetime.HasValue ? arrivalTime + lifetime.Value : 0;
         var metadata = new EncounterActor {
+            ArrivalTime = arrivalTime,
             ExitTime = exitTime,
         };
         actors[actor] = metadata;
@@ -449,7 +454,7 @@ public class Encounter {
         case EncounterType.Crossroads:
         {
             Name = $"{Faction} Crossroads";
-            GenerateFactionActor(Faction, null);
+            GenerateFactionActor(Faction, Game.SafeTime, null);
         } break;
         case EncounterType.Settlement: GenerateSettlement(); break;
         case EncounterType.Resource: GenerateResource(); break;
@@ -458,7 +463,7 @@ public class Encounter {
         InitDynamicCrawlers();
         return this;
     }
-    public Crawler GenerateFactionActor(Faction faction, int? lifetime) {
+    public Crawler GenerateFactionActor(Faction faction, long arrivalTime, int? lifetime) {
         Crawler result;
 
         result = faction switch {
@@ -467,7 +472,7 @@ public class Encounter {
             Faction.Independent => GenerateTradeActor(),
             _ => GenerateCivilianActor(faction),
         };
-        AddActor(result, lifetime);
+        AddActorAt(result, arrivalTime, lifetime);
         return result;
     }
 

@@ -144,11 +144,11 @@ public record ProposeSubjectExchange(
 
 // I propose that I give you my loot
 record ProposeLootTake(string OptionCode, string verb = "Loot"): IProposal {
-    public bool AgentCapable(IActor agent) => true; // agent.EndState is not EEndState.Looted;
+    public bool AgentCapable(IActor agent) => agent.EndState is not EEndState.Looted;
     public bool SubjectCapable(IActor subject) => true;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
-        string description = $"{verb} {Agent.Name}";
+        string description = $"{Subject.Name} {verb} {Agent.Name}";
         var agentOffer = new LootOfferWrapper(Agent.SupplyOffer(Tuning.Game.LootReturn));
         yield return new ExchangeInteraction(Agent, agentOffer, Subject, new EmptyOffer(), OptionCode, description);
     }

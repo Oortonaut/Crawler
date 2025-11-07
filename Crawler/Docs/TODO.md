@@ -2,9 +2,6 @@
             
 ## Missing Features
 
-* [_] Refactor generate fire and weapon segments to support fire rate.
-* [_] Make a separate combat mode
-* [_] Change to 1-5 minute scheduling
 * [ip 10-27] Improve and show prohibition states
 
 
@@ -15,3 +12,7 @@
 
 
 ## Finished
+
+* [x] Make a separate combat mode - improved scheduling
+* [x] Change to 1-5 minute scheduling -- hourly max delay
+* [x] Refactor generate fire and weapon segments to support fire rate.

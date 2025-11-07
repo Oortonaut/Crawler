@@ -598,7 +598,7 @@ public static partial class CrawlerEx {
             }
         }
     }
-    public static bool Failed(this IActor actor) => actor.EndState != null;
+    public static bool Ended(this IActor actor) => actor.EndState != null;
     public static bool Lives(this IActor actor) => actor.EndState == null;
     public static int Length<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>().Length;
     public static ENUM ChooseRandom<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>()[Random.Shared.Next(0, Length<ENUM>() - 1)];
@@ -820,14 +820,5 @@ public static partial class CrawlerEx {
             }
         }
         return chance;
-    }
-    public static int GetDelay(this Crawler crawler) {
-        int minDelay = Tuning.MaxDelay;
-        int N = 0;
-        foreach (var segment in crawler.CyclingSegments) {
-            minDelay = Math.Min(minDelay, segment.Cycle);
-            ++N;
-        }
-        return minDelay;
     }
 }

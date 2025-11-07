@@ -251,6 +251,7 @@ public class Crawler: IActor {
 
     internal long LastEvent = 0;
     public void Tick(long time) {
+        NextEvent = 0;
         if (EndState != null) {
             return;
         }
@@ -317,6 +318,15 @@ public class Crawler: IActor {
         }
         UpdateSegmentCache();
     }
+    public void Travel(Location loc) {
+        Location.GetEncounter().RemoveActor(this);
+        var (fuel, time) = FuelTimeTo(loc);
+        FuelInv -= fuel;
+        long arrivalTime = LastEvent + ( int ) (time * 3600);
+
+        Location = loc;
+        loc.GetEncounter().AddActorAt(this, arrivalTime);
+    }
     public void Think(int elapsed, IEnumerable<IActor> Actors) {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
 
@@ -341,10 +351,24 @@ public class Crawler: IActor {
     public void Message(string message) {
         // TODO: Message history for other actors
         if (this == Game.Instance?.Player) {
-            CrawlerEx.Message(message);
+            CrawlerEx.Message(Game.Instance!.TimeString() + ": " + message);
         }
     }
     public bool Knows(Location loc) => _locations.ContainsKey(loc);
+    public long NextEvent {
+        get => nextEvent > 0 ? nextEvent : LastEvent + GetDelay();
+        set => nextEvent = Math.Max(nextEvent, Math.Max(value, Game.SafeTime));
+    }
+    long nextEvent = 0;
+    public int GetDelay() {
+        int minDelay = Tuning.MaxDelay;
+        int N = 0;
+        foreach (var segment in CyclingSegments) {
+            minDelay = Math.Min(minDelay, segment.Cycle);
+            ++N;
+        }
+        return minDelay;
+    }
 
     Inventory _inventory = new Inventory();
     public Inventory Supplies {
@@ -731,7 +755,7 @@ public class Crawler: IActor {
             if (hitType is HitType.Misses) {
                 damage = 0;
             }
-            msg += $"{hit.Weapon.Name} {hitType}";
+            msg += $"{hit.Weapon.Name} {hitType} ";
             if (damage > 0) {
                 var shieldSegment = phase0Segments.ChooseRandom();
                 if (shieldSegment != null) {
@@ -758,7 +782,7 @@ public class Crawler: IActor {
             }
             if (damage > 0) {
                 // TODO: Also maybe lose commodities here
-                var (rem, crewMsg) = LoseCrew(damage);
+                var (rem, crewMsg) = LoseCrew(damage / 3);
                 msg += crewMsg;
                 damage = rem;
             }
@@ -798,6 +822,7 @@ public class Crawler: IActor {
                 Message($"{dMorale} morale for destroying friendly {Name}");
             }
         }
+        from.Message(msg.TrimEnd());
         Message(msg.TrimEnd());
         if (totalDamageDealt > 0) {
             UpdateSegmentCache();

@@ -103,20 +103,22 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
         if (hitType is HitType.Misses) {
             return (0, "");
         }
-        string msg = Name;
+        string msg = Name + " ";
         if (IsPackaged) {
             int soaked = delta / 2;
             // takes 1/2 damage
             delta -= soaked;
-            msg += $", packaging soaked {soaked}";
+            msg += $"packaging soaked {soaked}, ";
         }
         var start = Hits;
         Hits += delta;
-        int Taken = Hits - start;
-        if (Taken > 0) {
-            msg += $", took {Taken}{StateString}";
+        int taken = Hits - start;
+        if (taken > 0) {
+            msg += $"took {taken}, ";
+        } else {
+            msg += "no damage.";
         }
-        var remaining = delta - Taken;
+        var remaining = delta - taken;
         return (remaining, msg);
     }
     public enum Working {
@@ -410,18 +412,16 @@ public class ArmorSegment(ArmorDef armorDef, IActor? Owner): DefenseSegment(armo
             if (IsDamaged) {
                 reduction = (reduction + 1) / 2;
             }
-            if (delta > reduction) {
-                var start = Hits;
-                var (rem, _) = base.AddDmg(hitType, delta - reduction);
-                var msg = $" {Name}, soaked {reduction}";
-                if (Hits > start) {
-                    msg += $", took {Hits - start}";
-                }
-                msg += StateString;
-                return (rem, msg);
-            } else {
-                return (0, $" {Name} soaked {delta}{StateString}");
+            reduction = Math.Min(reduction, delta);
+            delta -= reduction;
+            var start = Hits;
+            var msg = $"{Name} ";
+            if (reduction > 0) {
+                msg += $"soaked {reduction}, ";
             }
+            var (rem, baseMsg) = base.AddDmg(hitType, delta - reduction);
+            msg += baseMsg + " " + StateString;
+            return (rem, msg);
         }
         return base.AddDmg(hitType, delta);
     }
@@ -441,18 +441,20 @@ public record PlatingDef(char Symbol, Tier Size, string Name, Tier WeightTier, T
 public class PlatingSegment(PlatingDef PlatingDef, IActor? Owner): DefenseSegment(PlatingDef, Owner) {
     public float Mitigation => PlatingDef.Mitigation;
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
-        string msg = $" {Name}";
+        string msg = $"{Name} ";
         if (IsUsable && hitType is HitType.Hits) {
-            int remaining = (delta * Mitigation).StochasticInt();
-            if (remaining != delta) {
-                msg += $", {delta - remaining} absorbed";
+            int absorbed = (delta * Mitigation).StochasticInt();
+            if (absorbed != 0) {
+                msg += $", mitigated {absorbed}";
+                delta -= absorbed;
             }
         }
         if (delta > 0) {
             string desc;
             (delta, desc) = base.AddDmg(hitType, delta);
-            msg += desc;
+            msg += " " + desc;
         }
+        msg += " " + StateString;
         return (delta, msg);
     }
 }
@@ -499,23 +501,22 @@ public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(s
         var taken = start - (int)ShieldLeft;
         var rem = delta - taken;
         if (taken > 0) {
-            return (rem, $" {Name}, soaked {taken}");
+            return (rem, $"{Name} soaked {taken}, ");
         } else {
-            return (rem, $" {Name}");
+            return (rem, $"{Name}");
         }
     }
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
-        if (State is Working.Pristine or Working.Damaged && hitType is not HitType.Misses) {
-            var (rem, txt) = AddShieldDmg(delta);
+        if (IsActive || State is Working.Damaged && hitType is not HitType.Misses) {
+            var (rem, msg) = AddShieldDmg(delta);
             if (rem > 0) {
                 var start = Hits;
-                (rem, _) = base.AddDmg(hitType, rem);
-                if (Hits > start) {
-                    txt += $", took {Hits - start}";
-                }
+                string baseMsg;
+                (rem, baseMsg) = base.AddDmg(hitType, rem);
+                msg += " " + baseMsg;
             }
-            txt += StateString;
-            return (rem, txt);
+            msg += " " + StateString;
+            return (rem, msg);
         }
         return base.AddDmg(hitType, delta);
     }
@@ -726,7 +727,7 @@ public static class SegmentEx {
     // Defense definitions (Amount = Damage soaked, Rate = Hits before destruction)
     public static List<DefenseDef> DefenseDefs = [
         new ArmorDef('a', 1, "Armor", 1.2f, 1, 1.25f, 1),
-        new PlatingDef('p', 1, "Plating", 1.5f, 0.9f, 1.75f, 1),
+        new PlatingDef('p', 1, "Plating", 1.5f, 0.9f, 2.35f, 1),
         new ShieldDef('s', 1, "Shields", 0.5f, 2, 1.25f, 0.8f, 1, 1),
     ];
 
@@ -768,9 +769,9 @@ public static class SegmentEx {
     public static IEnumerable<WeaponDef> Variations(IEnumerable<WeaponDef> weapons) {
         foreach (var weapon in weapons) {
             yield return weapon;
-            //yield return weapon.Heavy();
-            //yield return weapon.Rapid();
-            //yield return weapon.Heavy().Rapid();
+            yield return weapon.Heavy();
+            yield return weapon.Rapid();
+            yield return weapon.Heavy().Rapid();
         }
     }
 }
