@@ -70,6 +70,7 @@ public class Game {
         currentLocation.GetEncounter().AddActor(_player);
     }
     void Construct(SaveGameData saveData) {
+        Seed = saveData.Seed;
         Rng.SetState(saveData.RngState);
         Gaussian.SetRngState(saveData.GaussianRngState);
         Gaussian.SetPrimed(saveData.GaussianPrimed);
@@ -753,6 +754,7 @@ public class Game {
 
     List<Encounter> allEncounters = new();
     // Accessor methods for save/load
+    public ulong GetSeed() => Seed;
     public long GetTime() => TimeSeconds;
     public Crawler GetPlayer() => Player;
     public Map GetMap() => Map;

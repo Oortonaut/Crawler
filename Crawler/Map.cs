@@ -113,14 +113,6 @@ public record Location {
         }
         return new(dx, dy);
     }
-    public void Deconstruct(out Sector Sector, out Vector2 Position, out EncounterType Type, out float wealth, out ulong seed, out Func<Location, Encounter> NewEncounter) {
-        Sector = this.Sector;
-        Position = this.Position;
-        Type = this.Type;
-        wealth = this.wealth;
-        seed = this.Seed;
-        NewEncounter = this.NewEncounter;
-    }
 }
 
 public class LocationActor {

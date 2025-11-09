@@ -7,6 +7,7 @@ namespace Crawler;
 [YamlSerializable]
 public class SaveGameData {
     public string Version { get; set; } = "1.0";
+    public ulong Seed { get; set; }
     public long Hour { get; set; }
     public int AP { get; set; }
     public int TurnAP { get; set; }
@@ -207,6 +208,7 @@ public static class SaveLoadExtensions {
     public static SaveGameData ToSaveData(this Game game) {
         return new SaveGameData {
             Version = "1.0",
+            Seed = game.GetSeed(),
             Hour = game.GetTime(),
             CurrentLocationPos = game.PlayerLocation.Position,
             Player = game.GetPlayer().ToSaveData(),
