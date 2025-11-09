@@ -8,6 +8,7 @@
 - **Want to add new content?** → [EXTENDING.md](EXTENDING.md)
 
 ## Recent Changes
+- **2025-11-08**: Replaced `Random.Shared` with custom XorShift RNG for deterministic, seed-based randomness; all Crawlers and child objects now use seeded RNG; added `GaussianSampler` class for Box-Muller transform; updated extension methods (`ChooseRandom`, `StochasticInt`, `SamplePoisson`) to accept RNG parameter
 - **2025-10-25**: Renamed `ActivitySources` to `LogCat` for OpenTelemetry logging categories
 - **2025-10-25**: Renamed `InteractionMode` enum to `Immediacy` and `PerformMode()` method to `Immediacy()`
 - **2025-10-24**: Added mutual hostility checks to InteractionCapable methods to prevent trading/repairing/taxing with hostile actors
@@ -268,10 +269,22 @@ For detailed information, see [EXTENDING.md](EXTENDING.md)
 - YAML serialization via YamlDotNet
 - Save/load reconstruction of game state
 
-### Random Generation
-- Gaussian distribution for variance
-- Pareto distribution for populations
-- Procedural world generation
+### Random Generation (XorShift.cs)
+- **XorShift RNG** - Custom 64-bit xorshift* generator for deterministic, reproducible randomness
+  - Each `Crawler` instance has its own RNG state
+  - Supports seeding for deterministic replay and testing
+  - State can be saved/loaded for game persistence
+  - Methods: `NextSingle()`, `NextDouble()`, `NextInt()`, `Seed()` (generates child seeds)
+- **GaussianSampler** - Box-Muller transform for normal distribution
+  - Each `Crawler` has its own Gaussian sampler instance
+  - State includes primed flag, cached value, and RNG state
+  - Used for trait variation (markup, spread, etc.)
+- **Seed-based initialization** - All random objects accept seed parameters
+  - Crawlers, Sectors, Locations, Segments, Inventories
+  - Child objects receive seeds from parent RNG via `Seed()` method
+  - Ensures deterministic behavior without direct parent RNG access
+- **Distribution functions** - Pareto, Poisson, Exponential sampling
+- **Procedural world generation** with fully seeded RNG chain
 
 ### Observability
 - OpenTelemetry activity tracing via `LogCat` class

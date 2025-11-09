@@ -12,11 +12,13 @@ public class Game {
 
     Map? _map = null;
     public Map Map => _map!;
+    XorShift Rng;
+    GaussianSampler Gaussian;
 
-    public static Game NewGame(string crawlerName, int H) {
+    public static Game NewGame(ulong seed, string crawlerName, int H) {
         using var activity = LogCat.Game.StartActivity($"NewGame for '{crawlerName}' with H={H}");
 
-        var game = new Game();
+        var game = new Game(seed);
         game.Construct(crawlerName, H);
         return game;
     }
@@ -26,12 +28,21 @@ public class Game {
         using var reader = new StreamReader(saveFilePath);
         var saveData = deserializer.Deserialize<SaveGameData>(reader);
 
-        var game = new Game();
+        var game = new Game(saveData.RngState);
         game.Construct(saveData);
         return game;
     }
-    Game() {
+    Game(ulong seed) {
         _instance = this;
+        Rng = new XorShift(seed);
+
+        StoredProposals = [
+            new ProposeLootTake(Rng / 'L', "L"),
+            new ProposeAttackDefend("A"),
+            new ProposeAcceptSurrender(Rng / "S", "S"),
+            new ProposeRepairBuy("R"),
+            new ProposePlayerDemand(Rng/'D', 0.5f, "X"),
+        ];
         Welcome();
     }
     protected void Welcome() {
@@ -42,18 +53,25 @@ public class Game {
         if (string.IsNullOrWhiteSpace(crawlerName)) {
             throw new ArgumentException("Name cannot be null or whitespace.", nameof(crawlerName));
         }
-        _map = new Map(H, H * 5 / 2);
+        Gaussian = new GaussianSampler(Rng.Seed());
+        _map = new Map(Rng.Seed(), H, H * 5 / 2);
         var currentLocation = Map.GetStartingLocation();
+        _player = currentLocation.GetEncounter().GeneratePlayerActor(Rng.Seed());
         float wealth = currentLocation.Wealth * 1.25f;
         int crew = 10;
         float goodsWealth = wealth;
         float segmentWealth = wealth * 0.5f;
-        _player = Crawler.NewRandom(Faction.Player, currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
+        _player = Crawler.NewRandom(Rng.Seed(), Faction.Player, currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         _player.Name = crawlerName;
         _player.Flags |= EActorFlags.Player;
         currentLocation.GetEncounter().AddActor(_player);
     }
     void Construct(SaveGameData saveData) {
+        Rng.SetState(saveData.RngState);
+        Gaussian.SetRngState(saveData.GaussianRngState);
+        Gaussian.SetPrimed(saveData.GaussianPrimed);
+        Gaussian.SetZSin(saveData.GaussianZSin);
+
         TimeSeconds = saveData.Hour;
         quit = saveData.Quit;
 
@@ -160,7 +178,8 @@ public class Game {
             yield return def.Resize(5);
         }
         // Create a segment for each definition
-        var segments = SegmentEx.AllDefs.SelectMany(def => Variants(def)).Select(def => def.NewSegment()).ToList();
+        var rng = new XorShift(999);
+        var segments = SegmentEx.AllDefs.SelectMany(def => Variants(def)).Select(def => def.NewSegment(rng.Seed())).ToList();
         Player.Message(segments.SegmentReport(PlayerLocation));
         return 0;
     }
@@ -585,6 +604,7 @@ public class Game {
     }
 
     int PriceStatisticsReport() {
+        XorShift rng = new XorShift(1);
         Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
         Console.WriteLine("Surveying all locations for price statistics...");
         Console.WriteLine("\nPrice Factors Analysis (NEW BID-ASK MODEL):");
@@ -634,7 +654,7 @@ public class Game {
                     // Gather statistics from any crawler's trade proposals
                     foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
                         crawlersProcessed++;
-                        var tradeProposals = crawler.MakeTradeProposals(1.0f);
+                        var tradeProposals = crawler.MakeTradeProposals(Rng.Seed(), 1.0f);
 
                         // Track which commodities this trader offers
                         var offeredCommodities = new HashSet<Commodity>();
@@ -726,13 +746,7 @@ public class Game {
 
     Crawler? _player;
     public Crawler Player => _player!;
-    public List<IProposal> StoredProposals { get; } = [
-        new ProposeLootTake("L"),
-        new ProposeAttackDefend("A"),
-        new ProposeAcceptSurrender("S"),
-        new ProposeRepairBuy("R"),
-        new ProposePlayerDemand(0.5f, "X"),
-    ];
+    public List<IProposal> StoredProposals { get; }
 
     List<Encounter> allEncounters = new();
     // Accessor methods for save/load
@@ -740,4 +754,12 @@ public class Game {
     public Crawler GetPlayer() => Player;
     public Map GetMap() => Map;
     public bool GetQuit() => quit;
+    public ulong GetRngState() => Rng.GetState();
+    public void SetRngState(ulong state) => Rng.SetState(state);
+    public ulong GetGaussianRngState() => Gaussian.GetRngState();
+    public void SetGaussianRngState(ulong state) => Gaussian.SetRngState(state);
+    public bool GetGaussianPrimed() => Gaussian.GetPrimed();
+    public void SetGaussianPrimed(bool primed) => Gaussian.SetPrimed(primed);
+    public double GetGaussianZSin() => Gaussian.GetZSin();
+    public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
 }

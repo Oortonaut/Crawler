@@ -43,14 +43,18 @@ string Logo = string.Join("\n", [
 Console.WriteLine(Logo);
 Console.WriteLine("Welcome to Crawler  (c) 2025 Ace Stapp");
 
+ulong seed = (ulong)DateTime.Now.Ticks + (ulong)Random.Shared.NextInt64();
+
 var newGame = new ActionMenuItem("N", "New Game", args => {
     string? name = args;
+    var tempRng = new XorShift(seed);
+    var gameSeed = tempRng.Seed();
     if (string.IsNullOrWhiteSpace(name)) {
-        name = Names.HumanName();
+        name = Names.HumanName(tempRng.Seed());
         name = CrawlerEx.Input("Crawler Name: ", name);
     }
     if (string.IsNullOrWhiteSpace(name)) {
-        name = Names.HumanName();
+        name = Names.HumanName(tempRng.Seed());
     }
     int minSize = 4;
     int maxSize = 9;
@@ -60,7 +64,7 @@ var newGame = new ActionMenuItem("N", "New Game", args => {
         size = minSize;
     }
     size = Math.Clamp(size, minSize, maxSize);
-    Game.NewGame(name, size);
+    Game.NewGame(gameSeed, name, size);
     return 0;
 });
 var loadGame = new ActionMenuItem("L", "Load Game", _ => {

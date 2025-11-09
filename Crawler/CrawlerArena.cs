@@ -16,22 +16,19 @@ public class CrawlerArena {
         InitializeBasicDesigns();
     }
 
+
     void InitializeArena() {
+        var Rng = new XorShift(12345);
         // Create a minimal map with one sector
-        var map = new Map(1, 1);
+        var map = new Map(Rng.Seed(), 1, 1);
 
         // Access the sector directly since we know it's a 1x1 map
-        var sector = new Sector(map, "Arena", 0, 0);
+        var sector = new Sector(Rng.Seed(), map, "Arena", 0, 0);
         sector.Terrain = TerrainType.Flat;
 
         // Create arena location with EncounterType.None to prevent default generation
-        arenaLocation = new Location(
-            sector,
-            new System.Numerics.Vector2(0.5f, 0.5f),
-            EncounterType.None,
-            1000.0f,
-            loc => new Encounter(loc, Faction.Independent)
-        );
+        arenaLocation = new Location(Rng.Seed(),
+            sector, new System.Numerics.Vector2(0.5f, 0.5f), EncounterType.None, 1000.0f, loc => new Encounter(Rng.Seed(), loc, Faction.Independent));
 
         sector.Locations.Add(arenaLocation);
     }
@@ -56,13 +53,14 @@ public class CrawlerArena {
         var traction = SegmentEx.NameLookup["Traction"];
         //var wheels = SegmentEx.Lookup['O'];
         //var treads = SegmentEx.Lookup['%'];
+        var rng = new XorShift(54321);
         foreach (var o in offense) {
             foreach (var d in defense) {
                 var Inv = new Inventory();
-                Inv.Add(o.NewSegment());
-                Inv.Add(d.NewSegment());
-                Inv.Add(reactor.NewSegment());
-                Inv.Add(traction.NewSegment());
+                Inv.Add(o.NewSegment(rng.Seed()));
+                Inv.Add(d.NewSegment(rng.Seed()));
+                Inv.Add(reactor.NewSegment(rng.Seed()));
+                Inv.Add(traction.NewSegment(rng.Seed()));
                 Inv[Commodity.Scrap] = 1000;
                 Inv[Commodity.Crew] = 5;
                 Inv[Commodity.Fuel] = 100;
@@ -75,19 +73,20 @@ public class CrawlerArena {
 
     Inventory CreateGunboatDesign() {
         var inv = new Inventory();
+        var rng = new XorShift(1001);
         // Basic power and structure - use existing segment definitions
-        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment()); // Large Reactor
-        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment()); // Small Reactor
-        inv.Add(SegmentEx.NameLookup["Heavy Armor"].NewSegment()); // Heavy Armor
-        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment()); // Light Armor
+        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment(rng.Seed())); // Large Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment(rng.Seed())); // Small Reactor
+        inv.Add(SegmentEx.NameLookup["Heavy Armor"].NewSegment(rng.Seed())); // Heavy Armor
+        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment(rng.Seed())); // Light Armor
 
         // Gun-focused loadout
-        inv.Add(SegmentEx.NameLookup["Heavy Guns"].NewSegment()); // Heavy Guns
-        inv.Add(SegmentEx.NameLookup["Heavy Guns"].NewSegment()); // Heavy Guns
-        inv.Add(SegmentEx.NameLookup["Guns"].NewSegment()); // Guns
+        inv.Add(SegmentEx.NameLookup["Heavy Guns"].NewSegment(rng.Seed())); // Heavy Guns
+        inv.Add(SegmentEx.NameLookup["Heavy Guns"].NewSegment(rng.Seed())); // Heavy Guns
+        inv.Add(SegmentEx.NameLookup["Guns"].NewSegment(rng.Seed())); // Guns
 
         // Basic movement
-        inv.Add(SegmentEx.NameLookup["Wheels"].NewSegment()); // Wheels
+        inv.Add(SegmentEx.NameLookup["Wheels"].NewSegment(rng.Seed())); // Wheels
 
         inv[Commodity.Crew] = 5;
         inv[Commodity.Fuel] = 100;
@@ -99,21 +98,22 @@ public class CrawlerArena {
 
     Inventory CreateLaserDesign() {
         var inv = new Inventory();
+        var rng = new XorShift(1002);
         // High power generation for energy weapons
-        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment()); // Large Reactor
-        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment()); // Large Reactor
-        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment()); // Small Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment(rng.Seed())); // Large Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment(rng.Seed())); // Large Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment(rng.Seed())); // Small Reactor
 
         // Laser-focused loadout
-        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment()); // Heavy Lasers
-        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment()); // Heavy Lasers
-        inv.Add(SegmentEx.NameLookup["Lasers"].NewSegment()); // Basic Lasers
+        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment(rng.Seed())); // Heavy Lasers
+        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment(rng.Seed())); // Heavy Lasers
+        inv.Add(SegmentEx.NameLookup["Lasers"].NewSegment(rng.Seed())); // Basic Lasers
 
         // Light protection for mobility
-        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment()); // Light Armor
+        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment(rng.Seed())); // Light Armor
 
         // Basic movement
-        inv.Add(SegmentEx.NameLookup["Wheels Fast"].NewSegment()); // High Speed Wheels
+        inv.Add(SegmentEx.NameLookup["Wheels Fast"].NewSegment(rng.Seed())); // High Speed Wheels
 
         inv[Commodity.Crew] = 4;
         inv[Commodity.Fuel] = 80;
@@ -125,21 +125,22 @@ public class CrawlerArena {
 
     Inventory CreateMissileDesign() {
         var inv = new Inventory();
+        var rng = new XorShift(1003);
         // Moderate power for missile systems
-        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment()); // Large Reactor
-        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment()); // Small Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment(rng.Seed())); // Large Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment(rng.Seed())); // Small Reactor
 
         // Missile-focused loadout
-        inv.Add(SegmentEx.NameLookup["Missiles Heavy"].NewSegment()); // Heavy Missiles
-        inv.Add(SegmentEx.NameLookup["Missiles Heavy"].NewSegment()); // Heavy Missiles
-        inv.Add(SegmentEx.NameLookup["Missiles"].NewSegment()); // Basic Missiles
+        inv.Add(SegmentEx.NameLookup["Missiles Heavy"].NewSegment(rng.Seed())); // Heavy Missiles
+        inv.Add(SegmentEx.NameLookup["Missiles Heavy"].NewSegment(rng.Seed())); // Heavy Missiles
+        inv.Add(SegmentEx.NameLookup["Missiles"].NewSegment(rng.Seed())); // Basic Missiles
 
         // Medium armor
-        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment()); // Heavy Armor
-        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment()); // Light Armor
+        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment(rng.Seed())); // Heavy Armor
+        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment(rng.Seed())); // Light Armor
 
         // Basic movement
-        inv.Add(SegmentEx.NameLookup["Wheels"].NewSegment()); // Wheels
+        inv.Add(SegmentEx.NameLookup["Wheels"].NewSegment(rng.Seed())); // Wheels
 
         inv[Commodity.Crew] = 6;
         inv[Commodity.Fuel] = 120;
@@ -151,22 +152,23 @@ public class CrawlerArena {
 
     Inventory CreateTankDesign() {
         var inv = new Inventory();
+        var rng = new XorShift(1004);
         // Heavy power for sustained combat
-        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment()); // Large Reactor
-        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment()); // Large Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment(rng.Seed())); // Large Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment(rng.Seed())); // Large Reactor
 
         // Mixed weapons
-        inv.Add(SegmentEx.NameLookup["Guns Heavy"].NewSegment()); // Heavy Guns
-        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment()); // Heavy Lasers
+        inv.Add(SegmentEx.NameLookup["Guns Heavy"].NewSegment(rng.Seed())); // Heavy Guns
+        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment(rng.Seed())); // Heavy Lasers
 
         // Heavy armor focus
-        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment()); // Heavy Armor
-        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment()); // Heavy Armor
-        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment()); // Heavy Armor
-        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment()); // Light Armor
+        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment(rng.Seed())); // Heavy Armor
+        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment(rng.Seed())); // Heavy Armor
+        inv.Add(SegmentEx.NameLookup["Armor Heavy"].NewSegment(rng.Seed())); // Heavy Armor
+        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment(rng.Seed())); // Light Armor
 
         // Heavy movement for terrain
-        inv.Add(SegmentEx.NameLookup["Legs Heavy"].NewSegment()); // Heavy Legs
+        inv.Add(SegmentEx.NameLookup["Legs Heavy"].NewSegment(rng.Seed())); // Heavy Legs
 
         inv[Commodity.Crew] = 8;
         inv[Commodity.Fuel] = 150;
@@ -178,23 +180,24 @@ public class CrawlerArena {
 
     Inventory CreateShieldDesign() {
         var inv = new Inventory();
+        var rng = new XorShift(1005);
         // High power for shields
-        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment()); // Large Reactor
-        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment()); // Small Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor Large"].NewSegment(rng.Seed())); // Large Reactor
+        inv.Add(SegmentEx.NameLookup["Reactor"].NewSegment(rng.Seed())); // Small Reactor
 
         // Shield-heavy loadout
-        inv.Add(SegmentEx.NameLookup["Shield Heavy"].NewSegment()); // Heavy Shields
-        inv.Add(SegmentEx.NameLookup["Shield"].NewSegment()); // Light Shields
+        inv.Add(SegmentEx.NameLookup["Shield Heavy"].NewSegment(rng.Seed())); // Heavy Shields
+        inv.Add(SegmentEx.NameLookup["Shield"].NewSegment(rng.Seed())); // Light Shields
 
         // Moderate weapons
-        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment()); // Heavy Lasers
-        inv.Add(SegmentEx.NameLookup["Guns"].NewSegment()); // Guns
+        inv.Add(SegmentEx.NameLookup["Lasers Heavy"].NewSegment(rng.Seed())); // Heavy Lasers
+        inv.Add(SegmentEx.NameLookup["Guns"].NewSegment(rng.Seed())); // Guns
 
         // Light armor since shields provide protection
-        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment()); // Light Armor
+        inv.Add(SegmentEx.NameLookup["Armor"].NewSegment(rng.Seed())); // Light Armor
 
         // Quick movement
-        inv.Add(SegmentEx.NameLookup["Wheels Fast"].NewSegment()); // High Speed Wheels
+        inv.Add(SegmentEx.NameLookup["Wheels Fast"].NewSegment(rng.Seed())); // High Speed Wheels
 
         inv[Commodity.Crew] = 5;
         inv[Commodity.Fuel] = 90;
@@ -339,8 +342,8 @@ public class CrawlerArena {
     }
 
     private Crawler CreateInitializedCrawler(CrawlerDesign design, string name, Faction faction) {
-        var inventory = design.Inventory.Copy();
-        var crawler = new Crawler(faction, arenaLocation, inventory);
+        var inventory = design.Inventory.Clone();
+        var crawler = new Crawler((ulong)(name.GetHashCode() + faction.GetHashCode()), faction, arenaLocation, inventory);
 
         // Set up basic properties
         crawler.Name = name;

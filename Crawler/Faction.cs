@@ -134,21 +134,23 @@ public static class FactionEx {
         }
     }
 
-    public static IEnumerable<Policy> GenerateFactionPolicies(int N) {
+    public static IEnumerable<Policy> GenerateFactionPolicies(int N, ulong seed) {
+        var rng = new XorShift(seed);
         float[] policyWeights = [1, 1, 1, 1, 1, 1, 1, 1]; // TODO: Use an enum for policies
         for (int i = 0; i < N; i++) {
-            yield return GenerateFactionPolicy(policyWeights);
+            yield return GenerateFactionPolicy(policyWeights, rng.Seed());
         }
     }
-    public static Policy GenerateFactionPolicy(float[] policyWeights) {
+    public static Policy GenerateFactionPolicy(float[] policyWeights, ulong seed) {
+        var rng = new XorShift(seed);
         var commodityPolicy = Tuning.FactionPolicies.CreateCommodityDefaultPolicy(TradePolicy.Legal);
         var segmentPolicy = Tuning.FactionPolicies.CreateSegmentDefaultPolicy(TradePolicy.Legal);
 
         string description = "";
         int rolls = 3;
         for (int roll = 0; roll < rolls; roll++) {
-            int index = policyWeights.Index().ChooseWeightedRandom();
-            policyWeights[index] *= Random.Shared.NextSingle();
+            int index = policyWeights.Index().ChooseWeightedAt(rng.NextSingle());
+            policyWeights[index] *= rng.NextSingle();
             if (description.Length > 0) {
                 description += ", ";
             }

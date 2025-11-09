@@ -41,14 +41,15 @@ public static partial class Tuning {
         // Legacy fields (kept for backward compatibility)
         public static float rate = 1.05f;
         public static float sd = 0.07f;
-        public static float LocalMarkup() => CrawlerEx.NextGaussian(1, sd);
-        public static float TradeMarkup() => CrawlerEx.NextGaussian(rate, sd);
+        // public static float LocalMarkup() => CrawlerEx.NextGaussian(1, sd);
+        public static float LocalMarkup(GaussianSampler g) => g.NextSingle(1, sd);
+        public static float TradeMarkup(GaussianSampler gaussian) => gaussian.NextSingle(rate, sd);
         public static float banditRate = 1.25f;          // Higher markup for bandits
         public static float banditSd = 0.1f;
-        public static float BanditMarkup() => CrawlerEx.NextGaussian(banditRate, banditSd);
+        public static float BanditMarkup(GaussianSampler gaussian) => gaussian.NextSingle(banditRate, banditSd);
         public static float repairMarkup = 1.2f;
         public static float repairMarkupSd = 0.15f;
-        public static float RepairMarkup() => CrawlerEx.NextGaussian(repairMarkup, repairMarkupSd);
+        public static float RepairMarkup(GaussianSampler gaussian) => gaussian.NextSingle(repairMarkup, repairMarkupSd);
 
         // New bid-ask spread model
         public static float baseBidAskSpread = 0.20f;   // 20% base spread (±10% around mid)
@@ -56,8 +57,8 @@ public static partial class Tuning {
         public static float tradeSpreadSd = 0.05f;      // ±5% variance
         public static float banditSpreadMultiplier = 1.5f; // Bandit: 30% spread
         public static float banditSpreadSd = 0.10f;     // ±10% variance
-        public static float TradeSpread() => CrawlerEx.NextGaussian(baseBidAskSpread * tradeSpreadMultiplier, tradeSpreadSd);
-        public static float BanditSpread() => CrawlerEx.NextGaussian(baseBidAskSpread * banditSpreadMultiplier, banditSpreadSd);
+        public static float TradeSpread(GaussianSampler gaussian) => gaussian.NextSingle(baseBidAskSpread * tradeSpreadMultiplier, tradeSpreadSd);
+        public static float BanditSpread(GaussianSampler gaussian) => gaussian.NextSingle(baseBidAskSpread * banditSpreadMultiplier, banditSpreadSd);
 
         // Scarcity pricing
         public static float scarcityWeight = 1.0f;      // Multiplier for scarcity effect
@@ -167,7 +168,7 @@ public static partial class Tuning {
         public static float AirRecyclingLossPerHour = 0.005f; // 0.5% per hour per damaged segment
 
         public static EArray<Commodity, float> DefaultCommodityWeights => [
-            1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f, // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f, // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
             0.2f, 0.5f, 1.0f, // Air, Water, Rations
             0.3f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Biomass, Ore, Silicates, Metal, Chemicals, Glass
             0.4f, 0.4f, 0.6f, 0.7f, 0.4f, // Ceramics, Polymers, Alloys, Electronics, Explosives

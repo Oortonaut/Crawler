@@ -56,7 +56,7 @@ public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"):
 }
 
 public static class TradeEx {
-    public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, float wealthFraction) {
+    public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, ulong seed, float wealthFraction) {
         var faction = Seller.Faction;
         var Location = Seller.Location;
         var wealth = Location.Wealth * wealthFraction;
@@ -66,11 +66,21 @@ public static class TradeEx {
         Crawler? seller = Seller as Crawler;
         merchantMarkup = seller?.Markup ?? 1.0f;
 
+        // Get seller's RNG if available, otherwise create a temporary one
+        var rng = new XorShift(seed);
+
         var commodities = Enum.GetValues<Commodity>()
             .Where(s => s != Commodity.Scrap)
-            .Where(s => Random.Shared.NextSingle() < s.AvailabilityAt(Location))
+            .Where(s => rng.NextSingle() < s.AvailabilityAt(Location))
             .ToList();
-        commodities.Shuffle();
+
+        // Shuffle using RNG
+        int n = commodities.Count;
+        while (n > 1) {
+            int k = rng.NextInt(n);
+            n--;
+            (commodities[k], commodities[n]) = (commodities[n], commodities[k]);
+        }
 
         float CFrac = wealth;
 
@@ -79,7 +89,7 @@ public static class TradeEx {
             var policy = Tuning.FactionPolicies.GetPolicy(faction, commodity);
 
             // Skip prohibited goods
-            if (policy == TradePolicy.Prohibited && Random.Shared.NextSingle() > 0.5f) {
+            if (policy == TradePolicy.Prohibited && rng.NextSingle() > 0.5f) {
                 continue;
             }
 
@@ -150,10 +160,10 @@ public static class TradeEx {
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
 
-        int SaleSegments = CrawlerEx.SamplePoisson((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1));
+        int SaleSegments = CrawlerEx.SamplePoisson((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1), ref rng);
         while (SaleSegments --> 0) {
-            var segmentDef = SegmentEx.AllDefs.ChooseRandom()!;
-            var segment = segmentDef.NewSegment();
+            var segmentDef = rng.ChooseRandom(SegmentEx.AllDefs)!;
+            var segment = segmentDef.NewSegment(rng.Seed());
 
             // Check faction policy for this segment kind
             var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);

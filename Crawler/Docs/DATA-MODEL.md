@@ -13,6 +13,7 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2025-11-08**: Added XorShift RNG and GaussianSampler to Crawler class for deterministic randomness; all crawlers now maintain their own RNG state with seed-based initialization
 - **2025-10-29**: Policy record now includes Description field for faction policy descriptions
 - **2025-10-24**: Added `Overdraft` property and `ContainsResult` enum to Inventory; withdrawal methods now support overdraft from linked inventory
 - **2025-10-19**: Added `Betrayer` flag to `EFlags` enum; removed Standing/Trust fields from `ActorToActor`; added `Latch()`, `HasFlag()`, `SetFlag()` helper methods; removed `Betrayed` property (now uses `Betrayer` flag)
@@ -68,6 +69,7 @@ interface IActor {
 - Has segments for functionality
 - Resource management (fuel, crew, morale)
 - Combat capabilities
+- Each crawler has its own XorShift RNG and GaussianSampler for deterministic behavior
 
 **StaticActor** (`IActor.cs:78-115`)
 - Immobile entities (settlements, resources, hazards)

@@ -15,6 +15,16 @@ apply: always
 - Use the [Flags] attribute and HasFlag() and SetFlag() instead of bitwise operators
 - Prefer `var`
 
+## RNG and Determinism
+
+**IMPORTANT: Child objects must NOT access parent RNG directly**
+
+- Each child object (segments, etc.) should use a provided seed, not access the parent Crawler's RNG
+- This applies to ALL non-crawler objects that need randomness
+- **Pattern to avoid:** `(Owner as Crawler)?.GetRng()` - DO NOT DO THIS
+- **Pattern to use:** Accept seed as parameter or constructor argument
+- **Current violations:** Segment.cs lines 254, 267, 282 (GunSegment, LaserSegment, MissileSegment)
+
 ## Documentation
 
 * **Crawler/README.md** - Project overview and introduction

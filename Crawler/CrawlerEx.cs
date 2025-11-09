@@ -232,14 +232,14 @@ public static partial class CrawlerEx {
         int index = (int)(at * seq.Count);
         return seq.Skip(index).FirstOrDefault();
     }
-    public static T? ChooseRandom<T>(this IReadOnlyList<T> seq) {
-        return ChooseAt(seq, Random.Shared.NextSingle());
+    public static T? ChooseRandom<T>(ref this XorShift rng, IReadOnlyList<T> seq) {
+        return ChooseAt(seq, rng.NextSingle());
     }
-    public static T? ChooseRandom<T>(this IReadOnlyCollection<T> seq) {
-        return ChooseAt(seq, Random.Shared.NextSingle());
+    public static T? ChooseRandom<T>(ref this XorShift rng, IReadOnlyCollection<T> seq) {
+        return ChooseAt(seq, rng.NextSingle());
     }
-    public static T? ChooseRandom<T>(this IEnumerable<T> seq) {
-        return ChooseAt(seq, Random.Shared.NextSingle());
+    public static T? ChooseRandom<T>(ref this XorShift rng, IEnumerable<T> seq) {
+        return ChooseAt(seq, rng.NextSingle());
     }
 
     public static T? ChooseWeightedAt<T>(this IEnumerable<(T Item, float Weight)> inSeq, float at) {
@@ -257,15 +257,11 @@ public static partial class CrawlerEx {
         }
         return seq[selected].Item;
     }
-    public static T? ChooseWeightedRandom<T>(this IEnumerable<(T Item, float Weight)> seq) {
-        return ChooseWeightedAt(seq, Random.Shared.NextSingle());
+    public static T? ChooseWeightedRandom<T>(this IEnumerable<(T Item, float Weight)> seq, ref XorShift rng) {
+        return ChooseWeightedAt(seq, rng.NextSingle());
     }
 
-    public static IReadOnlyList<T> ChooseRandomK<T>(this IEnumerable<T> seq, int k) {
-        return ChooseRandomK(seq, k, Random.Shared);
-    }
-
-    public static IReadOnlyList<T> ChooseRandomK<T>(this IEnumerable<T> seq, int k, Random rng) {
+    public static IReadOnlyList<T> ChooseRandomK<T>(this IEnumerable<T> seq, int k, ref XorShift rng) {
         if (k < 0) throw new ArgumentOutOfRangeException(nameof(k), "k must be non-negative");
         if (k == 0) return Array.Empty<T>();
 
@@ -277,7 +273,7 @@ public static partial class CrawlerEx {
                 reservoir.Add(item);
             } else {
                 // pick a random index in [0, count] and replace if < k
-                int j = rng.Next(0, count + 1);
+                int j = rng.NextInt(0, count + 1);
                 if (j < k) reservoir[j] = item;
             }
             count++;
@@ -296,29 +292,6 @@ public static partial class CrawlerEx {
     public static string CommodityText(this Commodity comm, float count) =>
         count == 0 ? string.Empty : comm.CommodityTextFull(count);
 
-    static float _nextGaussian = 0;
-    private static bool _hasNextGaussian = false;
-
-    public static float NextGaussian() {
-        if (_hasNextGaussian) {
-            _hasNextGaussian = false;
-            return _nextGaussian;
-        } else {
-            float u1 = Random.Shared.NextSingle();
-            float u2 = Random.Shared.NextSingle();
-
-            float z = ( float ) Math.Sqrt(-2.0 * Math.Log(u1));
-            var (Sin, Cos) = Math.SinCos(Math.Tau * u2);
-            float z0 = z * ( float ) Cos;
-            _nextGaussian = z * ( float ) Sin;
-            _hasNextGaussian = true;
-
-            return z0;
-        }
-    }
-    public static float NextGaussian(float mean = 0, float stdDev = 1) {
-        return NextGaussian() * stdDev + mean;
-    }
     public static IEnumerable<float> Normalize(this IEnumerable<float> e) {
         var sum = e.Sum();
         var recip = 1.0f / sum;
@@ -403,9 +376,9 @@ public static partial class CrawlerEx {
 
     public static double Frac(double value) => value - Math.Floor(value);
     public static float Frac(float value) => value - (float)Math.Floor(value);
-    public static int StochasticInt(this float expectedValue) {
+    public static int StochasticInt(this float expectedValue, ref XorShift rng) {
         var result = ( int ) Math.Floor(expectedValue);
-        if (Random.Shared.NextSingle() < Frac(expectedValue)) {
+        if (rng.NextSingle() < Frac(expectedValue)) {
             ++result;
         }
         return result;
@@ -416,13 +389,6 @@ public static partial class CrawlerEx {
         for (int y = 0; y < H; y++) {
             for (int x = 0; x < W; x++) {
                 yield return (x, y);
-            }
-        }
-    }
-    public static IEnumerable<T> WhereCast<T>(this IEnumerable<object> e) {
-        foreach (var item in e) {
-            if (item is T t) {
-                yield return t;
             }
         }
     }
@@ -437,16 +403,15 @@ public static partial class CrawlerEx {
     }
     public static float Factorial(int N) => N == 0 ? 1 : Enumerable.Range(1, N).Aggregate(1, (a, b) => a * b);
     public static float PoissonPMF(int K, float lambda) => (float)(Math.Pow(lambda, K) * Math.Exp(-lambda) / Factorial(K));
-    public static int SamplePoisson(float lambda) {
+    public static int SamplePoissonAt(float lambda, float u) {
         if (!(lambda >= 0.0)) throw new ArgumentOutOfRangeException(nameof(lambda));
         // Threshold where we switch from exact inversion to normal approx.
         const float NormalThreshold = 30.0f;
 
         if (lambda < NormalThreshold) {
             // Exact inverse-transform using iterative PMF (stable, no factorials).
-            float u = Random.Shared.NextSingle();
-            float p = (float)Math.Exp(-lambda); // p(0)
-            int limit = (int)(lambda * 20 + 100);
+            float p = ( float ) Math.Exp(-lambda); // p(0)
+            int limit = ( int ) (lambda * 20 + 100);
             float cumulative = p;
             int k = 0;
             while (k < limit) {
@@ -459,27 +424,24 @@ public static partial class CrawlerEx {
             }
             return k;
         } else {
-            float kRaw = lambda + (float)Math.Sqrt(lambda) * NextGaussian();
-            int k = (int)Math.Round(kRaw);
+            float kRaw = lambda + ( float ) (Math.Sqrt(lambda) * GaussianSampler.Quantile(u));
+            int k = ( int ) Math.Round(kRaw);
             return Math.Max(0, k);
         }
     }
+    public static int SamplePoisson(float lambda, ref XorShift rng) => SamplePoissonAt(lambda, rng.NextSingle());
 
     /// <summary>
-    /// Samples from an exponential distribution with the given mean (lambda).
+    /// Samples from an exponential distribution with a mean of 1.
     /// Used for modeling inter-arrival times or remaining lifetimes in a Poisson process.
     /// </summary>
-    /// <param name="mean">The mean (expected value) of the distribution</param>
+    /// <param name="t">The cumulative probability</param>
     /// <returns>A random sample from the exponential distribution</returns>
-    public static float SampleExponential(float mean) {
-        if (mean <= 0) {
-            throw new ArgumentException("Mean must be positive", nameof(mean));
-        }
-
-        // Use inverse transform sampling: -mean * ln(1 - U) where U ~ Uniform(0,1)
+    public static float SampleExponential(float t) {
+ // Use inverse transform sampling: -mean * ln(1 - U) where U ~ Uniform(0,1)
         // We use (1 - NextSingle()) to avoid ln(0)
-        double u = 1.0 - Random.Shared.NextDouble();
-        return ( float ) (-mean * Math.Log(u));
+        double u = 1.0 - t;
+        return ( float ) (-Math.Log(u));
     }
 
     public static float HaltonSequence(uint b, uint index) {
@@ -512,14 +474,12 @@ public static partial class CrawlerEx {
             return false;
         }
     }
-    public static void Shuffle<T>(this IList<T> list) {
+    public static void Shuffle<T>(ref this XorShift rng, IList<T> list) {
         int n = list.Count;
         while (n > 1) {
+            int k = rng.NextInt(n );
             n--;
-            int k = Random.Shared.Next(n + 1);
-            T value = list[k];
-            list[k] = list[n];
-            list[n] = value;
+            (list[k], list[n]) = (list[n], list[k]);
         }
     }
     public static string HomePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Crawler");
@@ -601,7 +561,7 @@ public static partial class CrawlerEx {
     public static bool Ended(this IActor actor) => actor.EndState != null;
     public static bool Lives(this IActor actor) => actor.EndState == null;
     public static int Length<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>().Length;
-    public static ENUM ChooseRandom<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>()[Random.Shared.Next(0, Length<ENUM>() - 1)];
+    public static ENUM ChooseRandom<ENUM>(ref this XorShift rng) where ENUM : struct, Enum => Enum.GetValues<ENUM>()[rng.NextInt(Length<ENUM>())];
     static List<string> _messages = new();
     public static Action<string>? OnMessage = message => _messages.Add(message);
     public static void Message(string message) {
@@ -772,15 +732,15 @@ public static partial class CrawlerEx {
 
         return MenuRun($"{Name}", interactionsMenu.ToArray());
     }
-    public static Inventory Loot(this Inventory from, float lootReturn) {
+    public static Inventory Loot(this Inventory from, XorShift rng, float lootReturn) {
         var loot = new Inventory();
         foreach (var commodity in Enum.GetValues<Commodity>()) {
-            float x = Random.Shared.NextSingle();
+            float x = rng.NextSingle();
             loot[commodity] += from[commodity] * x * lootReturn;
         }
         var lootableSegments = from.Segments.Where(s => s.Health > 0).ToArray();
         loot.Segments.AddRange(lootableSegments
-            .Where(s => Random.Shared.NextDouble() < lootReturn));
+            .Where(s => rng.NextDouble() < lootReturn));
         return loot;
     }
     public static (ActorToActor a2s, ActorToActor s2a) ToTo(this IActor attacker, IActor defender) => (attacker.To(defender), defender.To(attacker));

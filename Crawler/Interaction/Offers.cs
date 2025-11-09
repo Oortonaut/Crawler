@@ -183,8 +183,8 @@ public record InventoryOffer(
 public static partial class OfferEx {
     public static IOffer CargoOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo));
     public static IOffer SupplyOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies));
-    public static IOffer CargoOffer(this IActor actor, float fraction) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo.Loot(fraction)));
-    public static IOffer SupplyOffer(this IActor actor, float fraction) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies.Loot(fraction)));
+    public static IOffer CargoOffer(this IActor actor, XorShift rng, float fraction) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo.Loot(rng, fraction)));
+    public static IOffer SupplyOffer(this IActor actor, XorShift rng, float fraction) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies.Loot(rng, fraction)));
     public static bool EnabledFor(this IOffer Offer, IActor Agent, IActor Subject) => Offer.DisabledFor(Agent, Subject) == null;
     public static bool HostileTo(this IActor from, IActor to) => from.To(to).Hostile;
     public static bool AtWar(this IActor from, IActor to) => from.HostileTo(to) && to.HostileTo(from);

@@ -143,13 +143,13 @@ public record ProposeSubjectExchange(
 }
 
 // I propose that I give you my loot
-record ProposeLootTake(string OptionCode, string verb = "Loot"): IProposal {
+record ProposeLootTake(XorShift Rng, string OptionCode, string verb = "Loot"): IProposal {
     public bool AgentCapable(IActor agent) => agent.EndState is not EEndState.Looted;
     public bool SubjectCapable(IActor subject) => true;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{Subject.Name} {verb} {Agent.Name}";
-        var agentOffer = new LootOfferWrapper(Agent.SupplyOffer(Tuning.Game.LootReturn));
+        var agentOffer = new LootOfferWrapper(Agent.SupplyOffer(Rng / 1, Tuning.Game.LootReturn));
         yield return new ExchangeInteraction(Agent, agentOffer, Subject, new EmptyOffer(), OptionCode, description);
     }
     public string Description => $"Offer {verb}";
@@ -177,13 +177,13 @@ record ProposeHarvestTake(IActor Resource, Inventory Amount, string OptionCode, 
     // }
 }
 
-record ProposeLootPay(IActor Resource, Inventory Risk, float Chance): IProposal {
+record ProposeLootPay(XorShift Rng, IActor Resource, Inventory Risk, float Chance): IProposal {
     public bool AgentCapable(IActor agent) => agent == Resource && agent.EndState != EEndState.Looted;
     public bool SubjectCapable(IActor subject) => subject != Resource;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new ExchangeInteraction(
-            Agent, Agent.SupplyOffer(Chance),
+            Agent, Agent.SupplyOffer(Rng/1, Chance),
             Subject, new InventoryOffer(false, Risk),
             "H");
     }
@@ -205,7 +205,7 @@ public record ProposeAttackDefend(string OptionCode): IProposal {
 }
 
 // a proposal that I accept your surrender
-public record ProposeAcceptSurrender(string OptionCode): IProposal {
+public record ProposeAcceptSurrender(XorShift Rng, string OptionCode): IProposal {
     Inventory MakeSurrenderInv(IActor Loser) {
         Inventory surrenderInv = new();
         float ratio = 0;
@@ -215,9 +215,9 @@ public record ProposeAcceptSurrender(string OptionCode): IProposal {
             ratio = Math.Min(totalHits, 1) / Math.Min(totalMaxHits, 1);
             ratio = (float)Math.Pow(ratio, 0.8);
         }
-        surrenderInv.Add(Loser.Supplies.Loot(ratio));
+        surrenderInv.Add(Loser.Supplies.Loot(Rng/1, ratio));
         if (Loser.Supplies != Loser.Cargo) {
-            surrenderInv.Add(Loser.Cargo.Loot(ratio));
+            surrenderInv.Add(Loser.Cargo.Loot(Rng/2, ratio));
         }
 
         return surrenderInv;
@@ -276,7 +276,7 @@ public record ProposeDemand(
 }
 
 // Bandit extortion: "Hand over cargo or I attack"
-public record ProposeAttackOrLoot(float DemandFraction = 0.5f) 
+public record ProposeAttackOrLoot(XorShift Rng, float DemandFraction = 0.5f)
     : ProposeDemand(
         new EmptyOffer(),
         new AttackOffer(), 
@@ -289,7 +289,7 @@ public record ProposeAttackOrLoot(float DemandFraction = 0.5f)
         !Agent.To(Subject).Hostile &&
         !Agent.To(Subject).Surrendered;
 
-    protected override IOffer SubjectOffer(IActor subject) => subject.SupplyOffer(DemandFraction);
+    protected override IOffer SubjectOffer(IActor subject) => subject.SupplyOffer(Rng/1, DemandFraction);
     public override string Description => "Extort cargo";
 }
 
@@ -351,7 +351,7 @@ public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount
 }
 
 // Player demands: Let player threaten vulnerable NPCs
-public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode = "X")
+public record ProposePlayerDemand(XorShift Rng, float DemandFraction = 0.5f, string OptionCode = "X")
     : ProposeDemand(
         new EmptyOffer(),
         new AttackOffer(),
@@ -371,8 +371,8 @@ public record ProposePlayerDemand(float DemandFraction = 0.5f, string OptionCode
         !Subject.To(Agent).Surrendered;
 
     protected override IOffer SubjectOffer(IActor subject) => new CompoundOffer(
-        subject.SupplyOffer(DemandFraction),
-        subject.CargoOffer((DemandFraction + 1) / 2)
+        subject.SupplyOffer(Rng/1, DemandFraction),
+        subject.CargoOffer(Rng/2, (DemandFraction + 1) / 2)
     );
 
     public override string Description => "Threaten for cargo";
@@ -401,7 +401,7 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
         }
     }
 
-    public float Markup = Tuning.Trade.RepairMarkup();
+    public float Markup = 1.2f; // Default repair markup, will be randomized on creation
     public long ExpirationTime => 0;
     public override string ToString() => Description;
 }

@@ -4,6 +4,7 @@
 **Parent:** [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Quick Navigation
+- [Random Number Generation System](#random-number-generation-system)
 - [Proposal/Interaction System](#proposalinteraction-system)
 - [Mandatory Interaction System](#mandatory-interaction-system-ultimatums)
 - [Trading System](#trading-system)
@@ -13,12 +14,213 @@
 - [Tick System](#tick-system)
 
 ## Recent Changes
+- **2025-11-08**: Replaced `Random.Shared` with custom XorShift RNG; all random operations now use seeded RNG for determinism; combat uses local RNG instances spawned from Crawler RNG
 - **2025-10-29**: Trade proposals now use actor's faction instead of passing it as parameter; improved faction policy generation with multiple archetype selection; settlements now display civilian population
 - **2025-10-29**: Commodity availability calculation changed to use unavailability decay model; silicate prices rounded to 85¢¢
 - **2025-10-29**: Improved settlement generation with log-based dome scaling and passenger-based population
 - **2025-10-25**: Renamed `InteractionMode` enum to `Immediacy`; IInteraction.PerformMode() renamed to IInteraction.Immediacy()
 - **2025-10-25**: Added comprehensive OpenTelemetry tracing via `LogCat` (renamed from `ActivitySources`)
 - **2025-10-24**: Added mutual hostility checks to prevent trading/repairing/taxing with hostile actors
+
+---
+
+## Random Number Generation System
+
+**File:** `XorShift.cs`
+**Purpose:** Deterministic, reproducible randomness for game simulation
+
+### Architecture
+
+**Core Principle:** Every entity that needs randomness maintains its own seeded RNG state. Child objects receive seeds from parent RNG, never access parent RNG directly.
+
+### XorShift RNG
+
+**64-bit xorshift* generator with high-quality output:**
+```csharp
+struct XorShift {
+    ulong state;
+
+    // Core generation
+    float NextSingle();      // [0, 1) uniform
+    double NextDouble();     // [0, 1) uniform (double precision)
+    int NextInt(int max);    // [0, max) uniform
+    ulong Seed();            // Generate child seed
+
+    // State management
+    ulong GetState();
+    void SetState(ulong state);
+}
+```
+
+**Properties:**
+- **Deterministic** - Same seed always produces same sequence
+- **Fast** - Simple bit operations, no divisions
+- **Non-cryptographic** - NOT suitable for security, perfect for games
+- **Period** - 2^64 - 1 (never repeats within game timescale)
+
+### GaussianSampler
+
+**Box-Muller transform for normal distribution:**
+```csharp
+class GaussianSampler {
+    XorShift rng;
+    bool primed;       // Has cached value
+    double zSin;       // Cached value from previous transform
+
+    double Next();                          // N(0, 1)
+    double Next(double mean, double stdDev); // N(mean, stdDev²)
+
+    // State management for save/load
+    ulong GetRngState();
+    void SetRngState(ulong state);
+    bool GetPrimed();
+    void SetPrimed(bool value);
+    double GetZSin();
+    void SetZSin(double value);
+}
+```
+
+**Used for:**
+- Trader markup variance (mean=1.05, stdDev=0.07)
+- Trader spread variance (mean=0.2, stdDev=0.05)
+- Trait variation in generated entities
+
+### Seeding Pattern
+
+**Hierarchical seed propagation:**
+```
+Game RNG (master seed)
+  ↓ seed
+Map RNG
+  ↓ seed for each sector
+Sector[i,j] RNG
+  ↓ seed for each location
+Location[k] RNG
+  ↓ seed for crawler
+Crawler RNG (instance)
+  ↓ seed for inventory
+  ↓ seed for gaussian sampler
+  ↓ seed for child RNG in methods
+```
+
+**Two idioms for derived RNG:**
+
+1. **Sequence-based seeding** - Creates new child RNG with seed from parent:
+```csharp
+// Parent creates seeds for child
+var rng = new XorShift(masterSeed);
+var crawlerSeed = rng.Seed();
+var invSeed = rng.Seed();
+
+// Child objects use their seeds
+var inv = new Inventory();
+inv.AddRandomInventory(invSeed, ...);
+var crawler = new Crawler(crawlerSeed, faction, location, inv);
+```
+
+2. **Path-based seeding** - Creates derived RNG using `/` operator with identifier:
+```csharp
+// Derive RNG with path identifier (number, string, or other type)
+var proposal1 = new ProposeAttackOrLoot(Rng/1, demandFraction);
+var proposal2 = new ProposeAttackOrLoot(Rng/2, demandFraction);
+var namedRng = Rng/"weapon_fire";
+
+// Operators available:
+// XorShift / XorShift  - Combine two RNG states
+// XorShift / string    - Hash string into derived state
+// XorShift / int       - Mix integer into derived state
+// XorShift / ulong     - Mix ulong into derived state
+// XorShift / object    - Hash object into derived state
+// (Also: long, uint, ushort, short, char, byte, sbyte)
+```
+
+**Example - Combat fire creation:**
+```csharp
+// Method creates local RNG from instance RNG
+public List<HitRecord> CreateFire() {
+    var rng = new XorShift(Rng.Seed());  // Local RNG
+    // ... use rng for all randomness in this method
+    foreach (WeaponSegment weapon in selectedWeapons) {
+        fire.AddRange(weapon.GenerateFire(rng.Seed(), 0));
+    }
+    return fire;
+}
+```
+
+**Why this pattern?**
+- ✅ Deterministic replay - same seed = same game
+- ✅ Saveable state - RNG state persists across saves
+- ✅ No coupling - child objects don't access parent RNG
+- ✅ Thread-safe potential - each entity has independent RNG
+- ✅ Testable - can reproduce specific scenarios
+- ✅ Path-based seeding - Stable seeds for named contexts without sequence dependence
+
+### Extension Methods
+
+**Updated signatures to accept RNG:**
+```csharp
+// Random selection
+T? ChooseRandom<T>(ref this XorShift rng, IEnumerable<T> seq)
+T? ChooseWeightedRandom<T>(IEnumerable<(T, float)> seq, ref XorShift rng)
+IReadOnlyList<T> ChooseRandomK<T>(IEnumerable<T> seq, int k, ref XorShift rng)
+
+// Stochastic conversion
+int StochasticInt(this float value, ref XorShift rng)
+
+// Distributions
+int SamplePoisson(float lambda, ref XorShift rng)
+float SampleExponential(float t)  // Uses quantile transform
+
+// Enum sampling
+ENUM ChooseRandom<ENUM>(ref this XorShift rng) where ENUM : struct, Enum
+```
+
+**Usage:**
+```csharp
+// Before (global state):
+var item = items.ChooseRandom();  // Uses Random.Shared
+
+// After (seeded):
+var item = rng.ChooseRandom(items);  // Uses instance RNG
+```
+
+### Save/Load Support
+
+**Crawler RNG state serialization:**
+```csharp
+// Getters for serialization
+ulong GetRngState()
+ulong GetGaussianRngState()
+bool GetGaussianPrimed()
+double GetGaussianZSin()
+
+// Setters for deserialization
+void SetRngState(ulong state)
+void SetGaussianRngState(ulong state)
+void SetGaussianPrimed(bool primed)
+void SetGaussianZSin(double zSin)
+```
+
+**YAML will serialize these properties to restore exact RNG state.**
+
+### Migration Notes
+
+**Old pattern (AVOID):**
+```csharp
+// BAD - accessing parent RNG directly
+(Owner as Crawler)?.GetRng()?.NextSingle()
+```
+
+**New pattern (CORRECT):**
+```csharp
+// GOOD - accept seed as parameter
+public Segment NewSegment(ulong seed) {
+    var rng = new XorShift(seed);
+    // Use rng for initialization
+}
+```
+
+**Rule:** If you need randomness, accept a seed parameter or create a local RNG from your instance RNG. Never access parent object's RNG.
 
 ---
 
@@ -362,20 +564,21 @@ Goods with Prohibited policy have 50% chance to be skipped in trade offers
 
 **1. Attacker.CreateFire() (Crawler.cs:535-563)**
 ```
-1. Calculate available power (TotalCharge)
-2. Group offense segments (weapons vs non-weapons)
-3. Shuffle weapons for variety
-4. Select segments within power budget:
+1. Create local RNG from Crawler's RNG seed
+2. Calculate available power (TotalCharge)
+3. Group offense segments (weapons vs non-weapons)
+4. Shuffle weapons for variety (using seeded RNG)
+5. Select segments within power budget:
    - Weapons prioritized
    - Drain subtracted from available power
-5. DrawPower(used)
-6. Each WeaponSegment.GenerateFire() → HitRecords
+6. DrawPower(used)
+7. Each WeaponSegment.GenerateFire(seed) → HitRecords
 ```
 
 **HitRecord Structure:**
 ```csharp
 record HitRecord(WeaponSegment Weapon, float Damage, float Aim)
-  - Random t = NextSingle()
+  - Random t = rng.NextSingle()  // Using seeded XorShift RNG
   - Hit type = t + Aim:
     < 0.5: Miss
     < 1.5: Hit
@@ -384,29 +587,32 @@ record HitRecord(WeaponSegment Weapon, float Damage, float Aim)
 
 **2. Defender.ReceiveFire(attacker, hitRecords) (Crawler.cs:624-717)**
 ```
-foreach hit in hitRecords:
-  damage = hit.Damage (converted to int)
+1. Create local RNG from Crawler's RNG seed
+2. foreach hit in hitRecords:
+     damage = hit.Damage.StochasticInt(rng)  // Seeded RNG for damage conversion
 
-  Phase 0: Shields (active shields with charge remaining)
-    if shields available:
-      (remaining, msg) = shield.AddDmg(hitType, damage)
-      damage = remaining
+     Phase 0: Shields (active shields with charge remaining)
+       if shields available:
+         segment = rng.ChooseRandom(shields)  // Seeded random selection
+         (remaining, msg) = segment.AddDmg(hitType, damage)
+         damage = remaining
 
-  Phase 1: Armor (all defense segments except shields)
-    if armor available:
-      (remaining, msg) = armor.AddDmg(hitType, damage)
-      damage = remaining
+     Phase 1: Armor (all defense segments except shields)
+       if armor available:
+         segment = rng.ChooseRandom(armor)  // Seeded random selection
+         (remaining, msg) = segment.AddDmg(hitType, damage)
+         damage = remaining
 
-  Phase 2: Random Segment (all segments except defense)
-    if segments available:
-      segment = RandomChoice(non-defense segments)
-      (remaining, msg) = segment.AddDmg(hitType, damage)
-      damage = remaining
+     Phase 2: Random Segment (all segments except defense)
+       if segments available:
+         segment = rng.ChooseRandom(non-defense segments)  // Seeded random selection
+         (remaining, msg) = segment.AddDmg(hitType, damage)
+         damage = remaining
 
-  Phase 3: Crew
-    if damage > 0:
-      CrewLoss(damage)
-      MoraleLoss(based on crew lost)
+     Phase 3: Crew
+       if damage > 0:
+         CrewLoss(damage)
+         MoraleLoss(based on crew lost)
 ```
 
 **Segment Damage:**
@@ -723,6 +929,7 @@ TickBandit(actors):
 
 These systems work together to create emergent gameplay:
 
+- **RNG** provides deterministic, reproducible randomness for testing and replay
 - **Proposals** enable complex interactions without coupling
 - **Ultimatums** create time pressure and consequences
 - **Trading** provides economic depth with realistic pricing

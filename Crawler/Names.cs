@@ -35,22 +35,31 @@ public static class Names {
             return _humanNames;
         }
     }
-    public static string AHumanName() {
-        var result = HumanNames.ChooseRandom();
+
+    static string[] Joiners = {
+        "-", " de ", " of ", " the ", " by "
+    };
+    public static string AHumanName(ulong seed) {
+        var rng = new XorShift(seed);
+        var result = HumanNames.ChooseAt(rng.NextSingle());
         var uFirst = char.ToUpperInvariant(result![0]);
         return uFirst + result[1..];
     }
-    public static string HumanName() {
-        int t = Random.Shared.Next(0, 100);
-        if (t < 80) {
-            return AHumanName() + " " + AHumanName();
+    public static string HumanName(ulong seed) {
+        XorShift rng = new(seed);
+        int t = (int)(rng.NextDouble() * 100);
+        var a = rng.Seed();
+        var b = rng.Seed();
+
+        if (t < 75) {
+            return AHumanName(a) + " " + AHumanName(b);
         } else if (t < 95) {
-            return AHumanName() + "-" + HumanNames.ChooseRandom();
+            return AHumanName(a) + Joiners.ChooseAt(rng.NextSingle()) + HumanNames.ChooseAt(rng.NextSingle());
         } else {
-            return AHumanName();
+            return AHumanName(rng.Seed());
         }
     }
-    public static string MakeFactionName(this string crawlerName) {
+    public static string MakeFactionName(this string crawlerName, ulong seed) {
         List<string> options = new List<string>() {
             $"Kingdom of {crawlerName}",
             $"Clan of {crawlerName}",
@@ -61,9 +70,10 @@ public static class Names {
             $"{crawlerName}'s Alliance",
             $"{crawlerName}'s Fury",
         };
-        return options.ChooseRandom()!;
+        var rng = new XorShift(seed);
+        return options.ChooseAt(rng.NextSingle())!;
     }
-    public static string MakeCapitalName(this string settlementName) {
+    public static string MakeCapitalName(this string settlementName, ulong seed) {
         List<string> options = new List<string>() {
             $"{settlementName}",
             $"Grand {settlementName}",
@@ -75,6 +85,7 @@ public static class Names {
             $"{settlementName} Camp",
             $"Fort {settlementName}",
         };
-        return options.ChooseRandom()!;
+        var rng = new XorShift(seed);
+        return options.ChooseAt(rng.NextSingle())!;
     }
 }

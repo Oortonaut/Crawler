@@ -14,6 +14,11 @@ public class SaveGameData {
     public SavedCrawler Player { get; set; } = new();
     public SavedMap Map { get; set; } = new();
     public bool Quit { get; set; }
+    // RNG state
+    public ulong RngState { get; set; }
+    public ulong GaussianRngState { get; set; }
+    public bool GaussianPrimed { get; set; }
+    public double GaussianZSin { get; set; }
 }
 
 [YamlSerializable]
@@ -30,6 +35,11 @@ public class SavedCrawler {
     public List<SavedProposal> StoredProposals { get; set; } = new();
     public EEndState? EndState { get; set; }
     public string EndMessage { get; set; } = "";
+    // RNG state
+    public ulong RngState { get; set; }
+    public ulong GaussianRngState { get; set; }
+    public bool GaussianPrimed { get; set; }
+    public double GaussianZSin { get; set; }
 }
 
 [YamlSerializable]
@@ -91,6 +101,7 @@ public class SavedInventory {
 
 [YamlSerializable]
 public class SavedSegment {
+    public ulong Seed { get; set; }
     public string DefName { get; set; } = "";
     public int Hits { get; set; }
     public float Charge { get; set; }
@@ -129,6 +140,8 @@ public class SavedProposal {
     public SavedInventory? Amount { get; set; }
     public SavedInventory? Risk { get; set; }
     public float Chance { get; set; }
+    // RNG state for proposals that use XorShift
+    public ulong RngState { get; set; }
 }
 
 
@@ -165,6 +178,11 @@ public class SavedSector {
     public Dictionary<Commodity, float> LocalMarkup { get; set; } = new();
     public Dictionary<SegmentKind, float> LocalSegmentRates { get; set; } = new();
     public List<SavedLocation> Locations { get; set; } = new();
+    // RNG state
+    public ulong RngState { get; set; }
+    public ulong GaussianRngState { get; set; }
+    public bool GaussianPrimed { get; set; }
+    public double GaussianZSin { get; set; }
 }
 
 [YamlSerializable]
@@ -173,6 +191,7 @@ public class SavedLocation {
     public TerrainType Terrain { get; set; }
     public EncounterType Type { get; set; }
     public float Wealth { get; set; }
+    public ulong Seed { get; set; }
     public SavedEncounter? Encounter { get; set; }
 }
 
@@ -192,7 +211,11 @@ public static class SaveLoadExtensions {
             CurrentLocationPos = game.PlayerLocation.Position,
             Player = game.GetPlayer().ToSaveData(),
             Map = game.GetMap().ToSaveData(),
-            Quit = game.GetQuit()
+            Quit = game.GetQuit(),
+            RngState = game.GetRngState(),
+            GaussianRngState = game.GetGaussianRngState(),
+            GaussianPrimed = game.GetGaussianPrimed(),
+            GaussianZSin = game.GetGaussianZSin()
         };
     }
 
@@ -215,7 +238,11 @@ public static class SaveLoadExtensions {
             EvilPoints = crawler.EvilPoints,
             StoredProposals = crawler.StoredProposals.Select(p => p.ToSaveData()).ToList(),
             EndState = crawler.EndState,
-            EndMessage = crawler.EndMessage
+            EndMessage = crawler.EndMessage,
+            RngState = crawler.GetRngState(),
+            GaussianRngState = crawler.GetGaussianRngState(),
+            GaussianPrimed = crawler.GetGaussianPrimed(),
+            GaussianZSin = crawler.GetGaussianZSin()
         };
     }
 
@@ -279,6 +306,7 @@ public static class SaveLoadExtensions {
 
     public static SavedSegment ToSaveData(this Segment segment) {
         var saved = new SavedSegment {
+            Seed = segment.Seed,
             DefName = segment.SegmentDef.Name,
             Hits = segment.Hits,
             Packaged = segment.Packaged,
@@ -318,7 +346,8 @@ public static class SaveLoadExtensions {
                 Type = "LootTake",
                 OptionCode = loot.OptionCode,
                 Verb = loot.verb,
-                ExpirationTime = loot.ExpirationTime
+                ExpirationTime = loot.ExpirationTime,
+                RngState = loot.Rng.GetState()
             },
             ProposeHarvestTake harvest => new SavedProposal {
                 Type = "HarvestTake",
@@ -333,7 +362,8 @@ public static class SaveLoadExtensions {
                 ResourceActorName = lootPay.Resource.Name,
                 Risk = lootPay.Risk.ToSaveData(),
                 Chance = lootPay.Chance,
-                ExpirationTime = lootPay.ExpirationTime
+                ExpirationTime = lootPay.ExpirationTime,
+                RngState = lootPay.Rng.GetState()
             },
             ProposeAttackDefend attack => new SavedProposal {
                 Type = "AttackDefend",
@@ -342,13 +372,15 @@ public static class SaveLoadExtensions {
             ProposeAcceptSurrender surrender => new SavedProposal {
                 Type = "AcceptSurrender",
                 OptionCode = surrender.OptionCode,
-                ExpirationTime = surrender.ExpirationTime
+                ExpirationTime = surrender.ExpirationTime,
+                RngState = surrender.Rng.GetState()
             },
             ProposeAttackOrLoot extortion => new SavedProposal {
                 Type = "AttackOrLoot",
                 DemandFraction = extortion.DemandFraction,
                 OptionCode = extortion.OptionCode,
-                ExpirationTime = extortion.ExpirationTime
+                ExpirationTime = extortion.ExpirationTime,
+                RngState = extortion.Rng.GetState()
             },
             ProposeTaxes taxes => new SavedProposal {
                 Type = "Taxes",
@@ -367,7 +399,8 @@ public static class SaveLoadExtensions {
                 Type = "PlayerDemand",
                 DemandFraction = demand.DemandFraction,
                 OptionCode = demand.OptionCode,
-                ExpirationTime = demand.ExpirationTime
+                ExpirationTime = demand.ExpirationTime,
+                RngState = demand.Rng.GetState()
             },
             ProposeRepairBuy repair => new SavedProposal {
                 Type = "RepairBuy",
@@ -428,7 +461,11 @@ public static class SaveLoadExtensions {
             ControllingFaction = sector.ControllingFaction,
             LocalMarkup = sector.LocalMarkup.Pairs().ToDictionary(kv => kv.Key, kv => kv.Value),
             LocalSegmentRates = sector.LocalSegmentRates.Pairs().ToDictionary(kv => kv.Key, kv => kv.Value),
-            Locations = sector.Locations.Select(l => l.ToSaveData()).ToList()
+            Locations = sector.Locations.Select(l => l.ToSaveData()).ToList(),
+            RngState = sector.GetRngState(),
+            GaussianRngState = sector.GetGaussianRngState(),
+            GaussianPrimed = sector.GetGaussianPrimed(),
+            GaussianZSin = sector.GetGaussianZSin()
         };
     }
 
@@ -438,6 +475,7 @@ public static class SaveLoadExtensions {
             Terrain = location.Terrain,
             Type = location.Type,
             Wealth = location.Wealth,
+            Seed = location.Seed,
             Encounter = location.HasEncounter ? location.GetEncounter().ToSaveData() : null
         };
     }
@@ -452,13 +490,20 @@ public static class SaveLoadExtensions {
     }
 
     public static Map ToGameMap(this SavedMap savedMap) {
-        var map = new Map(savedMap.Height, savedMap.Width);
+        // Use a seed based on map dimensions for reconstruction
+        var map = new Map((ulong)(savedMap.Height * 1000 + savedMap.Width), savedMap.Height, savedMap.Width);
 
         // Restore sector terrain and locations
         foreach (var savedSector in savedMap.Sectors) {
             var sector = map.GetSector(savedSector.X, savedSector.Y);
             sector.Terrain = savedSector.Terrain;
             sector.ControllingFaction = savedSector.ControllingFaction;
+
+            // Restore RNG state
+            sector.SetRngState(savedSector.RngState);
+            sector.SetGaussianRngState(savedSector.GaussianRngState);
+            sector.SetGaussianPrimed(savedSector.GaussianPrimed);
+            sector.SetGaussianZSin(savedSector.GaussianZSin);
 
             // Restore LocalMarkup
             foreach (var kvp in savedSector.LocalMarkup) {
@@ -529,18 +574,13 @@ public static class SaveLoadExtensions {
     }
 
     public static Location ToGameLocation(this SavedLocation savedLocation, Sector sector) {
-        var location = new Location(
-            sector,
-            savedLocation.Position,
-            savedLocation.Type,
-            savedLocation.Wealth,
-            loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(loc).Generate()
-        );
+        var location = new Location(savedLocation.Seed,
+            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth, loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(savedLocation.Seed, loc).Generate());
         return location;
     }
 
     public static Encounter ToGameEncounter(this SavedEncounter savedEncounter, Location location) {
-        var encounter = new Encounter(location, savedEncounter.Faction) {
+        var encounter = new Encounter(location.Seed, location, savedEncounter.Faction) {
             Name = savedEncounter.Name,
             Description = savedEncounter.Description
         };
@@ -572,12 +612,19 @@ public static class SaveLoadExtensions {
         var location = map.FindLocationByPosition(savedCrawler.LocationPos);
         var inventory = savedCrawler.Supplies.ToGameInventory();
 
-        var crawler = new Crawler(savedCrawler.Faction, location, inventory) {
+        // Use a temporary seed for construction, will be replaced by saved RNG state
+        var crawler = new Crawler(0x123456789ABCDEF0UL, savedCrawler.Faction, location, inventory) {
             Name = savedCrawler.Name,
             EvilPoints = savedCrawler.EvilPoints,
             EndState = savedCrawler.EndState,
             EndMessage = savedCrawler.EndMessage
         };
+
+        // Restore RNG state
+        crawler.SetRngState(savedCrawler.RngState);
+        crawler.SetGaussianRngState(savedCrawler.GaussianRngState);
+        crawler.SetGaussianPrimed(savedCrawler.GaussianPrimed);
+        crawler.SetGaussianZSin(savedCrawler.GaussianZSin);
 
         // Restore trade inventory
         var tradeInventory = savedCrawler.Cargo.ToGameInventory();
@@ -679,7 +726,7 @@ public static class SaveLoadExtensions {
 
     public static Segment ToGameSegment(this SavedSegment savedSegment) {
         var segmentDef = SegmentEx.NameLookup[savedSegment.DefName];
-        var segment = segmentDef.NewSegment();
+        var segment = segmentDef.NewSegment(savedSegment.Seed);
 
         segment.Hits = savedSegment.Hits;
         segment.Packaged = savedSegment.Packaged;
@@ -697,7 +744,7 @@ public static class SaveLoadExtensions {
 
     public static IProposal? ToGameProposal(this SavedProposal saved, Dictionary<string, IActor>? actorLookup = null) {
         return saved.Type switch {
-            "LootTake" => new ProposeLootTake(saved.OptionCode, saved.Verb),
+            "LootTake" => new ProposeLootTake(new(saved.RngState), saved.Verb, saved.OptionCode),
             "HarvestTake" when actorLookup?.TryGetValue(saved.ResourceActorName ?? "", out var harvestResource) == true =>
                 new ProposeHarvestTake(
                     harvestResource,
@@ -705,13 +752,12 @@ public static class SaveLoadExtensions {
                     saved.OptionCode,
                     saved.Verb),
             "LootPay" when actorLookup?.TryGetValue(saved.ResourceActorName ?? "", out var lootResource) == true =>
-                new ProposeLootPay(
-                    lootResource,
+                new ProposeLootPay(new(saved.RngState), lootResource,
                     saved.Risk?.ToGameInventory() ?? new Inventory(),
                     saved.Chance),
             "AttackDefend" => new ProposeAttackDefend("Attack"),
-            "AcceptSurrender" => new ProposeAcceptSurrender(saved.OptionCode),
-            "AttackOrLoot" => new ProposeAttackOrLoot(saved.DemandFraction) {
+            "AcceptSurrender" => new ProposeAcceptSurrender(new(saved.RngState), saved.OptionCode),
+            "AttackOrLoot" => new ProposeAttackOrLoot(new(saved.RngState), saved.DemandFraction) {
                 ExpirationTime = saved.ExpirationTime
             },
             "Taxes" => new ProposeTaxes(saved.TaxRate) {
@@ -722,7 +768,7 @@ public static class SaveLoadExtensions {
                     ExpirationTime = saved.ExpirationTime
                 }
                 : null,
-            "PlayerDemand" => new ProposePlayerDemand(saved.DemandFraction, saved.OptionCode) {
+            "PlayerDemand" => new ProposePlayerDemand(new(saved.RngState), saved.DemandFraction, saved.OptionCode) {
                 ExpirationTime = saved.ExpirationTime
             },
             "RepairBuy" => new ProposeRepairBuy(saved.OptionCode),

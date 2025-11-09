@@ -25,17 +25,22 @@ public class EncounterActor {
 }
 
 public class Encounter {
-    public Encounter(Location location): this(location,
+    public Encounter(ulong seed, Location location): this(seed, location,
         location.Type == EncounterType.Settlement ?
             location.Sector.ControllingFaction :
             location.ChooseRandomFaction()) {
     }
-    public Encounter(Location location, Faction faction) {
+    public Encounter(ulong seed, Location location, Faction faction) {
+        Rng = new XorShift(seed);
+        Gaussian = new GaussianSampler(Rng.Seed());
         this.location = location;
         Faction = faction;
         LastEvent = Game.SafeTime;
         Game.Instance!.RegisterEncounter(this);
     }
+    XorShift Rng;
+    GaussianSampler Gaussian;
+
 
     public string Name { get; set; } = "Encounter";
     public string Description { get; set; } = "";
@@ -88,7 +93,7 @@ public class Encounter {
         if (hourlyArrivals <= 0) return;
 
         float expectedCount = hourlyArrivals * (Tuning.Encounter.DynamicCrawlerLifetimeExpectation / 3600f);
-        int initialCount = CrawlerEx.SamplePoisson(expectedCount);
+        int initialCount = CrawlerEx.SamplePoisson(expectedCount, ref Rng);
         long time = Game.SafeTime;
 
         if (initialCount <= 0) {
@@ -98,9 +103,9 @@ public class Encounter {
         // Calculate arrival times and sort by them
         var arrivals = new List<(long arrivalTime, int lifetime)>();
         for (int i = 0; i < initialCount; i++) {
-            int lifetime = ( int ) CrawlerEx.SampleExponential(Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
+            int lifetime = ( int ) (CrawlerEx.SampleExponential(Rng.NextSingle()) * Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
             // Spread initial arrivals across the lifetime expectation window
-            long arrivalTime = time - (int)(Random.Shared.NextSingle() * lifetime);
+            long arrivalTime = time - (int)(Rng.NextSingle() * lifetime);
             arrivals.Add((arrivalTime, lifetime));
         }
         arrivals = arrivals.OrderBy(a => a.arrivalTime).ToList();
@@ -108,17 +113,17 @@ public class Encounter {
         LastEvent = arrivals.First().arrivalTime;
        // Add crawlers in order of arrival time
         foreach (var (arrivalTime, lifetime) in arrivals) {
-            var crawler = AddDynamicCrawler(lifetime);
+            var crawler = AddDynamicCrawler(Rng.Seed(), lifetime);
             // Bring all other crawlers up to this time.
             crawler.NextEvent = arrivalTime;
         }
     }
 
-    Crawler AddDynamicCrawler(int lifetime) => AddDynamicCrawler(Game.SafeTime, lifetime);
-    Crawler AddDynamicCrawler(long arrivalTime, int lifetime) {
+    Crawler AddDynamicCrawler(ulong seed, int lifetime) => AddDynamicCrawler(seed, Game.SafeTime, lifetime);
+    Crawler AddDynamicCrawler(ulong seed, long arrivalTime, int lifetime) {
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
-        var crawler = GenerateFactionActor(faction, arrivalTime, lifetime);
+        var crawler = GenerateFactionActor(seed, faction, arrivalTime, lifetime);
         return crawler;
     }
     void UpdateDynamicCrawlers(long currentTime) {
@@ -140,21 +145,21 @@ public class Encounter {
         }
 
         // Sample how many crawlers should arrive
-        int arrivalCount = CrawlerEx.SamplePoisson(hourlyArrivals * elapsed / 3600);
+        int arrivalCount = CrawlerEx.SamplePoisson(hourlyArrivals * elapsed / 3600, ref Rng);
 
         if (arrivalCount > 0) {
             // Calculate arrival times for each new crawler and add in order
             var arrivals = new List<(int arrivalTime, int lifetime)>();
             for (int i = 0; i < arrivalCount; i++) {
-                int lifetime = CrawlerEx.SamplePoisson(Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
+                int lifetime = CrawlerEx.SamplePoisson(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, ref Rng);
                 // Arrivals spread across the next minute (60 seconds)
-                int arrivalTime = Random.Shared.Next(0, 60);
+                int arrivalTime = (int)(Rng.NextDouble() * 60);
                 arrivals.Add((arrivalTime, lifetime));
             }
 
             // Add crawlers in order of arrival time
             foreach (var (arrivalTime, lifetime) in arrivals.OrderBy(a => a.arrivalTime)) {
-                AddDynamicCrawler(arrivalTime, lifetime);
+                AddDynamicCrawler(Rng.Seed(), arrivalTime, lifetime);
             }
         }
     }
@@ -214,62 +219,64 @@ public class Encounter {
     public Location Location => location;
     public Faction Faction { get; }
 
-    public Crawler GenerateTradeActor() {
+    public Crawler GenerateTradeActor(ulong seed) {
+        var actorRng = new XorShift(seed);
         float wealth = Location.Wealth * 0.75f;
         int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var trader = Crawler.NewRandom(Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
+        var trader = Crawler.NewRandom(actorRng.Seed(), Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
         trader.Faction = Faction.Independent;
-        trader.StoredProposals.AddRange(trader.MakeTradeProposals( 0.25f));
+        trader.StoredProposals.AddRange(trader.MakeTradeProposals( actorRng.Seed(), 0.25f));
         trader.UpdateSegmentCache();
         return trader;
     }
-    public Crawler GeneratePlayerActor() {
+    public Crawler GeneratePlayerActor(ulong seed) {
         using var activity = LogCat.Encounter.StartActivity($"GeneratePlayer {nameof(Encounter)}");
         float wealth = Location.Wealth * 1.0f;
         int crew = (int)Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.65f;
         float segmentWealth = wealth * 0.5f;
-        var player = Crawler.NewRandom(Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
+        var player = Crawler.NewRandom(seed, Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         player.Flags |= EActorFlags.Player;
         player.Faction = Faction.Player;
         return player;
     }
-    public Crawler GenerateBanditActor() {
+    public Crawler GenerateBanditActor(ulong seed) {
         using var activity = LogCat.Encounter.StartActivity($"GenerateBandit {nameof(Encounter)}");
         float wealth = Location.Wealth * 0.8f;
         int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.6f;
         float segmentWealth = wealth * 0.5f;
-        var enemy = Crawler.NewRandom(Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
+        var enemy = Crawler.NewRandom(Rng.Seed(), Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
         enemy.Faction = Faction.Bandit;
 
         return enemy;
     }
 
-    public Crawler GenerateCivilianActor(Faction civilianFaction) {
+    public Crawler GenerateCivilianActor(ulong seed, Faction civilianFaction) {
         using var activity = LogCat.Encounter.StartActivity($"GenerateCivilian {nameof(Encounter)}");
         // Similar to Trade but with faction-specific policies
         float wealth = Location.Wealth * 0.75f;
         int crew = Math.Max(1, (int)(wealth / 40));
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var civilian = Crawler.NewRandom(civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
+        var civilian = Crawler.NewRandom(seed, civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
         civilian.Faction = civilianFaction;
-        civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(0.25f));
+        civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(Rng.Seed(), 0.25f));
         civilian.UpdateSegmentCache();
         return civilian;
     }
 
-    public Crawler GenerateCapital() {
+    public Crawler GenerateCapital(ulong seed) {
         using var activity = LogCat.Encounter.StartActivity($"GenerateCapital {nameof(Encounter)}");
-        var settlement = GenerateSettlement();
+        var settlement = GenerateSettlement(seed);
         settlement.Domes += 2;
         settlement.Flags |= EActorFlags.Capital;
         return settlement;
     }
-    public Crawler GenerateSettlement() {
+    public Crawler GenerateSettlement(ulong seed) {
+        var settlementRng = new XorShift(seed);
         using var activity = LogCat.Encounter.StartActivity($"GenerateSettlement {nameof(Encounter)}");
         float t = Location.Position.Y / ( float ) Location.Map.Height;
         int domes = ( int ) Math.Log2(Location.Population) + 1;
@@ -277,12 +284,12 @@ public class Encounter {
         // wealth is also population scaled,
         float goodsWealth = Location.Wealth * domes * 0.5f;
         float segmentWealth = Location.Wealth * domes * 0.25f;
-        var settlement = Crawler.NewRandom(Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
+        var settlement = Crawler.NewRandom(settlementRng.Seed(), Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
         settlement.PassengersInv = Location.Population - crew;
         settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
-        var proposals = settlement.MakeTradeProposals( 1);
+        var proposals = settlement.MakeTradeProposals(settlementRng.Seed(), 1);
         settlement.StoredProposals.AddRange(proposals);
         settlement.UpdateSegmentCache();
 
@@ -302,12 +309,13 @@ public class Encounter {
         } else {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.NightSettlementNames];
         }
-        Name = EncounterNames.ChooseRandom()!;
+        Name = settlementRng.ChooseRandom(EncounterNames)!;
         AddActor(settlement);
         return settlement;
     }
-    public void GenerateResource() {
-        var resource = CrawlerEx.ChooseRandom<Commodity>();
+    public void GenerateResource(ulong seed) {
+        var rng = new XorShift(seed);
+        var resource = rng.ChooseRandom<Commodity>();
         Name = $"{resource} Resource";
         var amt = Inventory.QuantityBought(Location.Wealth * Tuning.Game.resourcePayoffFraction, resource, location);
 
@@ -363,12 +371,13 @@ public class Encounter {
         Inv.Add(resource, amt);
 
         var resourceActor = new StaticActor(name, giftDesc, Faction.Independent, Inv, Location);
-        resourceActor.StoredProposals.Add(new ProposeLootTake("H", verb));
+        resourceActor.StoredProposals.Add(new ProposeLootTake(Rng / 'H', verb, "H"));
         AddActor(resourceActor);
     }
-    public void GenerateHazard() {
+    public void GenerateHazard(ulong seed) {
+        var rng = new XorShift(seed);
         // Risk/reward mechanic: promised payoff + chance of negative payoff
-        var rewardType = CrawlerEx.ChooseRandom<Commodity>();
+        var rewardType = rng.ChooseRandom<Commodity>();
         Name = $"{rewardType} Hazard";
 
         float payoff = Location.Wealth * Tuning.Game.hazardPayoffFraction;
@@ -378,7 +387,7 @@ public class Encounter {
         Commodity penaltyType = rewardType;
         float penaltyAmt = 0;
         while (penaltyType == rewardType) {
-            penaltyType = CrawlerEx.ChooseRandom<Commodity>();
+            penaltyType = rng.ChooseRandom<Commodity>();
         }
         penaltyAmt = Inventory.QuantityBought(payoff * Tuning.Game.hazardNegativePayoffRatio, penaltyType, Location);
 
@@ -442,35 +451,35 @@ public class Encounter {
         Risked.Add(penaltyType, penaltyAmt);
 
         var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent,  Promised, Location);
-        hazardActor.StoredProposals.Add(new ProposeLootPay(
-            hazardActor,
+        hazardActor.StoredProposals.Add(new ProposeLootPay(Rng / 1, hazardActor,
             Risked,
             Tuning.Game.hazardNegativePayoffChance));
         AddActor(hazardActor);
     }
     public Encounter Generate() {
         using var activity = LogCat.Encounter.StartActivity($"Generate {nameof(Encounter)}");
+        var seed = Rng.Seed();
         switch (Location.Type) {
         case EncounterType.Crossroads:
         {
             Name = $"{Faction} Crossroads";
-            GenerateFactionActor(Faction, Game.SafeTime, null);
+            GenerateFactionActor(seed, Faction, Game.SafeTime, null);
         } break;
-        case EncounterType.Settlement: GenerateSettlement(); break;
-        case EncounterType.Resource: GenerateResource(); break;
-        case EncounterType.Hazard: GenerateHazard(); break;
+        case EncounterType.Settlement: GenerateSettlement(seed); break;
+        case EncounterType.Resource: GenerateResource(seed); break;
+        case EncounterType.Hazard: GenerateHazard(seed); break;
         }
         InitDynamicCrawlers();
         return this;
     }
-    public Crawler GenerateFactionActor(Faction faction, long arrivalTime, int? lifetime) {
+    public Crawler GenerateFactionActor(ulong seed, Faction faction, long arrivalTime, int? lifetime) {
         Crawler result;
 
         result = faction switch {
-            Faction.Bandit => GenerateBanditActor(),
-            Faction.Player => GeneratePlayerActor(),
-            Faction.Independent => GenerateTradeActor(),
-            _ => GenerateCivilianActor(faction),
+            Faction.Bandit => GenerateBanditActor(seed),
+            Faction.Player => GeneratePlayerActor(seed),
+            Faction.Independent => GenerateTradeActor(seed),
+            _ => GenerateCivilianActor(seed, faction),
         };
         AddActorAt(result, arrivalTime, lifetime);
         return result;

@@ -19,7 +19,7 @@ public record SegmentDef(
     Tier DrainTier,
     Tier CostTier,
     Tier MaxHitsTier) {
-    public virtual Segment NewSegment() => new(this, null);
+    public virtual Segment NewSegment(ulong seed) => new(seed, this, null);
     public override string ToString() => $"{Symbol} {Name} {Size} {SegmentKind} {WeightTier} {DrainTier} {CostTier} {MaxHitsTier}";
     public string NameSize => $"{Name} " + (int)Math.Round(Size.Size) switch {
         -1 => "Micro",
@@ -67,7 +67,8 @@ public record SegmentDef(
         MaxHitsTier = MaxHitsTier + new Tier(0, Upgrade)
     };
 }
-public class Segment(SegmentDef segmentDef, IActor? Owner) {
+public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
+    public ulong Seed { get; } = seed;
     public SegmentDef SegmentDef { get; } = segmentDef;
     public IActor? Owner { get; set; } = Owner;
     public string Name => SegmentDef.Name;
@@ -81,6 +82,7 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     public int MaxHits => SegmentDef.MaxHits;
     public char ClassCode => SegmentDef.ClassCode;
     public int Cycle { get; set; } = 0;
+    public XorShift Rng = new(seed);
     public virtual string Report => $"{Name} {GetStyle()}";
 
     long lastTick = Game.SafeTime;
@@ -198,18 +200,36 @@ public class Segment(SegmentDef segmentDef, IActor? Owner) {
     static string fracLevels = " ░▒▓█";
     protected static char fracCode(int x, int n) => fracLevels[Math.Clamp((x * fracLevels.Length) / n, 0, fracLevels.Length - 1)];
     protected static char fracCode(float x, float n = 1.0f) => fracLevels[(Math.Clamp(( int ) ((x * fracLevels.Length) / n), 0, fracLevels.Length - 1))];
+
+    public virtual Segment Clone() {
+        var clone = new Segment(Seed, SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
+
+    protected void CopyBaseTo(Segment target) {
+        target.Hits = this.Hits;
+        target.Cycle = this.Cycle;
+        target.Packaged = this.Packaged;
+        target.Activated = this.Activated;
+    }
 }
 
 public record OffenseDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
     : SegmentDef(Symbol, Size, Name, SegmentKind.Offense, WeightTier, DrainTier, CostTier, MaxHitsTier) {
-    public override OffenseSegment NewSegment() => new(this, null);
+    public override OffenseSegment NewSegment(ulong seed) => new(seed, this, null);
     public override char ClassCode => 'O';
 }
-public class OffenseSegment(OffenseDef OffenseDef, IActor? Owner): Segment(OffenseDef, Owner) {
+public class OffenseSegment(ulong seed, OffenseDef OffenseDef, IActor? Owner): Segment(seed, OffenseDef, Owner) {
+    public override Segment Clone() {
+        var clone = new OffenseSegment(Seed, (OffenseDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
     : OffenseDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier) {
-    public override WeaponSegment NewSegment() => new(this, null);
+    public override WeaponSegment NewSegment(ulong seed) => new(seed, this, null);
 
     public float Damage => (float)Math.Round(Tuning.Segments.DamageTiers[DamageTier]);
     public float Rate => Tuning.Segments.RateTiers[RateTier];
@@ -227,74 +247,103 @@ public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
         };
     }
 }
-public class WeaponSegment(WeaponDef weaponDef, IActor? Owner): OffenseSegment(weaponDef, Owner) {
+public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? Owner): OffenseSegment(seed, weaponDef, Owner) {
     public float Damage => weaponDef.Damage;
     public float Rate => weaponDef.Rate;
     public float Shots => weaponDef.Shots;
     public float Aim => weaponDef.Aim;
     public override int CycleLength => weaponDef.CycleLength;
-    public virtual IEnumerable<HitRecord> GenerateFire(int aim) {
+    public virtual IEnumerable<HitRecord> GenerateFire(ulong seed, float aim) {
         if (IsActiveCycle) {
+            var rng = new XorShift(seed);
             for (int i = 0; i < Shots; i++) {
-                yield return new(this, Damage, Aim + aim);
+                yield return new(rng.Seed(), this, Damage, Aim + aim);
             }
             CycleStart();
         }
     }
-    public virtual IEnumerable<HitRecord> Adjust(HitRecord hit) {
+    public virtual IEnumerable<HitRecord> Adjust(HitRecord hit, ulong seed) {
         yield return hit;
+    }
+    public override Segment Clone() {
+        var clone = new WeaponSegment(Seed, (WeaponDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
     }
 }
 public record GunDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
     : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
-    public override GunSegment NewSegment() => new(this, null);
+    public override GunSegment NewSegment(ulong seed) => new(seed, this, null);
 }
-public class GunSegment(GunDef GunDef, IActor? Owner): WeaponSegment(GunDef, Owner) {
-    public override IEnumerable<HitRecord> Adjust(HitRecord hit) {
-        if (Random.Shared.NextDouble() < 0.2) {
+public class GunSegment(ulong seed, GunDef GunDef, IActor? Owner): WeaponSegment(seed, GunDef, Owner) {
+    public override IEnumerable<HitRecord> Adjust(HitRecord hit, ulong seed) {
+        var rng = new XorShift(seed);
+        if (rng.NextDouble() < 0.2) {
             yield return hit;
         }
         yield return hit;
     }
+    public override Segment Clone() {
+        var clone = new GunSegment(Seed, (GunDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record LaserDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
     : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
-    public override LaserSegment NewSegment() => new(this, null);
+    public override LaserSegment NewSegment(ulong seed) => new(seed, this, null);
 }
-public class LaserSegment(LaserDef LaserDef, IActor? Owner): WeaponSegment(LaserDef, Owner) {
-    public override IEnumerable<HitRecord> Adjust(HitRecord hit) {
-        if (Random.Shared.NextDouble() < 0.2) {
+public class LaserSegment(ulong seed, LaserDef LaserDef, IActor? Owner): WeaponSegment(seed, LaserDef, Owner) {
+    public override IEnumerable<HitRecord> Adjust(HitRecord hit, ulong seed) {
+        var rng = new XorShift(seed);
+        if (rng.NextDouble() < 0.2) {
             hit = hit with {
                 Damage = hit.Damage * 2
             };
         }
         yield return hit;
     }
+    public override Segment Clone() {
+        var clone = new LaserSegment(Seed, (LaserDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record MissileDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
     : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
-    public override MissileSegment NewSegment() => new(this, null);
+    public override MissileSegment NewSegment(ulong seed) => new(seed, this, null);
 }
-public class MissileSegment(MissileDef MissileDef, IActor? Owner): WeaponSegment(MissileDef, Owner) {
-    public override IEnumerable<HitRecord> Adjust(HitRecord hit) {
-        if (Random.Shared.NextDouble() < 0.2) {
+public class MissileSegment(ulong seed, MissileDef MissileDef, IActor? Owner): WeaponSegment(seed, MissileDef, Owner) {
+    public override IEnumerable<HitRecord> Adjust(HitRecord hit, ulong seed) {
+        var rng = new XorShift(seed);
+        if (rng.NextDouble() < 0.2) {
             hit = hit with {
                 Aim = hit.Aim + 2
             };
         }
         yield return hit;
     }
+    public override Segment Clone() {
+        var clone = new MissileSegment(Seed, (MissileDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record PowerDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
     : SegmentDef(Symbol, Size, Name, SegmentKind.Power, WeightTier, DrainTier, CostTier, MaxHitsTier) {
-    public override PowerSegment NewSegment() => new(this, null);
+    public override PowerSegment NewSegment(ulong seed) => new(seed, this, null);
     public override char ClassCode => 'R';
 }
-public class PowerSegment(PowerDef PowerDef, IActor? Owner): Segment(PowerDef, Owner) {
+public class PowerSegment(ulong seed, PowerDef PowerDef, IActor? Owner): Segment(seed, PowerDef, Owner) {
+    public override Segment Clone() {
+        var clone = new PowerSegment(Seed, (PowerDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record ReactorDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier CapacityTier, Tier ChargerTier)
     : PowerDef(Symbol, Size, Name, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
-    public override ReactorSegment NewSegment() => new(this, null);
+    public override ReactorSegment NewSegment(ulong seed) => new(seed, this, null);
     public float Capacity => Tuning.Segments.CapacityTiers[CapacityTier];
     public float Generation => Tuning.Segments.GenerationTiers[ChargerTier];
 
@@ -306,7 +355,7 @@ public record ReactorDef(char Symbol, Tier Size, string Name, Tier WeightTier, T
         };
     }
 }
-public class ReactorSegment(ReactorDef reactorDef, IActor? Owner): PowerSegment(reactorDef, Owner) {
+public class ReactorSegment(ulong seed, ReactorDef reactorDef, IActor? Owner): PowerSegment(seed, reactorDef, Owner) {
     public float Capacity => reactorDef.Capacity;
     public float Generation => reactorDef.Generation;
     public override char ReportCode(Location _) => fracCode(Charge, Capacity);
@@ -326,10 +375,16 @@ public class ReactorSegment(ReactorDef reactorDef, IActor? Owner): PowerSegment(
             return 0;
         }
     }
+    public override Segment Clone() {
+        var clone = new ReactorSegment(Seed, (ReactorDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        clone.Charge = this.Charge;
+        return clone;
+    }
 }
 public record ChargerDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ChargeTier)
     : PowerDef(Symbol, Size, Name, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
-    public override ChargerSegment NewSegment() => new(this, null);
+    public override ChargerSegment NewSegment(ulong seed) => new(seed, this, null);
     public float Charge => Tuning.Segments.ChargerTiers[ChargeTier];
 
     public override SegmentDef Resize(int Size) {
@@ -339,7 +394,7 @@ public record ChargerDef(char Symbol, Tier Size, string Name, Tier WeightTier, T
         };
     }
 }
-public class ChargerSegment(ChargerDef ChargerDef, IActor? Owner): PowerSegment(ChargerDef, Owner) {
+public class ChargerSegment(ulong seed, ChargerDef ChargerDef, IActor? Owner): PowerSegment(seed, ChargerDef, Owner) {
     public float Generation => ChargerDef.Charge;
 
     // Returns remaining generation
@@ -349,10 +404,15 @@ public class ChargerSegment(ChargerDef ChargerDef, IActor? Owner): PowerSegment(
         }
         return 0;
     }
+    public override Segment Clone() {
+        var clone = new ChargerSegment(Seed, (ChargerDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record TractionDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier LiftTier, Tier SpeedTier, TerrainType TerrainLimit)
     : SegmentDef(Symbol, Size, Name, SegmentKind.Traction, WeightTier, DrainTier, CostTier, MaxHitsTier) {
-    public override TractionSegment NewSegment() => new(this, null);
+    public override TractionSegment NewSegment(ulong seed) => new(seed, this, null);
     public override char ClassCode => 'T';
     public float Lift => Tuning.Segments.LiftTiers[LiftTier];
     public float Speed => Tuning.Segments.SpeedTiers[SpeedTier];
@@ -365,7 +425,7 @@ public record TractionDef(char Symbol, Tier Size, string Name, Tier WeightTier, 
         };
     }
 }
-public class TractionSegment(TractionDef tractionDef, IActor? Owner): Segment(tractionDef, Owner) {
+public class TractionSegment(ulong seed, TractionDef tractionDef, IActor? Owner): Segment(seed, tractionDef, Owner) {
     public float Lift => tractionDef.Lift;
     public float Speed => tractionDef.Speed;
     public TerrainType TerrainLimit => tractionDef.TerrainLimit;
@@ -382,17 +442,27 @@ public class TractionSegment(TractionDef tractionDef, IActor? Owner): Segment(tr
     public float LiftOn(TerrainType terrain) => Lift * Penalty(terrain, TerrainLiftPenalty);
     public float SpeedOn(TerrainType terrain) => Speed * Penalty(terrain, TerrainSpeedPenalty);
     public float DrainOn(TerrainType terrain) => Drain * Penalty(terrain, TerrainPowerPenalty);
+    public override Segment Clone() {
+        var clone = new TractionSegment(Seed, (TractionDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record DefenseDef(char Symbol, Tier Size, string Name, SegmentKind SegmentKind, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
     : SegmentDef(Symbol, Size, Name, SegmentKind, WeightTier, DrainTier, CostTier, MaxHitsTier) {
-    public override DefenseSegment NewSegment() => new(this, null);
+    public override DefenseSegment NewSegment(ulong seed) => new(seed, this, null);
     public override char ClassCode => 'D';
 }
-public class DefenseSegment(DefenseDef defenseDef, IActor? Owner): Segment(defenseDef, Owner) {
+public class DefenseSegment(ulong seed, DefenseDef defenseDef, IActor? Owner): Segment(seed, defenseDef, Owner) {
+    public override Segment Clone() {
+        var clone = new DefenseSegment(Seed, (DefenseDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record ArmorDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ReductionTier)
     : DefenseDef(Symbol, Size, Name, SegmentKind.Defense, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
-    public override ArmorSegment NewSegment() => new(this, null);
+    public override ArmorSegment NewSegment(ulong seed) => new(seed, this, null);
 
     public int Reduction => ( int ) Math.Round(Tuning.Segments.ReductionTiers[ReductionTier]);
 
@@ -403,7 +473,7 @@ public record ArmorDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tie
         };
     }
 }
-public class ArmorSegment(ArmorDef armorDef, IActor? Owner): DefenseSegment(armorDef, Owner) {
+public class ArmorSegment(ulong seed, ArmorDef armorDef, IActor? Owner): DefenseSegment(seed, armorDef, Owner) {
     virtual public int Reduction => armorDef.Reduction;
     // returns damage sunk
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
@@ -425,10 +495,15 @@ public class ArmorSegment(ArmorDef armorDef, IActor? Owner): DefenseSegment(armo
         }
         return base.AddDmg(hitType, delta);
     }
+    public override Segment Clone() {
+        var clone = new ArmorSegment(Seed, (ArmorDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record PlatingDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier MitigationTier)
     : DefenseDef(Symbol, Size, Name, SegmentKind.Defense, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
-    public override PlatingSegment NewSegment() => new(this, null);
+    public override PlatingSegment NewSegment(ulong seed) => new(seed, this, null);
     public float Mitigation => 1 - Tuning.Segments.MitigationTiers[MitigationTier];
 
     public override SegmentDef Resize(int Size) {
@@ -438,12 +513,12 @@ public record PlatingDef(char Symbol, Tier Size, string Name, Tier WeightTier, T
         };
     }
 }
-public class PlatingSegment(PlatingDef PlatingDef, IActor? Owner): DefenseSegment(PlatingDef, Owner) {
+public class PlatingSegment(ulong seed, PlatingDef PlatingDef, IActor? Owner): DefenseSegment(seed, PlatingDef, Owner) {
     public float Mitigation => PlatingDef.Mitigation;
     public override (int remaining, string desc) AddDmg(HitType hitType, int delta) {
         string msg = $"{Name} ";
         if (IsUsable && hitType is HitType.Hits) {
-            int absorbed = (delta * Mitigation).StochasticInt();
+            int absorbed = (delta * Mitigation).StochasticInt(ref Rng);
             if (absorbed != 0) {
                 msg += $", mitigated {absorbed}";
                 delta -= absorbed;
@@ -457,10 +532,15 @@ public class PlatingSegment(PlatingDef PlatingDef, IActor? Owner): DefenseSegmen
         msg += " " + StateString;
         return (delta, msg);
     }
+    public override Segment Clone() {
+        var clone = new PlatingSegment(Seed, (PlatingDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
 }
 public record ShieldDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier CapacityTier, Tier ChargeTier)
     : DefenseDef(Symbol, Size, Name, SegmentKind.Defense, WeightTier, DrainTier, CostTier, MaxHitsTier) {
-    public override ShieldSegment NewSegment() => new(this, null);
+    public override ShieldSegment NewSegment(ulong seed) => new(seed, this, null);
 
     public int Capacity => ( int ) Math.Round(Tuning.Segments.ShieldCapacityTiers[CapacityTier]);
     public float Charge => Tuning.Segments.ShieldChargeTiers[ChargeTier];
@@ -473,7 +553,7 @@ public record ShieldDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
         };
     }
 }
-public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(shieldDef, Owner) {
+public class ShieldSegment(ulong seed, ShieldDef shieldDef, IActor? Owner): DefenseSegment(seed, shieldDef, Owner) {
     public int Capacity => shieldDef.Capacity;
     public float Charge => shieldDef.Charge;
     public override char ReportCode(Location _) => fracCode(ShieldLeft, Capacity);
@@ -519,6 +599,12 @@ public class ShieldSegment(ShieldDef shieldDef, IActor? Owner): DefenseSegment(s
             return (rem, msg);
         }
         return base.AddDmg(hitType, delta);
+    }
+    public override Segment Clone() {
+        var clone = new ShieldSegment(Seed, (ShieldDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        clone.ShieldLeft = this.ShieldLeft;
+        return clone;
     }
 }
 public static class SegmentEx {

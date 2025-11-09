@@ -8,8 +8,9 @@ public enum HitType {
     Pierces, // Improved change to miss armor
 }
 
-public record struct HitRecord(WeaponSegment Weapon, float Damage, float Aim) {
-    float t = Random.Shared.NextSingle();
+public record struct HitRecord(ulong seed, WeaponSegment Weapon, float Damage, float Aim) {
+    XorShift Rng = new(seed);
+    float t => Rng.NextSingle();
     public HitType Hit => _Hit();
     HitType _Hit() {
         var test = t + Aim;

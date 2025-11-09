@@ -88,10 +88,16 @@ public class ActorToActor {
 }
 
 public class Crawler: IActor {
-    public static Crawler NewRandom(Faction faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
+    XorShift Rng;
+    GaussianSampler Gaussian;
+
+    public static Crawler NewRandom(ulong seed, Faction faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
+        var rng = new XorShift(seed);
+        var crawlerSeed = rng.Seed();
+        var invSeed = rng.Seed();
         var newInv = new Inventory();
-        newInv.AddRandomInventory(here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
-        var crawler = new Crawler(faction, here, newInv);
+        newInv.AddRandomInventory(invSeed, here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
+        var crawler = new Crawler(crawlerSeed, faction, here, newInv);
 
         // Add initial fuel based on supply days and movement power at current location
         float fuelPerHr = crawler.FuelPerHr;
@@ -102,18 +108,20 @@ public class Crawler: IActor {
 
         return crawler;
     }
-    public Crawler(Faction faction, Location location, Inventory inventory) {
+    public Crawler(ulong seed, Faction faction, Location location, Inventory inventory) {
+        Rng = new XorShift(seed);
+        Gaussian = new GaussianSampler(Rng.Seed());
         Faction = faction;
         Supplies = inventory;
         Supplies.Overdraft = Cargo;
         Location = location;
-        Name = Names.HumanName();
+        Name = Names.HumanName(Rng.Seed());
         if (faction == Faction.Bandit) {
-            Markup = Tuning.Trade.BanditMarkup();
-            Spread = Tuning.Trade.BanditSpread();
+            Markup = Tuning.Trade.BanditMarkup(Gaussian);
+            Spread = Tuning.Trade.BanditSpread(Gaussian);
         } else {
-            Markup = Tuning.Trade.TradeMarkup();
-            Spread = Tuning.Trade.TradeSpread();
+            Markup = Tuning.Trade.TradeMarkup(Gaussian);
+            Spread = Tuning.Trade.TradeSpread(Gaussian);
         }
     }
     public string Name { get; set; }
@@ -139,9 +147,6 @@ public class Crawler: IActor {
     public Location Location { get; set; }
 
     static Crawler() {
-        //Faction.Bandit.To(Faction.Player).SetMenuFunc(BanditMenu);
-        //Faction.Bandit.To(Faction.Player).DefaultCrawlerRelation = banditToPlayer;
-
     }
     public float FuelPerHr => StandbyDrain / FuelEfficiency;
     public float FuelPerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
@@ -187,12 +192,12 @@ public class Crawler: IActor {
         if (Faction == Faction.Bandit && other.Faction == Faction.Player) {
             float cargoValue = other.Supplies.ValueAt(Location);
             if (cargoValue >= Tuning.Bandit.minValueThreshold &&
-                Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
+                Rng.NextSingle() < Tuning.Bandit.demandChance &&
                 !To(other).Hostile &&
                 !To(other).Surrendered &&
                 !IsDisarmed) {
 
-                var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction);
+                var extortion = new ProposeAttackOrLoot(Rng/1, Tuning.Bandit.demandFraction);
                 StoredProposals.Add(extortion);
                 To(other).AddProposal(extortion);
             }
@@ -227,7 +232,7 @@ public class Crawler: IActor {
         var contraband = new Inventory();
 
         // Random chance to detect
-        if (Random.Shared.NextSingle() > Tuning.Civilian.contrabandScanChance) {
+        if (Rng.NextSingle() > Tuning.Civilian.contrabandScanChance) {
             return contraband; // Scan failed
         }
 
@@ -246,7 +251,7 @@ public class Crawler: IActor {
     }
 
     public bool Pinned() {
-        return Random.Shared.NextSingle() > this.EscapeChance();
+        return Rng.NextSingle() > this.EscapeChance();
     }
 
     internal long LastEvent = 0;
@@ -342,7 +347,7 @@ public class Crawler: IActor {
             return;
         }
 
-        var hostile = Actors.Where(a => To(a).Hostile).ChooseRandom();
+        var hostile = Rng.ChooseRandom(Actors.Where(a => To(a).Hostile));
         if (hostile != null) {
             int AP = this.Attack(hostile);
         }
@@ -645,6 +650,7 @@ public class Crawler: IActor {
     public override string ToString() => $"{Name} ({Faction})";
 
     public List<HitRecord> CreateFire() {
+        var rng = new XorShift(Rng.Seed());
         List<HitRecord> fire = new();
         float availablePower = TotalCharge;
         var offense = OffenseSegments.GroupBy(s => s is WeaponSegment).ToDictionary(s => s.Key, s => s.ToList());
@@ -652,7 +658,7 @@ public class Crawler: IActor {
         var selectedWeapons = new List<OffenseSegment>();
         var nonWeapons = offense.GetValueOrDefault(false) ?? new();
         var selectedNonWeapons = new List<OffenseSegment>();
-        weapons.Shuffle();
+        rng.Shuffle(weapons);
         foreach (var segment in weapons) {
             if (availablePower >= segment.Drain) {
                 selectedWeapons.Add(segment);
@@ -669,7 +675,7 @@ public class Crawler: IActor {
         DrawPower(used);
 
         foreach (WeaponSegment segment in selectedWeapons.OfType<WeaponSegment>()) {
-            fire.AddRange(segment.GenerateFire(0));
+            fire.AddRange(segment.GenerateFire(rng.Seed(), 0));
         }
         return fire;
     }
@@ -735,6 +741,7 @@ public class Crawler: IActor {
         if (!Supplies.Segments.Any() || !fire.Any()) {
             return;
         }
+        var rngRecvFire = new XorShift(Rng.Seed());
         
         bool wasDestroyed = IsDestroyed;
         int totalDamageDealt = 0;
@@ -746,7 +753,7 @@ public class Crawler: IActor {
 
         string msg = "";
         foreach (var hit in fire) {
-            int damage = hit.Damage.StochasticInt();
+            int damage = hit.Damage.StochasticInt(ref rngRecvFire);
             int originalDamage = damage;
             var hitType = hit.Hit;
             var phase0Segments = CoreDefenseSegments.OfType<ShieldSegment>().Where(s => s.ShieldLeft > 0).ToList();
@@ -757,7 +764,7 @@ public class Crawler: IActor {
             }
             msg += $"{hit.Weapon.Name} {hitType} ";
             if (damage > 0) {
-                var shieldSegment = phase0Segments.ChooseRandom();
+                var shieldSegment = rngRecvFire.ChooseRandom(phase0Segments);
                 if (shieldSegment != null) {
                     var (remaining, armorMsg) = shieldSegment.AddDmg(hitType, damage);
                     damage = remaining;
@@ -765,7 +772,7 @@ public class Crawler: IActor {
                 }
             }
             if (damage > 0) {
-                var armorSegment = phase1Segments.ChooseRandom();
+                var armorSegment = rngRecvFire.ChooseRandom(phase1Segments);
                 if (armorSegment != null) {
                     var (remaining, armorMsg) = armorSegment.AddDmg(hitType, damage);
                     damage = remaining;
@@ -773,7 +780,7 @@ public class Crawler: IActor {
                 }
             }
             if (damage > 0) {
-                var hitSegment = phase2Segments.ChooseRandom();
+                var hitSegment = rngRecvFire.ChooseRandom(phase2Segments);
                 if (hitSegment != null) {
                     var (rem, hitMsg) = hitSegment.AddDmg(hitType, damage);
                     msg += hitMsg;
@@ -859,7 +866,7 @@ public class Crawler: IActor {
                     float hostilityChance = Tuning.Trade.banditHostilityChance * (evilness / Tuning.Trade.banditHostilityThreshold);
                     hostilityChance = Math.Clamp(hostilityChance, 0.0f, 1.0f);
 
-                    if (Random.Shared.NextDouble() < hostilityChance) {
+                    if (Rng.NextDouble() < hostilityChance) {
                         result.Hostile = true;
                     }
                 } else {
@@ -890,12 +897,12 @@ public class Crawler: IActor {
 
         float cargoValue = target.Supplies.ValueAt(Location);
         if (cargoValue >= Tuning.Bandit.minValueThreshold &&
-            Random.Shared.NextSingle() < Tuning.Bandit.demandChance &&
+            Rng.NextSingle() < Tuning.Bandit.demandChance &&
             !To(target).Hostile &&
             !To(target).Surrendered &&
             !IsDisarmed) {
 
-            var extortion = new ProposeAttackOrLoot(Tuning.Bandit.demandFraction);
+            var extortion = new ProposeAttackOrLoot(Rng/2, Tuning.Bandit.demandFraction);
             To(target).AddProposal(extortion);
         }
     }
@@ -990,5 +997,14 @@ public class Crawler: IActor {
     public float Spread { get; set; }
     public void SetVisitedLocations(Dictionary<Location, LocationActor> locations) => _locations = locations;
     public void SetRelations(Dictionary<IActor, ActorToActor> relations) => _relations = relations;
+    public XorShift GetRng() => Rng;
+    public ulong GetRngState() => Rng.GetState();
+    public void SetRngState(ulong state) => Rng.SetState(state);
+    public ulong GetGaussianRngState() => Gaussian.GetRngState();
+    public void SetGaussianRngState(ulong state) => Gaussian.SetRngState(state);
+    public bool GetGaussianPrimed() => Gaussian.GetPrimed();
+    public void SetGaussianPrimed(bool primed) => Gaussian.SetPrimed(primed);
+    public double GetGaussianZSin() => Gaussian.GetZSin();
+    public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
     public int Domes { get; set; } = 0;
 }

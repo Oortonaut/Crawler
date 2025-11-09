@@ -12,10 +12,25 @@ public enum TerrainType {
     Ruined,
 }
 
-public record Location(
-    Sector Sector, Vector2 Position,
-    EncounterType Type, float wealth,
-    Func<Location, Encounter> NewEncounter) {
+public record Location {
+    public Location(ulong Seed,
+        Sector Sector, Vector2 Position,
+        EncounterType Type, float Wealth,
+        Func<Location, Encounter> NewEncounter) {
+        if (Wealth <= 0) {
+            throw new ArgumentException("Wealth must be positive");
+        }
+        Rng = new XorShift(Seed);
+        this.Sector = Sector;
+        this.Position = Position;
+        this.Type = Type;
+        wealth = Wealth;
+        this.Seed = Seed;
+        this.NewEncounter = NewEncounter;
+        float Zipf = Rng.NextSingle();
+        Population = ( int ) (MaxPopulation * ( float ) Math.Pow(Decay, Zipf)) + 1;
+    }
+
     public TerrainType Terrain => Sector.Terrain;
     public override string ToString() => $"{Type} @{PosString} Pop:{Population:F1}";
     public Map Map => Sector.Map;
@@ -29,12 +44,12 @@ public record Location(
         true => _encounter!.Name,
         false => Type.ToString(),
     };
-    float zipf = Random.Shared.NextSingle();
-    // Pareto distribution Type I
+    // Pareto distribution Type I - seeded deterministically from Seed
     public const float MaxPopulation = 500;
     public const float Decay = 0.0005f;
-    public int Population => (int)(MaxPopulation * (float)Math.Pow(Decay, zipf)) + 1;
-    public float Wealth => wealth;
+    internal XorShift Rng;
+    public int Population { get; protected set; }
+    public float Wealth { get; protected set; }
     public float TechLatitude => 2 * (1 - ((Position.Y + 0.5f) / Map.Height));
     public string Code => Type switch {
         EncounterType.None => ".",
@@ -44,6 +59,12 @@ public record Location(
         EncounterType.Hazard => "!",
         _ => "_",
     };
+    public Sector Sector { get; init; }
+    public Vector2 Position { get; init; }
+    public EncounterType Type { get; init; }
+    public float wealth { get; init; }
+    public ulong Seed { get; init; }
+    public Func<Location, Encounter> NewEncounter { get; init; }
 
     public Faction ChooseRandomFaction() {
         // Get base weights for this terrain type
@@ -69,7 +90,7 @@ public record Location(
             }
         }
 
-        var result = adjustedWeights.Pairs().ChooseWeightedRandom();
+        var result = adjustedWeights.Pairs().ChooseWeightedRandom(ref Rng);
         if (result < Game.Instance?.Map.FactionEnd) {
             return result;
         }
@@ -92,6 +113,14 @@ public record Location(
         }
         return new(dx, dy);
     }
+    public void Deconstruct(out Sector Sector, out Vector2 Position, out EncounterType Type, out float wealth, out ulong seed, out Func<Location, Encounter> NewEncounter) {
+        Sector = this.Sector;
+        Position = this.Position;
+        Type = this.Type;
+        wealth = this.wealth;
+        seed = this.Seed;
+        NewEncounter = this.NewEncounter;
+    }
 }
 
 public class LocationActor {
@@ -104,16 +133,28 @@ public record Capital(string Name, Crawler Settlement, float Influence) {
     public Location Location => Settlement.Location;
 }
 
-public class Sector(Map map, string name, int x, int y) {
-    public Map Map => map;
-    public string Name { get; set; } = name;
-    public int X => x;
-    public int Y => y;
-    public Point Position => new(x, y);
-    public TerrainType Terrain { get; set; }
-    public Faction ControllingFaction { get; set; } = Faction.Independent; // Default to Trade for unassigned
-    public List<Sector> Neighbors { get; } = new();
-    public List<Location> Locations { get; } = new();
+public class Sector {
+    public Sector(ulong seed, Map map, string name, int x, int y) {
+        Map = map;
+        X = x;
+        Y = y;
+        Name = name;
+        Rng = new XorShift(seed);
+        Gaussian = new GaussianSampler(Rng.Seed());
+        LocalMarkup = InitLocalOfferRates(Rng.Seed());
+        LocalSegmentRates = InitLocalSegmentRates(Rng.Seed());
+    }
+    public Map Map { get; }
+    public string Name { get; set; }
+    public int X { get; }
+    public int Y { get; }
+    XorShift Rng;
+    GaussianSampler Gaussian;
+    public Point Position => new(X, Y);
+    public TerrainType Terrain;
+    public Faction ControllingFaction = Faction.Independent; // Default to Trade for unassigned
+    public readonly List<Sector> Neighbors = new();
+    public readonly List<Location> Locations = new();
     public IEnumerable<Location> Settlements => Locations.Where(loc => loc.Type == EncounterType.Settlement);
     public override string ToString() => $"{Name} ({Terrain})";
     public string Look() {
@@ -123,8 +164,8 @@ public class Sector(Map map, string name, int x, int y) {
         return result;
     }
     public Point Offset(Sector other) {
-        int dx = x - other.X;
-        int dy = y - other.Y;
+        int dx = X - other.X;
+        int dy = Y - other.Y;
         int width = Map.Width;
         if (dx < -width / 2) {
             dx += width;
@@ -134,50 +175,68 @@ public class Sector(Map map, string name, int x, int y) {
         return new(dx, dy);
     }
 
-    public EArray<Commodity, float> LocalMarkup = InitLocalOfferRates();
-    static EArray<Commodity, float> InitLocalOfferRates() {
+    public EArray<Commodity, float> LocalMarkup;
+    static EArray<Commodity, float> InitLocalOfferRates(ulong seed) {
+        var gaussians = new GaussianSampler(seed);
         EArray<Commodity, float> result = new();
-        result.Initialize(() => Tuning.Trade.LocalMarkup());
+        result.Initialize(() => Tuning.Trade.LocalMarkup(gaussians));
         return result;
     }
-    public EArray<SegmentKind, float> LocalSegmentRates = InitLocalSegmentRates();
-    static EArray<SegmentKind, float> InitLocalSegmentRates() {
+    public EArray<SegmentKind, float> LocalSegmentRates;
+    static EArray<SegmentKind, float> InitLocalSegmentRates(ulong seed) {
+        var gaussians = new GaussianSampler(seed);
         EArray<SegmentKind, float> result = new();
-        result.Initialize(() => Tuning.Trade.LocalMarkup());
+        result.Initialize(() => Tuning.Trade.LocalMarkup(gaussians));
         return result;
     }
+
+    // RNG state accessors for save/load
+    public ulong GetRngState() => Rng.GetState();
+    public void SetRngState(ulong state) => Rng.SetState(state);
+    public ulong GetGaussianRngState() => Gaussian.GetRngState();
+    public void SetGaussianRngState(ulong state) => Gaussian.SetRngState(state);
+    public bool GetGaussianPrimed() => Gaussian.GetPrimed();
+    public void SetGaussianPrimed(bool primed) => Gaussian.SetPrimed(primed);
+    public double GetGaussianZSin() => Gaussian.GetZSin();
+    public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
 }
 
 public class Map {
-    public Map(int Height, int Width) {
-        using var activity = LogCat.Game.StartActivity($"new Map({Height}, {Width})");
+    XorShift Rng;
+    GaussianSampler Gaussian;
+    public Map(ulong seed, int Height, int Width) {
+        using var activity = LogCat.Game.StartActivity($"new Map({Height}, {Width})")?
+            .AddTag("seed", seed.ToString("X16"));
+        Rng = new(seed);
+        Gaussian = new(Rng.Seed());
         Sectors = new Sector[Height, Width];
         float expectation = 2.5f * Height * Width;
         foreach (var (X, Y) in Sectors.Index()) {
             var sectorName = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Y] + $"{X}";
-            var sector = new Sector(this, sectorName, X, Y);
+            var sector = new Sector(Rng.Seed(), this, sectorName, X, Y);
             sector.Terrain = ChooseTerrainType(new Vector3(X, Y, 0));
 
             Sectors[Y, X] = sector;
         }
-        int k = CrawlerEx.SamplePoisson(expectation);
+        int k = CrawlerEx.SamplePoisson(expectation, ref Rng);
         List<Vector3> locations = new();
-        uint seed = 123234234;
 
-        seed &= 0x7FFFFF;
+        uint xseed = ( uint ) Rng.NextInt(0x800000) & 0x7FFFFF;
+        uint yseed = ( uint ) Rng.NextInt(0x800000) & 0x7FFFFF;
+        uint zseed = ( uint ) Rng.NextInt(0x800000) & 0x7FFFFF;
         for (int i = 0; i < k; ++i) {
-            float tx = ( float ) CrawlerEx.HaltonSequence(2, seed + ( uint ) i);
-            float ty = ( float ) CrawlerEx.HaltonSequence(5, seed + ( uint ) i + 34234234);
+            float tx = ( float ) CrawlerEx.HaltonSequence(2, xseed + ( uint ) i);
+            float ty = ( float ) CrawlerEx.HaltonSequence(5, yseed + ( uint ) i);
             float x = tx * Width;
             float y = ty * Height;
 
             float xFrac = CrawlerEx.Frac(x);
             float yFrac = CrawlerEx.Frac(y);
-            float xFloor = (float)Math.Floor(x);
-            float yFloor = (float)Math.Floor(y);
-            var sector = Sectors[(int)yFloor, (int)xFloor];
+            float xFloor = ( float ) Math.Floor(x);
+            float yFloor = ( float ) Math.Floor(y);
+            var sector = Sectors[( int ) yFloor, ( int ) xFloor];
 
-            locations.Add(new(x, y, seed + i));
+            locations.Add(new(x, y, (uint)zseed + i));
         }
         foreach (var loc in locations) {
             var sector = Sectors[(int)loc.Y, (int)loc.X];
@@ -185,17 +244,13 @@ public class Map {
 
             EncounterType encounterType = ChooseEncounterTypes(sector.Terrain, loc);
             float tLat = loc.Y / ( float ) Height;
-            tLat += CrawlerEx.NextGaussian() * 0.05f;
+            tLat += Gaussian.NextSingle() * 0.05f;
             tLat = Math.Clamp(tLat, 0.0f, 1.0f);
-            float wealth = 1000 / (tLat + 0.15f); // ( 1000 / ( tlat + 0.25f ))
+            float wealth = 1000 * ( float ) Math.Pow(50, tLat);
 
-            var encounterLocation = new Location(
-                sector,
-                new (loc.X, loc.Y),
-                encounterType,
-                wealth,
-                loc => new Encounter(loc).Generate()
-            );
+            var locationSeed = (ulong)loc.Z;
+            var encounterLocation = new Location(locationSeed,
+                sector, new (loc.X, loc.Y), encounterType, wealth, loc => new Encounter(Rng.Seed(), loc).Generate());
             sector.Locations.Add(encounterLocation);
         }
         foreach (var (X, Y) in Sectors.Index()) {
@@ -215,8 +270,7 @@ public class Map {
         // Identify faction capitals and assign sectors via weighted Voronoi
         CreateFactionCapitals();
         AssignSectorFactions();
-    }
-
+}
     public int NumFactions { get; protected set; }
     public Faction FactionEnd { get; protected set; }
     void CreateFactionCapitals() {
@@ -234,13 +288,14 @@ public class Map {
         settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).ToList();
 
         NumFactions = Math.Min(Height * 3 / 4, 20);
+        NumFactions = Math.Min(NumFactions, settlementLocations.Count);
         FactionEnd = Faction.Civilian0 + NumFactions;
 
         FactionData[Faction.Player] = new ("Player", Color.White, null);
         FactionData[Faction.Independent] = new ("Independent", Color.Blue, null);
         FactionData[Faction.Bandit] = new ("Bandit", Color.Red, null);
 
-        var policies = FactionEx.GenerateFactionPolicies(NumFactions).ToArray();
+        var policies = FactionEx.GenerateFactionPolicies(NumFactions, Rng.Seed()).ToArray();
         for (int j = 0; j < NumFactions; ++j) {
             Tuning.FactionPolicies.Policies[Faction.Civilian0 + j] = policies[j];
         }
@@ -249,12 +304,12 @@ public class Map {
             var setLocation = settlementLocations[faction - Faction.Civilian0];
             var sector = setLocation.Sector;
             sector.ControllingFaction = faction;
-            var encounter = new Encounter(setLocation, faction);
-            var crawler = encounter.GenerateCapital();
+            var encounter = new Encounter(Rng.Seed(), setLocation, faction);
+            var crawler = encounter.GenerateCapital(Rng.Seed());
             var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
             float influence = 5 + crawler.Domes;
-            var factionName = crawler.Name.MakeFactionName();
-            var capitalName = encounter.Name.MakeCapitalName();
+            var factionName = crawler.Name.MakeFactionName(Rng.Seed());
+            var capitalName = encounter.Name.MakeCapitalName(Rng.Seed());
             var capital = new Capital(capitalName, crawler, influence);
             FactionData[faction] = new (factionName, FactionEx._factionColors[faction], capital);
             sector.Name = factionName + " Capital";
@@ -289,7 +344,7 @@ public class Map {
 
     public Location GetStartingLocation() {
         for (int Y = Height - 1; Y >= 0; --Y) {
-            int DX = Random.Shared.Next(Width);
+            int DX = Rng.NextInt(Width);
             for (int X = 0; X < Width; ++X) {
                 var X2 = (X + DX) % Width;
                 var sector = Sectors[Y, X2];
@@ -306,7 +361,7 @@ public class Map {
         throw new Exception("No starting location found");
     }
     TerrainType ChooseTerrainType(Vector3 position) {
-        float tTerrain = Random.Shared.NextSingle();
+        float tTerrain = Rng.NextSingle();
         float tLat = position.Y / ( float ) Height;
         EArray<TerrainType, float> terrainWeights = [];
         switch (( int ) (tLat * 5)) {
@@ -328,8 +383,9 @@ public class Map {
         }
         return terrainWeights.Pairs().ChooseWeightedAt(tTerrain);
     }
-    EncounterType ChooseEncounterTypes(TerrainType terrain, Vector3 position) {
-        float tEncounter = ( float ) CrawlerEx.HaltonSequence(11, (uint)position.Z + 8920348);
+    EncounterType ChooseEncounterTypes(TerrainType terrain, Vector3 loc) {
+        // loc.Z contains the base halton index
+        float tEncounter = ( float ) CrawlerEx.HaltonSequence(11, (uint)loc.Z);
         EArray<EncounterType, float> encounterWeights = [];
         switch (terrain) {
             // None, Crawler, Settlement, Resource, Hazard,
