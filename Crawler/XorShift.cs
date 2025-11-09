@@ -9,29 +9,24 @@ public struct XorShift {
     public XorShift(int Seed)
         : this((ulong)Seed) { }
 
-    // Returns [0, int32.MaxValue]
+    // Returns [0, int32.endValue]
     public int Next() => (int)(_Sample() & System.Int32.MaxValue);
-    // Returns [0, int32.MaxValue]
+    // Returns [0, int32.endValue]
     public ulong NextUint64() => _Sample();
     // Returns a seed for a new generator
     public ulong Seed() => _Sample() * 2517221091 + 23;
-    // Returns [0, maxValue)
-    public int NextInt(int maxValue) {
-        if (maxValue <= 0) throw new ArgumentOutOfRangeException(nameof(maxValue), "maxValue must be positive");
-        if (maxValue == int.MaxValue) return Next();
-        // fair distribution
-        int endSample = (int)(((uint)int.MaxValue + 1) / maxValue) * maxValue;
-        int sample;
-        while ((sample = Next()) > endSample) { }
-        return sample % maxValue;
+    // Returns [0, endValue)
+    public int NextInt(int endValue) {
+        if (endValue <= 0) throw new ArgumentOutOfRangeException(nameof(endValue), "endValue must be positive");
+        return (int)(_Sample() % (ulong)Math.Max(endValue, 1));
     }
-    public int NextInt(int minValue, int maxValue) => minValue + NextInt(maxValue - minValue);
-    // Returns [0, maxValue)
-    public ulong NextUint64(ulong maxValue) => _Sample() % Math.Max(maxValue, 1);
-    // Returns [0, maxValue)
-    public double NextDouble(double maxValue) => NextDouble() * maxValue;
-    // Returns [minValue, maxValue)
-    public double NextDouble(double minValue, double maxValue) => minValue + NextDouble(maxValue - minValue);
+    public int NextInt(int startValue, int endValue) => startValue + NextInt(endValue - startValue);
+    // Returns [0, endValue).
+    public ulong NextUint64(ulong endValue) => _Sample() % Math.Max(endValue, 1);
+    // Returns [0, endValue)
+    public double NextDouble(double endValue) => NextDouble() * endValue;
+    // Returns [startValue, endValue)
+    public double NextDouble(double startValue, double endValue) => startValue + NextDouble(endValue - startValue);
     // Fill a random array of bytes
     public void NextBytes(byte[] buffer) {
         ulong data = 0;
@@ -45,13 +40,15 @@ public struct XorShift {
     }
     // Returns [0, 1)
     public double NextDouble() {
-        ulong t = _Sample();
+        // -1 remaps (0, 1] to [0, 1)
+        ulong t = _Sample() - 1;
         // Mask out denormals
         t &= 0xFFFFFFFFFFFFF000UL;
         return (double)t / ulong.MaxValue;
     }
     public float NextSingle() {
-        ulong t = _Sample();
+        // -1 remaps (0, 1] to [0, 1)
+        ulong t = _Sample() - 1;
         // Mask out denormals
         t &= 0xFFFFFE0000000000UL;
         return (float)t / ulong.MaxValue;
