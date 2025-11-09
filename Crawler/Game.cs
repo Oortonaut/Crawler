@@ -32,9 +32,12 @@ public class Game {
         game.Construct(saveData);
         return game;
     }
+    ulong Seed = 0;
     Game(ulong seed) {
         _instance = this;
+        Seed = seed;
         Rng = new XorShift(seed);
+        Welcome();
 
         StoredProposals = [
             new ProposeLootTake(Rng / 'L', "L"),
@@ -43,10 +46,10 @@ public class Game {
             new ProposeRepairBuy("R"),
             new ProposePlayerDemand(Rng/'D', 0.5f, "X"),
         ];
-        Welcome();
     }
     protected void Welcome() {
         Console.Write(Style.None.Format() + CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.WriteLine($"Game Seed: {Seed}");
     }
 
     void Construct(string crawlerName, int H) {

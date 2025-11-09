@@ -43,12 +43,11 @@ string Logo = string.Join("\n", [
 Console.WriteLine(Logo);
 Console.WriteLine("Welcome to Crawler  (c) 2025 Ace Stapp");
 
-ulong seed = (ulong)DateTime.Now.Ticks + (ulong)Random.Shared.NextInt64();
+ulong seed = GetSeed();
 
 var newGame = new ActionMenuItem("N", "New Game", args => {
     string? name = args;
-    var tempRng = new XorShift(seed);
-    var gameSeed = tempRng.Seed();
+    var tempRng = new XorShift((ulong)Random.Shared.NextInt64());
     if (string.IsNullOrWhiteSpace(name)) {
         name = Names.HumanName(tempRng.Seed());
         name = CrawlerEx.Input("Crawler Name: ", name);
@@ -64,7 +63,9 @@ var newGame = new ActionMenuItem("N", "New Game", args => {
         size = minSize;
     }
     size = Math.Clamp(size, minSize, maxSize);
-    Game.NewGame(gameSeed, name, size);
+    var seedStr = CrawlerEx.Input($"Seed: ", seed.ToString());
+    ulong.TryParse(seedStr, out seed);
+    Game.NewGame(seed, name, size);
     return 0;
 });
 var loadGame = new ActionMenuItem("L", "Load Game", _ => {
@@ -109,4 +110,16 @@ int LoadGame() {
         }));
     var (item, result) = CrawlerEx.MenuRun("Load Menu", [ .. menuItems, quit ]);
     return result;
+}
+
+ulong GetSeed() {
+    // First check for `--seed=<seed>` argument
+    var args = Environment.GetCommandLineArgs();
+    if (args.FirstOrDefault(a => a.StartsWith("--seed")) is {} seedArg) {
+        var split = seedArg.Split('=');
+        if (split.Length > 1 && ulong.TryParse(split[1], out ulong _seed)) {
+            return _seed;
+        }
+    }
+    return (ulong)DateTime.Now.Ticks + (ulong)Random.Shared.NextInt64();
 }

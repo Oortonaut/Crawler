@@ -221,9 +221,9 @@ public class Map {
         int k = CrawlerEx.SamplePoisson(expectation, ref Rng);
         List<Vector3> locations = new();
 
-        uint xseed = ( uint ) Rng.NextInt(0x800000) & 0x7FFFFF;
-        uint yseed = ( uint ) Rng.NextInt(0x800000) & 0x7FFFFF;
-        uint zseed = ( uint ) Rng.NextInt(0x800000) & 0x7FFFFF;
+        uint xseed = ( uint ) Rng.NextInt(0x800000);
+        uint yseed = ( uint ) Rng.NextInt(0x800000);
+        uint zseed = ( uint ) Rng.NextInt(0x800000);
         for (int i = 0; i < k; ++i) {
             float tx = ( float ) CrawlerEx.HaltonSequence(2, xseed + ( uint ) i);
             float ty = ( float ) CrawlerEx.HaltonSequence(5, yseed + ( uint ) i);

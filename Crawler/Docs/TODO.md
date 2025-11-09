@@ -1,5 +1,11 @@
 ﻿# TODO
-            
+                  
+## Big Ol' Bugs
+
+[_] Time not flowing properly outside of combat
+[_] Pausing doesn't advance time
+[_] Need a --seed command line option
+
 ## Missing Features
 
 ## Wish List
