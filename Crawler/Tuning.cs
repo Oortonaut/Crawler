@@ -168,7 +168,7 @@ public static partial class Tuning {
         public static float AirRecyclingLossPerHour = 0.005f; // 0.5% per hour per damaged segment
 
         public static EArray<Commodity, float> DefaultCommodityWeights => [
-                1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f, // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+            1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f, // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
             0.2f, 0.5f, 1.0f, // Air, Water, Rations
             0.3f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Biomass, Ore, Silicates, Metal, Chemicals, Glass
             0.4f, 0.4f, 0.6f, 0.7f, 0.4f, // Ceramics, Polymers, Alloys, Electronics, Explosives

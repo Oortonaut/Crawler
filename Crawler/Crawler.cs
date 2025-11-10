@@ -99,13 +99,6 @@ public class Crawler: IActor {
         newInv.AddRandomInventory(invSeed, here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
         var crawler = new Crawler(crawlerSeed, faction, here, newInv);
 
-        // Add initial fuel based on supply days and movement power at current location
-        float fuelPerHr = crawler.FuelPerHr;
-        float hoursOfFuel = supplyDays * 24;
-        float initialFuel = fuelPerHr * hoursOfFuel;
-        float mileageFuel = 25 * supplyDays * crawler.FuelPerKm; // 25 km per day
-        crawler.Supplies[Commodity.Fuel] += initialFuel + mileageFuel;
-
         return crawler;
     }
     public Crawler(ulong seed, Faction faction, Location location, Inventory inventory) {
@@ -123,6 +116,7 @@ public class Crawler: IActor {
             Markup = Tuning.Trade.TradeMarkup(Gaussian);
             Spread = Tuning.Trade.TradeSpread(Gaussian);
         }
+        UpdateSegmentCache();
     }
     public string Name { get; set; }
     public string Brief(IActor viewer) {
@@ -164,10 +158,11 @@ public class Crawler: IActor {
     public float AirPerHr {
         get {
             int hitSegments = UndestroyedSegments.Count(s => s.Hits > 0);
-            return TotalPeople * Tuning.Crawler.AirPerPerson * Tuning.Crawler.AirRecyclingLossPerHour * hitSegments;
+            return TotalPeople * Tuning.Crawler.AirRecyclingLossPerHour * hitSegments;
         }
     }
     public float TotalPeople => CrewInv + SoldiersInv + PassengersInv;
+    // Returns negative values if not reachable
     public (float Fuel, float Time) FuelTimeTo(Location location) {
         float dist = Location.Distance(location);
         float startSpeed = Speed;
@@ -324,11 +319,15 @@ public class Crawler: IActor {
         UpdateSegmentCache();
     }
     public void Travel(Location loc) {
-        Location.GetEncounter().RemoveActor(this);
         var (fuel, time) = FuelTimeTo(loc);
-        FuelInv -= fuel;
+        if (fuel < 0) {
+            Message("Not enough fuel.");
+            return;
+        }
         long arrivalTime = LastEvent + ( int ) (time * 3600);
 
+        Location.GetEncounter().RemoveActor(this);
+        FuelInv -= fuel;
         Location = loc;
         loc.GetEncounter().AddActorAt(this, arrivalTime);
     }
@@ -465,17 +464,21 @@ public class Crawler: IActor {
         float generation = TotalGeneration;
         float weight = Mass;
         var segments = TractionSegments.ToArray();
+        if (segments.Length == 0) {
+            return new Move(0, 0, "No traction");
+        }
         for (TerrainType i = TerrainType.Flat; i <= t; ++i) {
             float speed = segments.Sum(ts => ts.SpeedOn(i));
             float drainSum = segments.Sum(ts => ts.DrainOn(i));
             float generationLimit = Math.Min(1, generation / drainSum);
-            float liftFraction = weight / segments.Sum(ts => ts.LiftOn(t));
+            float totalLift = segments.Sum(ts => ts.LiftOn(i));
+            float liftFraction = weight / totalLift;
             List<string> notes = new();
             if (generationLimit < 1) {
                 notes.Add("low gen");
             }
             speed *= generationLimit;
-            if (liftFraction > 1) {
+            if (totalLift > 0 && liftFraction > 1) {
                 liftFraction = ( float ) Math.Pow(liftFraction, 0.6f);
                 notes.Add("too heavy");
                 drain *= liftFraction;
@@ -500,6 +503,7 @@ public class Crawler: IActor {
         PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generation) +
         PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generation);
 
+    // TODO: Replace with a power scaling
     public float FuelEfficiency => 0.4f;
     public string Report() {
         // Header with crawler name and location
@@ -684,11 +688,12 @@ public class Crawler: IActor {
         float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate(elapsed));
         overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate(elapsed));
         FeedPower(overflowPower);
-        ScrapInv -= WagesPerHr;
-        RationsInv -= RationsPerHr;
-        WaterInv -= WaterPerHr;
-        AirInv -= AirPerHr;
-        FuelInv -= FuelPerHr;
+        float hours = elapsed / 3600f;
+        ScrapInv -= WagesPerHr * hours;
+        RationsInv -= RationsPerHr * hours;
+        WaterInv -= WaterPerHr * hours;
+        AirInv -= AirPerHr * hours;
+        FuelInv -= FuelPerHr * hours;
     }
     // Returns excess (wasted) power
     float FeedPower(float delta) {

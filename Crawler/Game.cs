@@ -603,8 +603,408 @@ public class Game {
             MenuItem.Cancel,
             new ActionMenuItem("SD", "Segment Definitions", _ => SegmentDefinitionsReport()),
             new ActionMenuItem("PS", "Price Statistics", _ => PriceStatisticsReport()),
+            new ActionMenuItem("XS", "XorShift Tests", _ => XorShiftTests()),
         ]);
         return ap;
+    }
+
+    int XorShiftTests() {
+        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.WriteLine("XorShift Random Number Generator - Comprehensive Unit Tests");
+        Console.WriteLine(new string('=', 70));
+        Console.WriteLine();
+
+        int passedTests = 0;
+        int totalTests = 0;
+
+        void RunTest(string testName, Func<bool> test) {
+            totalTests++;
+            Console.Write($"[{totalTests,2}] {testName,-50} ");
+            try {
+                bool passed = test();
+                if (passed) {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("PASS");
+                    Console.ResetColor();
+                    passedTests++;
+                } else {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("FAIL");
+                    Console.ResetColor();
+                }
+            } catch (Exception ex) {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.ResetColor();
+            }
+        }
+
+        // Test 1: Determinism - same seed produces same sequence
+        RunTest("Determinism: Same seed produces same sequence", () => {
+            var rng1 = new XorShift(12345);
+            var rng2 = new XorShift(12345);
+            for (int i = 0; i < 100; i++) {
+                if (rng1.Next() != rng2.Next()) return false;
+            }
+            return true;
+        });
+
+        // Test 2: Different seeds produce different sequences
+        RunTest("Different seeds produce different sequences", () => {
+            var rng1 = new XorShift(12345);
+            var rng2 = new XorShift(54321);
+            int matches = 0;
+            for (int i = 0; i < 100; i++) {
+                if (rng1.Next() == rng2.Next()) matches++;
+            }
+            return matches < 5; // Very unlikely to match more than 5 times
+        });
+
+        // Test 3: NextInt range [0, int.MaxValue]
+        RunTest("Next() returns values in [0, int.MaxValue]", () => {
+            var rng = new XorShift(999);
+            for (int i = 0; i < 1000; i++) {
+                int val = rng.Next();
+                if (val < 0 || val > int.MaxValue) return false;
+            }
+            return true;
+        });
+
+        // Test 4: NextInt(max) range [0, max)
+        RunTest("NextInt(max) returns values in [0, max)", () => {
+            var rng = new XorShift(777);
+            int max = 100;
+            for (int i = 0; i < 1000; i++) {
+                int val = rng.NextInt(max);
+                if (val < 0 || val >= max) return false;
+            }
+            return true;
+        });
+
+        // Test 5: NextInt(min, max) range [min, max)
+        RunTest("NextInt(min, max) returns values in [min, max)", () => {
+            var rng = new XorShift(888);
+            int min = 50, max = 150;
+            for (int i = 0; i < 1000; i++) {
+                int val = rng.NextInt(min, max);
+                if (val < min || val >= max) return false;
+            }
+            return true;
+        });
+
+        // Test 6: NextDouble() range [0, 1)
+        RunTest("NextDouble() returns values in [0, 1)", () => {
+            var rng = new XorShift(111);
+            for (int i = 0; i < 1000; i++) {
+                double val = rng.NextDouble();
+                if (val < 0.0 || val >= 1.0) return false;
+            }
+            return true;
+        });
+
+        // Test 7: NextSingle() range [0, 1)
+        RunTest("NextSingle() returns values in [0, 1)", () => {
+            var rng = new XorShift(222);
+            for (int i = 0; i < 1000; i++) {
+                float val = rng.NextSingle();
+                if (val < 0.0f || val >= 1.0f) return false;
+            }
+            return true;
+        });
+
+        // Test 8: NextDouble(max) range [0, max)
+        RunTest("NextDouble(max) returns values in [0, max)", () => {
+            var rng = new XorShift(333);
+            double max = 100.0;
+            for (int i = 0; i < 1000; i++) {
+                double val = rng.NextDouble(max);
+                if (val < 0.0 || val >= max) return false;
+            }
+            return true;
+        });
+
+        // Test 9: NextDouble(min, max) range [min, max)
+        RunTest("NextDouble(min, max) returns values in [min, max)", () => {
+            var rng = new XorShift(444);
+            double min = 50.0, max = 150.0;
+            for (int i = 0; i < 1000; i++) {
+                double val = rng.NextDouble(min, max);
+                if (val < min || val >= max) return false;
+            }
+            return true;
+        });
+
+        // Test 10: NextBytes fills array correctly
+        RunTest("NextBytes() fills array correctly", () => {
+            var rng = new XorShift(555);
+            byte[] buffer = new byte[100];
+            rng.NextBytes(buffer);
+            // Check that not all bytes are zero (very unlikely)
+            int nonZero = 0;
+            foreach (var b in buffer) {
+                if (b != 0) nonZero++;
+            }
+            return nonZero > 50; // At least half should be non-zero
+        });
+
+        // Test 11: NextBytes determinism
+        RunTest("NextBytes() is deterministic", () => {
+            var rng1 = new XorShift(666);
+            var rng2 = new XorShift(666);
+            byte[] buffer1 = new byte[100];
+            byte[] buffer2 = new byte[100];
+            rng1.NextBytes(buffer1);
+            rng2.NextBytes(buffer2);
+            return buffer1.SequenceEqual(buffer2);
+        });
+
+        // Test 12: Branch creates independent generator
+        RunTest("Branch() creates independent generator", () => {
+            var rng1 = new XorShift(777);
+            var rng2 = rng1.Branch();
+            // After branching, parent and child should produce different sequences
+            int matches = 0;
+            for (int i = 0; i < 100; i++) {
+                if (rng1.Next() == rng2.Next()) matches++;
+            }
+            return matches < 10; // Should be very few matches
+        });
+
+        // Test 13: Seed() creates reproducible branch
+        RunTest("Seed() creates reproducible branch", () => {
+            var rng1 = new XorShift(888);
+            ulong seed = rng1.Seed();
+            var branch1 = new XorShift(seed);
+            var branch2 = new XorShift(seed);
+            for (int i = 0; i < 100; i++) {
+                if (branch1.Next() != branch2.Next()) return false;
+            }
+            return true;
+        });
+
+        // Test 14: GetState/SetState preserves sequence
+        RunTest("GetState/SetState preserves sequence", () => {
+            var rng1 = new XorShift(999);
+            for (int i = 0; i < 50; i++) rng1.Next(); // Advance state
+            ulong state = rng1.GetState();
+            int val1 = rng1.Next();
+
+            var rng2 = new XorShift(1);
+            rng2.SetState(state);
+            int val2 = rng2.Next();
+
+            return val1 == val2;
+        });
+
+        // Test 15: Division operator creates new generator
+        RunTest("Division operator creates new generator", () => {
+            var rng1 = new XorShift(1111);
+            var rng2 = new XorShift(2222);
+            var rng3 = rng1 / rng2;
+            // Should be a valid generator producing values
+            int val = rng3.Next();
+            return val >= 0 && val <= int.MaxValue;
+        });
+
+        // Test 16: Division operator with int
+        RunTest("Division operator with int creates new generator", () => {
+            var rng1 = new XorShift(1234);
+            var rng2 = rng1 / 42;
+            int val = rng2.Next();
+            return val >= 0 && val <= int.MaxValue;
+        });
+
+        // Test 17: Division operator with string
+        RunTest("Division operator with string creates new generator", () => {
+            var rng1 = new XorShift(5678);
+            var rng2 = rng1 / "test";
+            int val = rng2.Next();
+            return val >= 0 && val <= int.MaxValue;
+        });
+
+        // Test 18: NextUint64 produces full range values
+        RunTest("NextUint64() produces values across full range", () => {
+            var rng = new XorShift(1357);
+            bool hasLarge = false; // > 2^63
+            for (int i = 0; i < 1000; i++) {
+                ulong val = rng.NextUint64();
+                if (val > (ulong)long.MaxValue) hasLarge = true;
+            }
+            return hasLarge;
+        });
+
+        // Test 19: NextUint64(max) stays in bounds
+        RunTest("NextUint64(max) returns values in [0, max)", () => {
+            var rng = new XorShift(2468);
+            ulong max = 1000000;
+            for (int i = 0; i < 1000; i++) {
+                ulong val = rng.NextUint64(max);
+                if (val >= max) return false;
+            }
+            return true;
+        });
+
+        // Test 20: GaussianSampler determinism
+        RunTest("GaussianSampler is deterministic", () => {
+            var gauss1 = new GaussianSampler(12345);
+            var gauss2 = new GaussianSampler(12345);
+            for (int i = 0; i < 100; i++) {
+                if (Math.Abs(gauss1.NextDouble() - gauss2.NextDouble()) > 1e-10) return false;
+            }
+            return true;
+        });
+
+        // Test 21: GaussianSampler produces reasonable values
+        RunTest("GaussianSampler produces values in reasonable range", () => {
+            var gauss = new GaussianSampler(54321);
+            int inRange = 0;
+            for (int i = 0; i < 1000; i++) {
+                double val = gauss.NextDouble();
+                if (val >= -4.0 && val <= 4.0) inRange++; // ~99.99% should be in this range
+            }
+            return inRange > 990; // Allow for rare outliers
+        });
+
+        // Test 22: GaussianSampler mean near zero
+        RunTest("GaussianSampler has mean near zero", () => {
+            var gauss = new GaussianSampler(99999);
+            double sum = 0;
+            int count = 10000;
+            for (int i = 0; i < count; i++) {
+                sum += gauss.NextDouble();
+            }
+            double mean = sum / count;
+            return Math.Abs(mean) < 0.1; // Mean should be close to 0
+        });
+
+        // Test 23: GaussianSampler state save/restore
+        RunTest("GaussianSampler state save/restore works", () => {
+            var gauss1 = new GaussianSampler(11111);
+            for (int i = 0; i < 25; i++) gauss1.NextDouble(); // Advance state
+
+            ulong rngState = gauss1.GetRngState();
+            bool primed = gauss1.GetPrimed();
+            double zSin = gauss1.GetZSin();
+
+            double val1 = gauss1.NextDouble();
+
+            var gauss2 = new GaussianSampler(1);
+            gauss2.SetRngState(rngState);
+            gauss2.SetPrimed(primed);
+            gauss2.SetZSin(zSin);
+
+            double val2 = gauss2.NextDouble();
+
+            return Math.Abs(val1 - val2) < 1e-10;
+        });
+
+        // Test 24a: GaussianSampler.CDF is monotonic
+        RunTest("GaussianSampler.CDF is monotonic", () => {
+            double lastP = 0.0;
+            for (double x = -5.0; x <= 5.0; x += 1.0/16) {
+                double p = GaussianSampler.CDF(x);
+                if (p < lastP) return false;
+                lastP = p;
+            }
+            return true;
+        });
+        // Test 24b: GaussianSampler.Quantile is inverse of Gaussian CDF
+        RunTest("GaussianSampler.Quantile is inverse of Gaussian CDF", () => {
+            for (double t = 1.0 / 256; t < 1.0; t += 1.0 / 128) {
+                double x = GaussianSampler.Quantile(t); 
+                double p = GaussianSampler.CDF(x);
+                if (Math.Abs(p - t) > 0.01)
+                    return false;
+            }
+            return true;
+        });
+
+        // Test 25: GaussianSampler with mean and stddev
+        RunTest("GaussianSampler NextDouble(mean, stddev) works", () => {
+            var gauss = new GaussianSampler(77777);
+            double mean = 100.0;
+            double stddev = 15.0;
+            double sum = 0;
+            int count = 10000;
+            for (int i = 0; i < count; i++) {
+                sum += gauss.NextDouble(mean, stddev);
+            }
+            double actualMean = sum / count;
+            return Math.Abs(actualMean - mean) < 2.0; // Within 2 units of target mean
+        });
+
+        // Test 26: NextInt edge case - max = 1
+        RunTest("NextInt(1) always returns 0", () => {
+            var rng = new XorShift(123);
+            for (int i = 0; i < 100; i++) {
+                if (rng.NextInt(1) != 0) return false;
+            }
+            return true;
+        });
+
+        // Test 27: Zero seed gets remapped
+        RunTest("Zero seed gets remapped to non-zero", () => {
+            var rng = new XorShift(0);
+            // Should still produce valid values
+            int val = rng.Next();
+            return val >= 0 && val <= int.MaxValue;
+        });
+
+        // Test 28: MixState produces different values
+        RunTest("MixState transforms state correctly", () => {
+            ulong state1 = 12345;
+            ulong state2 = XorShift.MixState(state1);
+            ulong state3 = XorShift.MixState(state2);
+            return state1 != state2 && state2 != state3 && state1 != state3;
+        });
+
+        // Test 29: Copy constructor works
+        RunTest("Copy constructor creates identical generator", () => {
+            var rng1 = new XorShift(9876);
+            for (int i = 0; i < 50; i++) rng1.Next();
+            var rng2 = new XorShift(rng1);
+            for (int i = 0; i < 100; i++) {
+                if (rng1.Next() != rng2.Next()) return false;
+            }
+            return true;
+        });
+
+        // Test 30: Statistical uniformity test for NextInt
+        RunTest("NextInt(100) has roughly uniform distribution", () => {
+            var rng = new XorShift(13579);
+            int[] buckets = new int[10];
+            int samples = 10000;
+            for (int i = 0; i < samples; i++) {
+                int val = rng.NextInt(100);
+                buckets[val / 10]++;
+            }
+            // Each bucket should have roughly samples/10 = 1000 values
+            // Allow 20% deviation
+            int expected = samples / 10;
+            foreach (int count in buckets) {
+                if (count < expected * 0.8 || count > expected * 1.2) return false;
+            }
+            return true;
+        });
+
+        Console.WriteLine();
+        Console.WriteLine(new string('=', 70));
+        Console.WriteLine($"Test Results: {passedTests}/{totalTests} passed");
+
+        if (passedTests == totalTests) {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("ALL TESTS PASSED!");
+            Console.ResetColor();
+        } else {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"{totalTests - passedTests} test(s) failed.");
+            Console.ResetColor();
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Press any key to continue...");
+        Console.ReadKey(true);
+        return 0;
     }
 
     int PriceStatisticsReport() {

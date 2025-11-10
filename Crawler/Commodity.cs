@@ -84,15 +84,15 @@ public static class CommodityEx {
     public static EArray<Commodity, CommodityData> Data = [
         new CommodityData(1, 0.001f, 0.005f, CommodityFlag.None, GameTier.Early, CommodityCategory.Essential), // Scrap
         new CommodityData(7.5f, 0.0002f, 0.001f, CommodityFlag.None, GameTier.Early, CommodityCategory.Essential), // Fuel
-        new CommodityData(4.0f, 1.0f, 0.08f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Essential), // Crew
-        new CommodityData(15f, 0.0f, 0.0f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Essential), // Morale
+        new CommodityData(60.0f, 1.0f, 0.08f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Essential), // Crew
+        new CommodityData(1.5f, 0.0f, 0.0f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Essential), // Morale
         new CommodityData(3.5f, 1.0f, 0.08f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Consumer), // Passengers
         new CommodityData(30f, 1.2f, 0.10f, CommodityFlag.Integral, GameTier.Mid, CommodityCategory.Dangerous), // Soldiers
 
         // Life support
-        new CommodityData(1f, 0.1f, 0.087f, CommodityFlag.None, GameTier.Early, CommodityCategory.Essential), // Air
-        new CommodityData(30f, 1.0f, 1.0f, CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Essential), // Water
-        new CommodityData(30f, 0.5f, 0.1f, CommodityFlag.Perishable, GameTier.Early, CommodityCategory.Essential), // Rations
+        new CommodityData(11.5f, 0.1f, 0.087f, CommodityFlag.None, GameTier.Early, CommodityCategory.Essential), // Air
+        new CommodityData(33f, 1.0f, 1.0f, CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Essential), // Water
+        new CommodityData(150f, 0.5f, 0.1f, CommodityFlag.Perishable, GameTier.Early, CommodityCategory.Essential), // Rations
 
         // Raw materials
         new CommodityData(40f, 1.0f, 0.5f, CommodityFlag.Perishable | CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Raw), // Biomass

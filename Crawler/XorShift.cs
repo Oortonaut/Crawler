@@ -1,9 +1,13 @@
-﻿namespace Crawler;
+﻿using System.Numerics;
+
+namespace Crawler;
+
 public struct XorShift {
     public XorShift(XorShift other) {
         _state = other._state;
     }
     public XorShift(ulong Seed) {
+        Seed = Seed * M32 + 1337;
         _state = MixState(Math.Max(Seed, 1));
     }
     public XorShift(int Seed)
@@ -15,6 +19,8 @@ public struct XorShift {
     public ulong NextUint64() => _Sample();
     // Returns a seed for a new generator
     public ulong Seed() => _Sample() * 2517221091 + 23;
+    // returns a new generator from Seed
+    public XorShift Branch() => new XorShift(Seed());
     // Returns [0, endValue)
     public int NextInt(int endValue) {
         if (endValue <= 0) throw new ArgumentOutOfRangeException(nameof(endValue), "endValue must be positive");
@@ -63,9 +69,14 @@ public struct XorShift {
         return result;
     }
     public static ulong MixState(ulong state) {
-        state ^= state >> 12; // a
-        state ^= state << 25; // b
-        state ^= state >> 27; // c
+        //                   62     56     50     44     38     32     26     20     14      8      2
+        // var primeBits = 0b0000_101000_001000_001000_101000_100000_101000_001000_101000_101000_101011
+        const ulong primeBits1 = 0b0000_100000_000000_001000_000000_100000_000000_001000_000000_100000_001000ul;
+        const ulong primeBits2 = 0b0000_001000_000000_000000_100000_000000_100000_000000_100000_001000_000010ul;
+        const ulong primeBits3 = 0b0000_000000_001000_000000_001000_000000_001000_000000_001000_000000_100001ul;
+        state ^= BitOperations.RotateRight(state * primeBits1, 12); // 52 left
+        state ^= BitOperations.RotateLeft(state * primeBits2, 25); // 39 right
+        state ^= BitOperations.RotateRight(state * primeBits3, 17); // 47 left
         return state;
     }
     const ulong M32 = 0x2545F4914F6CDD1DUL;
@@ -102,7 +113,7 @@ public struct XorShift {
     public T? NextWeighted<T>(IEnumerable<(T Item, float Weight)> choices) {
         return choices.ChooseWeightedAt(this.NextSingle());
     }
-    public override string ToString() => $"{_state:X16}";
+    public override string ToString() => $"{_state:X16} {(double)(_state-1)/ulong.MaxValue}";
 }
 
 public struct GaussianSampler(ulong seed) {
@@ -128,43 +139,11 @@ public struct GaussianSampler(ulong seed) {
         }
     }
     public float NextSingle() => (float)NextDouble();
-    public double NextDouble(double mean, double stdDev) {
-        return NextDouble() * stdDev + mean;
-    }
-    public float NextSingle(float mean, float stdDev) {
-        return NextSingle() * stdDev + mean;
-    }
-    public static double Quantile(double t) {
-        // Beasley-Springer-Moro rational approximation
-        // Converts probability t ∈ [0,1] to standard normal quantile (z-score)
-
-        if (t <= 0) return double.NegativeInfinity;
-        if (t >= 1) return double.PositiveInfinity;
-
-        // Use symmetry for t > 0.5
-        bool reflect = t > 0.5;
-        if (reflect) t = 1.0 - t;
-
-        // Coefficients for the rational approximation
-        const double a0 = 2.50662823884;
-        const double a1 = -18.61500062529;
-        const double a2 = 41.39119773534;
-        const double a3 = -25.44106049637;
-
-        const double b0 = -8.47351093090;
-        const double b1 = 23.08336743743;
-        const double b2 = -21.06224101826;
-        const double b3 = 3.13082909833;
-
-        double u = Math.Sqrt(-2.0 * Math.Log(t));
-
-        double numerator = a0 + u * (a1 + u * (a2 + u * a3));
-        double denominator = 1.0 + u * (b0 + u * (b1 + u * (b2 + u * b3)));
-
-        double z = u - numerator / denominator;
-
-        return reflect ? z : -z;
-    }
+    public double NextDouble(double mean, double stdDev) => NextDouble() * stdDev + mean;
+    public float NextSingle(float mean, float stdDev) => NextSingle() * stdDev + mean;
+    public static double Erf(double x) => MathNet.Numerics.SpecialFunctions.Erf(x);
+    public static double CDF(double x) => MathNet.Numerics.Distributions.Normal.CDF(x, 1, 1);
+    public static double Quantile(double t) => MathNet.Numerics.Distributions.Normal.InvCDF(t, 1, 1);
 
     // State management for save/load
     public ulong GetRngState() => _rng.GetState();

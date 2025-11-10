@@ -261,7 +261,7 @@ public static partial class CrawlerEx {
         return ChooseWeightedAt(seq, rng.NextSingle());
     }
 
-    public static IReadOnlyList<T> ChooseRandomK<T>(this IEnumerable<T> seq, int k, ref XorShift rng) {
+    public static IReadOnlyList<T> ChooseRandomK<T>(this IEnumerable<T> seq, int k, XorShift rng) {
         if (k < 0) throw new ArgumentOutOfRangeException(nameof(k), "k must be non-negative");
         if (k == 0) return Array.Empty<T>();
 
@@ -285,6 +285,43 @@ public static partial class CrawlerEx {
         return reservoir.AsReadOnly();
     }
 
+    public static IReadOnlyList<T> ChooseWeightedRandomK<T>(this IEnumerable<(T Item, float Weight)> seq, int k, XorShift rng) {
+        if (k < 0) throw new ArgumentOutOfRangeException(nameof(k), "k must be non-negative");
+        if (k == 0) return Array.Empty<T>();
+
+        // Efraimidis–Spirakis weighted sampling without replacement.
+        // For each item with weight w > 0, generate key = log(U) / w (U ~ Uniform(0,1))
+        // and pick the top-k by key (larger is better; keys are <= 0).
+        var keys = new List<(T item, double key)>();
+        foreach (var (item, weight) in seq) {
+            if (weight > 0f && !float.IsNaN(weight) && !float.IsInfinity(weight)) {
+                float u = rng.NextSingle();
+                // Avoid log(0). Using a tiny floor ensures numerical stability.
+                if (u <= 0f) u = float.Epsilon;
+                double key = Math.Log(u) / weight;
+                keys.Add((item, key));
+            }
+        }
+
+        if (keys.Count == 0) {
+            return Array.Empty<T>();
+        }
+
+        if (k >= keys.Count) {
+            var all = new List<T>(keys.Count);
+            foreach (var kv in keys) all.Add(kv.item);
+            return all.AsReadOnly();
+        }
+
+        keys.Sort((a, b) => b.key.CompareTo(a.key)); // descending by key
+        var result = new List<T>(k);
+        for (int i = 0; i < k; i++) {
+            result.Add(keys[i].item);
+        }
+        return result.AsReadOnly();
+    }
+
+    
     public static string CommodityTextFull(this Commodity comm, float count) =>
         comm == Commodity.Scrap ? $"{count:F1}¢¢" :
         comm.IsIntegral() ? $"{( int ) count} {comm}" :
@@ -403,32 +440,7 @@ public static partial class CrawlerEx {
     }
     public static float Factorial(int N) => N == 0 ? 1 : Enumerable.Range(1, N).Aggregate(1, (a, b) => a * b);
     public static float PoissonPMF(int K, float lambda) => (float)(Math.Pow(lambda, K) * Math.Exp(-lambda) / Factorial(K));
-    public static int SamplePoissonAt(float lambda, float u) {
-        if (!(lambda >= 0.0)) throw new ArgumentOutOfRangeException(nameof(lambda));
-        // Threshold where we switch from exact inversion to normal approx.
-        const float NormalThreshold = 30.0f;
-
-        if (lambda < NormalThreshold) {
-            // Exact inverse-transform using iterative PMF (stable, no factorials).
-            float p = ( float ) Math.Exp(-lambda); // p(0)
-            int limit = ( int ) (lambda * 20 + 100);
-            float cumulative = p;
-            int k = 0;
-            while (k < limit) {
-                if (u < cumulative) {
-                    break;
-                }
-                ++k;
-                p *= lambda / k; // p(k) = p(k-1) * lambda / k
-                cumulative += p;
-            }
-            return k;
-        } else {
-            float kRaw = lambda + ( float ) (Math.Sqrt(lambda) * GaussianSampler.Quantile(u));
-            int k = ( int ) Math.Round(kRaw);
-            return Math.Max(0, k);
-        }
-    }
+    public static int SamplePoissonAt(float lambda, float u) => MathNet.Numerics.Distributions.Poisson.Sample(lambda);
     public static int SamplePoisson(float lambda, ref XorShift rng) => SamplePoissonAt(lambda, rng.NextSingle());
 
     /// <summary>
@@ -445,15 +457,15 @@ public static partial class CrawlerEx {
     }
 
     public static float HaltonSequence(uint b, uint index) {
-        float f = 1;
-        float r = 0;
+        double f = 1;
+        double r = 0;
         uint i = index;
         while (i > 0) {
             f = f / b;
             r = r + f * (i % b);
             i = i / b;
         }
-        return r;
+        return ( float ) r;
     }
 
     public static bool IsNumericType(this Type type) {

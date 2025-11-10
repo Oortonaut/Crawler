@@ -239,71 +239,62 @@ public class Inventory {
         var crewSeed = Rng.Seed();
         var goodsSeed = Rng.Seed();
         var segmentSeed = Rng.Seed();
-        AddCrewInventory(crewSeed, crew, supplyDays);
-        AddCommodityInventory(goodsSeed, Loc, goodsWealth, faction);
-        AddSegmentInventory(segmentSeed, Loc, segmentWealth, includeCore, segmentClassWeights);
+        AddSegments(segmentSeed, Loc, segmentWealth, includeCore, segmentClassWeights);
+        AddEssentials(crewSeed, Loc, crew, supplyDays);
+        AddCargo(goodsSeed, Loc, goodsWealth, faction);
     }
-    public void AddCrewInventory(ulong seed, int crew, float supplyDays = 10) {
+    public void AddEssentials(ulong seed, Location location, int crew, float supplyDays = 10) {
         var Gaussians = new GaussianSampler(seed);
-        float rationsPerCrewDay = Tuning.Crawler.RationsPerCrewDay;
-        float waterPerCrewDay = Tuning.Crawler.WaterPerCrew * 24 * Tuning.Crawler.WaterRecyclingLossPerHour;
-        float airPerCrewDay = Tuning.Crawler.AirPerPerson * 24 * Tuning.Crawler.AirRecyclingLossPerHour;
-        float startMorale = Gaussians.NextSingle(10, 1);
+        float supplyHours = supplyDays * 24;
+        float supplyCrewHours = supplyHours * crew;
+        float crewSupplyDays = supplyDays * crew;
 
-        this[Commodity.Crew] = Commodity.Crew.Round(this[Commodity.Crew] + crew);
-        this[Commodity.Rations] = Commodity.Rations.Round(this[Commodity.Rations] + rationsPerCrewDay * crew * supplyDays);
-        this[Commodity.Water] = Commodity.Water.Round(this[Commodity.Water] + waterPerCrewDay * crew * supplyDays);
-        this[Commodity.Air] = Commodity.Air.Round(this[Commodity.Air] + airPerCrewDay * crew * supplyDays);
-        this[Commodity.Morale] = Commodity.Morale.Round(this[Commodity.Morale] + startMorale * crew);
+        float rations = Tuning.Crawler.RationsPerCrewDay * crewSupplyDays;
+        float water = Tuning.Crawler.WaterPerCrew * crewSupplyDays;
+        float waterLeakage = Tuning.Crawler.WaterRecyclingLossPerHour * supplyHours;
+        float air = Tuning.Crawler.AirPerPerson * crew;
+        float airLeakage = Tuning.Crawler.AirRecyclingLossPerHour * supplyHours; // one segment leaking
+        float startMorale = Gaussians.NextSingle(10, 1);
+        var appxDraw = Segments.Sum(seg => seg.Drain);
+        float fuelPerHr = Tuning.Crawler.StandbyFraction * appxDraw;
+        float hoursOfFuel = supplyDays * 24;
+        float initialFuel = fuelPerHr * hoursOfFuel;
+        float mileageFuel = 250 * supplyDays * Tuning.Crawler.FuelPerKm / 0.4f;
+        float wealth = location.Wealth * 0.1f;
+
+        this[Commodity.Scrap] += wealth;
+        this[Commodity.Crew] += crew;
+        this[Commodity.Rations] += rations;
+        this[Commodity.Water] += water + waterLeakage;
+        this[Commodity.Air] += air + airLeakage;
+        this[Commodity.Morale] += startMorale * crew;
+        this[Commodity.Fuel] += initialFuel + mileageFuel;
     }
-    public void AddCommodityInventory(ulong seed, Location Loc, float Wealth, Faction faction = Faction.Player) {
+    public void AddCargo(ulong seed, Location Loc, float Wealth, Faction faction = Faction.Player) {
+        var rng = new XorShift(seed);
+        var gaussian = new GaussianSampler(rng.Seed());
         // Get faction-specific commodity weights from Tuning
         var FactionWeights = Tuning.Crawler.CommodityWeights[faction];
 
-        // Separate essentials and goods
-        var essentialIndices = _commodities.Keys.Where(c => c.IsEssential()).ToList();
-        var goodsIndices = _commodities.Keys.Where(c => !c.IsEssential()).ToList();
+        float expectation = ( float ) Math.Pow(Wealth, 0.6f) * 0.15f;
+        int numGoods = CrawlerEx.SamplePoissonAt(expectation, rng.NextSingle());
+        var goodsIndices = FactionWeights.Pairs()
+            .Where(pair =>
+                pair.Key.AvailabilityAt(Loc) > 0 &&
+                pair.Value > 0 &&
+                pair.Key.Category() is not CommodityCategory.Essential)
+            .ChooseWeightedRandomK(numGoods, rng.Branch());
+        numGoods = goodsIndices.Count;
+        float spend = Wealth / numGoods;
 
-        // Handle essentials with old method
-        var gaussian = new GaussianSampler(seed);
-        var essentialWeights = FactionWeights
-            .Pairs()
-            .Where(kv => kv.Key.IsEssential())
-            .Select(kv => kv.Value * gaussian.NextSingle(1, 0.075f))
-            .ToArray()
-            .Normalize();
-
-        var essentialSpend = essentialWeights.Select(w => w * Wealth).ToArray();
-        essentialIndices
-            .Zip(essentialSpend)
-            .Do(keyWeight => this[keyWeight.First] += QuantityBought(keyWeight.Second, keyWeight.First, Loc));
-
-        // Handle goods with weighted choice based on sqrt of value AND availability
-        var goodsWeights = goodsIndices
-            .Select(c => {
-                float factionWeight = FactionWeights[c];
-                float availability = c.AvailabilityAt(Loc);
-                float gaussianValue = gaussian.NextSingle(1, 0.075f);
-                return (Item: c, Weight: factionWeight * availability * gaussianValue);
-            })
-            .Where(x => x.Weight > 0.01f) // Filter out effectively unavailable goods
-            .ToList();
-
-        // Choose N based on sqrt of value
-        int N = Math.Max(1, (int)Math.Sqrt(Wealth) / 20);
-        float spend = Wealth / N;
-
-        // Weighted choice to select N goods
-        var rng = new XorShift(seed);
-        for (int i = 0; i < N; i++) {
-            var commodity = goodsWeights.ChooseWeightedAt(rng.NextSingle())!;
-            var commoditySpend = gaussian.NextSingle(spend, spend * 0.1f);
-            commoditySpend = Math.Min(commoditySpend, Wealth);
-            Wealth -= commoditySpend;
-            this[commodity] += QuantityBought(commoditySpend, commodity, Loc);
+        foreach (var c  in goodsIndices) {
+            float scale = gaussian.NextSingle(1, 0.125f);
+            float itemSpend = Math.Max(0, spend * scale);
+            this[c] += QuantityBought(itemSpend, c, Loc);
+            Wealth -= itemSpend;
         }
     }
-    public void AddSegmentInventory(ulong seed, Location location, float Wealth, bool includeCore = true, EArray<SegmentKind, float>? baseWeights = null) {
+    public void AddSegments(ulong seed, Location location, float Wealth, bool includeCore = true, EArray<SegmentKind, float>? baseWeights = null) {
         var rng = new XorShift(seed);
         EArray<SegmentKind, float> BaseWeights = baseWeights ?? [1, 1, 1, 1]; // Power, Traction, Weapons, Defense
         EArray<SegmentKind, float> Weights;
@@ -372,4 +363,5 @@ public class Inventory {
         Overdraft = od;
         return this;
     }
+    public IEnumerable<(Commodity, float)> Pairs => _commodities.Pairs();
 };

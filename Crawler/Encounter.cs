@@ -31,9 +31,10 @@ public class Encounter {
             location.ChooseRandomFaction()) {
     }
     public Encounter(ulong seed, Location location, Faction faction) {
+        this.location = location;
+        var wealth = location.Wealth;
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
-        this.location = location;
         Faction = faction;
         LastEvent = Game.SafeTime;
         Game.Instance!.RegisterEncounter(this);
