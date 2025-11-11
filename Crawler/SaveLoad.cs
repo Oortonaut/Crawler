@@ -141,6 +141,7 @@ public class SavedProposal {
     public SavedInventory? Amount { get; set; }
     public SavedInventory? Risk { get; set; }
     public float Chance { get; set; }
+    public string Description { get; set; } = "";
     // RNG state for proposals that use XorShift
     public ulong RngState { get; set; }
 }
@@ -359,12 +360,13 @@ public static class SaveLoadExtensions {
                 Verb = harvest.verb,
                 ExpirationTime = harvest.ExpirationTime
             },
-            ProposeLootPay lootPay => new SavedProposal {
+            ProposeLootRisk lootPay => new SavedProposal {
                 Type = "LootPay",
                 ResourceActorName = lootPay.Resource.Name,
                 Risk = lootPay.Risk.ToSaveData(),
-                Chance = lootPay.Chance,
+                Chance = lootPay.RiskChance,
                 ExpirationTime = lootPay.ExpirationTime,
+                Description = lootPay.Description,
                 RngState = lootPay.Rng.GetState()
             },
             ProposeAttackDefend attack => new SavedProposal {
@@ -754,9 +756,10 @@ public static class SaveLoadExtensions {
                     saved.OptionCode,
                     saved.Verb),
             "LootPay" when actorLookup?.TryGetValue(saved.ResourceActorName ?? "", out var lootResource) == true =>
-                new ProposeLootPay(new(saved.RngState), lootResource,
+                new ProposeLootRisk(new(saved.RngState), lootResource,
                     saved.Risk?.ToGameInventory() ?? new Inventory(),
-                    saved.Chance),
+                    saved.Chance,
+                    saved.Description),
             "AttackDefend" => new ProposeAttackDefend("Attack"),
             "AcceptSurrender" => new ProposeAcceptSurrender(new(saved.RngState), saved.OptionCode),
             "AttackOrLoot" => new ProposeAttackOrLoot(new(saved.RngState), saved.DemandFraction) {

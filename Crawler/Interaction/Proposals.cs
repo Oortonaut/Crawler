@@ -177,7 +177,7 @@ record ProposeHarvestTake(IActor Resource, Inventory Amount, string OptionCode, 
     // }
 }
 
-record ProposeLootPay(XorShift Rng, IActor Resource, Inventory Risk, float Chance): IProposal {
+record ProposeLootRisk(XorShift Rng, IActor Resource, Inventory Risk, float RiskChance, string Description): IProposal {
     public bool AgentCapable(IActor agent) => agent == Resource && agent.EndState != EEndState.Looted;
     public bool SubjectCapable(IActor subject) => subject != Resource;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
