@@ -505,34 +505,38 @@ public class Crawler: IActor {
 
     // TODO: Replace with a power scaling
     public float FuelEfficiency => 0.4f;
-    public string Report() {
-        // Header with crawler name and location
-        string result = Style.Name.Format($"[{Name}]");
-        result += $" Evil: {EvilPoints}\n";
-
-        // Add inventory summary
-        result += "\nInventory:\n";
+    string InventoryReport(Inventory inv) {
         var commodityTable = new Table(
             ("Commodity", -16),
+            ("Location", 8),
             ("Amount", 10),
             ("Mass", 8),
             ("Volume", 8),
             ("Local Value", 12)
         );
 
-        foreach (var (commodity, amount) in Supplies.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
+        foreach (var (commodity, amount) in inv.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
             var value = amount * commodity.CostAt(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
+                "Supplies",
                 commodity.IsIntegral() ? $"{amount:F0}" : $"{amount:F1}",
                 $"{commodity.Mass():F3}",
                 $"{commodity.Volume():F3}",
                 $"{value:F1}¢¢"
             );
         }
-        result += commodityTable.ToString() + "\n";
+        return commodityTable.ToString();
+    }
+    public string Report() {
+        // Header with crawler name and location
+        string result = Style.Name.Format($"[{Name}]");
+        result += $" Evil: {EvilPoints}\n";
 
-        result += Segments.SegmentReport(Location);
+        result += "\nCrawler Segments:\n" + Supplies.Segments.SegmentReport(Location);
+        result += "Stored Segments:\n" + Cargo.Segments.SegmentReport(Location);
+        result += "Inventory:\n" + InventoryReport(Supplies);
+        result += "Cargo:\n" + InventoryReport(Cargo);
 
         return result;
     }
