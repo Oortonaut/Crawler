@@ -17,6 +17,8 @@ public struct XorShift {
     public int Next() => (int)(_Sample() & System.Int32.MaxValue);
     // Returns [0, int32.endValue]
     public ulong NextUint64() => _Sample();
+    // Returns [0, int32.endValue]
+    public ulong NextInt64() => _Sample() & System.Int64.MaxValue;
     // Returns a seed for a new generator
     public ulong Seed() => _Sample() * 2517221091 + 23;
     // returns a new generator from Seed
@@ -27,6 +29,8 @@ public struct XorShift {
         return (int)(_Sample() % (ulong)Math.Max(endValue, 1));
     }
     public int NextInt(int startValue, int endValue) => startValue + NextInt(endValue - startValue);
+    // Returns [0, endValue).
+    public long NextInt64(long endValue) => (long)(_Sample() % (ulong)Math.Max(endValue, 1));
     // Returns [0, endValue).
     public ulong NextUint64(ulong endValue) => _Sample() % Math.Max(endValue, 1);
     // Returns [0, endValue)
