@@ -93,21 +93,16 @@ public record ExchangeInteraction: IInteraction {
         if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args, out int parsed)) {
             count = Math.Max(1, parsed);
         }
+        Agent.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
+        Subject.Message($"You gave {Agent.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
 
         int performed = 0;
         for (int i = 0; i < count; i++) {
-            if (Immediacy() == global::Crawler.Immediacy.Disabled) {
-                break;
-            }
             AgentOffer.PerformOn(Agent, Subject);
             SubjectOffer.PerformOn(Subject, Agent);
             performed++;
         }
 
-        if (performed > 0) {
-            Agent.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{performed})");
-            Subject.Message($"You gave {Agent.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{performed})");
-        }
         return performed;
     }
     public string Description { get; init; }
