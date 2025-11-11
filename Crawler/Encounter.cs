@@ -377,31 +377,32 @@ public class Encounter {
     }
     public void GenerateHazard(ulong seed) {
         var rng = new XorShift(seed);
+        float payoff = Location.Wealth * Tuning.Game.hazardWealthFraction;
+        float risk = payoff * Tuning.Game.hazardNegativePayoffRatio;
         // Risk/reward mechanic: promised payoff + chance of negative payoff
-        var rewardType = rng.ChooseRandom<Commodity>();
+        var rewardType = rng.ChooseRandom(Enum.GetValues<Commodity>().Where(c => c.CostAt(location) < payoff * 2));
         Name = $"{rewardType} Hazard";
 
-        float payoff = Location.Wealth * Tuning.Game.hazardPayoffFraction;
         float rewardAmt = Inventory.QuantityBought(payoff, rewardType, Location);
 
         // 50% chance of negative payoff (20% loss of a different commodity)
         Commodity penaltyType = rewardType;
         float penaltyAmt = 0;
         while (penaltyType == rewardType) {
-            penaltyType = rng.ChooseRandom<Commodity>();
+            penaltyType = rng.ChooseRandom(Enum.GetValues<Commodity>().Where(c => c.CostAt(location) < risk * 2));
         }
-        penaltyAmt = Inventory.QuantityBought(payoff * Tuning.Game.hazardNegativePayoffRatio, penaltyType, Location);
+        penaltyAmt = Inventory.QuantityBought(risk, penaltyType, Location);
 
         // Build description based on reward and penalty types
-        string FormatCommodity(Commodity comm, float amt, bool isLoss = false) {
+        string FormatCommodity(Commodity comm, float amt) {
             string amtStr = comm.IsIntegral()
                 ? $"{(int)amt}"
                 : $"{amt:F1}";
 
-            string prefix = isLoss ? "lose up to " : "";
+            string prefix = "";
 
             return comm switch {
-                Commodity.Scrap => isLoss ? $"{prefix}{amtStr}¢¢" : $"{amtStr}¢¢",
+                Commodity.Scrap => $"{prefix}{amtStr}¢¢",
                 Commodity.Fuel => $"{prefix}{amtStr} fuel",
                 Commodity.Rations => $"{prefix}{amtStr} rations",
                 Commodity.Crew => $"{prefix}{amtStr} crew",
@@ -441,10 +442,11 @@ public class Encounter {
         }
 
         string rewardDesc = FormatCommodity(rewardType, rewardAmt);
-        string penaltyDesc = ", " + FormatCommodity(penaltyType, penaltyAmt, isLoss: true);
+        string penaltyDesc = ", lose up to " + FormatCommodity(penaltyType, penaltyAmt);
 
         string verb = $"Explore";
         string hazardDesc = $"A dangerous site contains {rewardDesc}{penaltyDesc}";
+        string description = $"Gain {rewardDesc}{penaltyDesc}.";
 
         var Promised = new Inventory();
         Promised.Add(rewardType, rewardAmt);
@@ -452,9 +454,10 @@ public class Encounter {
         Risked.Add(penaltyType, penaltyAmt);
 
         var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent,  Promised, Location);
-        hazardActor.StoredProposals.Add(new ProposeLootPay(Rng / 1, hazardActor,
+        hazardActor.StoredProposals.Add(new ProposeLootRisk(Rng / 1, hazardActor,
             Risked,
-            Tuning.Game.hazardNegativePayoffChance));
+            Tuning.Game.hazardNegativePayoffChance,
+            description));
         AddActor(hazardActor);
     }
     public Encounter Generate() {

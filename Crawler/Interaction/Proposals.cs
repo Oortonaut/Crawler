@@ -144,12 +144,12 @@ public record ProposeSubjectExchange(
 
 // I propose that I give you my loot
 record ProposeLootTake(XorShift Rng, string OptionCode, string verb = "Loot"): IProposal {
-    public bool AgentCapable(IActor agent) => agent.EndState is not EEndState.Looted;
+    public bool AgentCapable(IActor agent) => agent.Ended() && agent.EndState is not EEndState.Looted;
     public bool SubjectCapable(IActor subject) => true;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{Subject.Name} {verb} {Agent.Name}";
-        var agentOffer = new LootOfferWrapper(Agent.SupplyOffer(Rng / 1, Tuning.Game.LootReturn));
+        var agentOffer = Agent.SupplyOffer(Rng / 1, Tuning.Game.LootReturn);
         yield return new ExchangeInteraction(Agent, agentOffer, Subject, new EmptyOffer(), OptionCode, description);
     }
     public string Description => $"Offer {verb}";
@@ -164,41 +164,44 @@ record ProposeHarvestTake(IActor Resource, Inventory Amount, string OptionCode, 
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         string description = $"{verb} {Agent.Name}";
-        yield return new ExchangeInteraction(Agent, Agent.SupplyOffer(), Subject, new EmptyOffer(), OptionCode, description);
+        var agentOffer = Agent.SupplyOffer();
+        yield return new ExchangeInteraction(
+            Agent, Agent.SupplyOffer(),
+            Subject, new EmptyOffer(),
+            OptionCode, description);
     }
     public string Description => $"Propose {verb}";
     public long ExpirationTime => 0;
     public override string ToString() => Description;
-    // public record HarvestOffer(IActor Resource, Inventory Amount): InventoryOffer(Resource, Amount) {
-    //     public override void PerformOn(IActor Subject) {
-    //         base.PerformOn(Subject);
-    //         Agent.End(EEndState.Looted, "has been harvested");
-    //     }
-    // }
 }
 
 record ProposeLootRisk(XorShift Rng, IActor Resource, Inventory Risk, float RiskChance, string Description): IProposal {
     public bool AgentCapable(IActor agent) => agent == Resource && agent.EndState != EEndState.Looted;
-    public bool SubjectCapable(IActor subject) => subject != Resource;
+    public bool SubjectCapable(IActor subject) => subject != Resource && subject.Supplies.Contains(Risk) != ContainsResult.False;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
+        var agentOffer = Agent.CargoOffer();
+        var risked = Risk.Loot(Rng/1, RiskChance);
+        var subjectOffer = new InventoryOffer(false, risked);
         yield return new ExchangeInteraction(
-            Agent, Agent.SupplyOffer(Rng/1, Chance),
-            Subject, new InventoryOffer(false, Risk),
-            "H");
+            Agent, agentOffer,
+            Subject, subjectOffer,
+            "H", Description);
     }
-    public string Description => $"Explore {Resource.Name}";
     public long ExpirationTime => 0;
     public override string ToString() => Description;
 }
 
 public record ProposeAttackDefend(string OptionCode): IProposal {
     public bool AgentCapable(IActor agent) => agent == Game.Instance?.Player;
-    public bool SubjectCapable(IActor subject) => subject.Lives();
+    public bool SubjectCapable(IActor subject) => subject.Lives() && subject is Crawler;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var description = $"{Description} {Subject.Name}";
-        yield return new ExchangeInteraction(Agent, new AttackOffer(), Subject, new EmptyOffer(), OptionCode, description);
+        yield return new ExchangeInteraction(
+            Agent, new AttackOffer(),
+            Subject, new EmptyOffer(),
+            OptionCode, description);
     }
     public long ExpirationTime => 0;
     public string Description => "Attack";
@@ -252,7 +255,7 @@ public record ProposeDemand(
     int timeout = 300,
     string OptionCode = "D"): IProposal {
     public virtual bool AgentCapable(IActor agent) => true;
-    public virtual bool SubjectCapable(IActor subject) => true;
+    public virtual bool SubjectCapable(IActor subject) => subject is Crawler;
     public virtual bool PairCapable(IActor Agent, IActor Subject) =>
         Agent != Subject &&
         agentOfferComply.EnabledFor(Agent, Subject) &&

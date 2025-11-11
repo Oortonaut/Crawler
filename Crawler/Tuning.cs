@@ -5,9 +5,9 @@ public static partial class Tuning {
         public static float LootReturn = 0.5f;
 
         // Hazard encounter risk/reward parameters
-        public static float hazardPayoffFraction = 0.01f;
+        public static float hazardWealthFraction = 0.5f;
         public static float hazardNegativePayoffChance = 0.3333f;
-        public static float hazardNegativePayoffRatio = 1.5f; // negated, relative to payoff fraction
+        public static float hazardNegativePayoffRatio = 1.5f; // negated, relative to wealth fraction
 
         // Resource encounter parameters
         public static float resourcePayoffFraction = 0.05f; // Fraction of location wealth
