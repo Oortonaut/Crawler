@@ -148,7 +148,7 @@ public static class TradeEx {
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
 
-        int SaleSegments = CrawlerEx.SamplePoisson((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1), ref rng);
+        int SaleSegments = CrawlerEx.PoissonQuantile((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1), ref rng);
         while (SaleSegments --> 0) {
             var segmentDef = rng.ChooseRandom(SegmentEx.AllDefs)!;
             var segment = segmentDef.NewSegment(rng.Seed());

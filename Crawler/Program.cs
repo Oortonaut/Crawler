@@ -4,10 +4,11 @@ using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-// Initialize OpenTelemetry tracing
+// Initialize OpenTelemetry
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .SetResourceBuilder(ResourceBuilder.CreateDefault()
         .AddService(LogCat.ServiceName, serviceVersion: LogCat.ServiceVersion))
@@ -16,7 +17,13 @@ using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddSource(LogCat.Console.Name)
     .AddSource(LogCat.Encounter.Name)
     .AddDebugExporter()
-    .AddOtlpExporter(initOptions => { initOptions.Protocol = OtlpExportProtocol.Grpc; })
+    .AddOtlpExporter()
+    .Build();
+
+using var meterProvider = Sdk.CreateMeterProviderBuilder()
+    .AddMeter(LogCat.GameMetrics.Name)
+    .AddMeter(LogCat.GameMetrics.Name)
+    .AddOtlpExporter()
     .Build();
 
 var loggerFactory = LoggerFactory.Create(builder => {

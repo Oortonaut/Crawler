@@ -277,7 +277,7 @@ public class Inventory {
         var FactionWeights = Tuning.Crawler.CommodityWeights[faction];
 
         float expectation = ( float ) Math.Pow(Wealth, 0.6f) * 0.15f;
-        int numGoods = CrawlerEx.SamplePoissonAt(expectation, rng.NextSingle());
+        int numGoods = CrawlerEx.PoissonQuantileAt(expectation, rng.NextSingle());
         var goodsIndices = FactionWeights.Pairs()
             .Where(pair =>
                 pair.Key.AvailabilityAt(Loc) > 0 &&

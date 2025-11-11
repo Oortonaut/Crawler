@@ -4,6 +4,7 @@ using Crawler.Logging;
 using MathNet.Numerics.Distributions;
 
 namespace Crawler;
+
 using System.Drawing;
 
 public enum Style {
@@ -11,6 +12,7 @@ public enum Style {
     Em, // Bright white on black
     UL, // Normal + underline
     Name, // For names of crawlers, cities, and people etc.
+
     // Status states messages
     SegmentNone,
     SegmentActive, // white on dark green
@@ -18,39 +20,37 @@ public enum Style {
     SegmentDeactivated, // white on brown
     SegmentDisabled, // white on brown
     SegmentDestroyed, // white on dark red
+
     // Menu
     MenuNormal,
     MenuTitle,
     MenuDisabled,
     MenuOption,
     MenuInput,
+
     // Navigation
     MenuUnvisited,
     MenuSomeVisited,
     MenuVisited,
     MenuEmpty,
 }
-
 public record StyledChar(Style Style, char Char) {
     public string Styled => Style.Format(Char.ToString());
     public override string ToString() => Styled;
 }
-
 public record StyledString(Style Style, string Text) {
     public string Styled => Style.Format(Text);
     public override string ToString() => Styled;
 }
-
 public struct IntDispenser() {
     float _remaining = 0;
     public int Get(int acc) {
         _remaining += acc;
-        float result = (float) Math.Floor(_remaining);
+        float result = (float)Math.Floor(_remaining);
         _remaining -= result;
         return (int)result;
     }
 }
-
 public static partial class CrawlerEx {
     public static int GetColorIndex(this ConsoleColor c) {
         int[] mapping = [
@@ -98,8 +98,8 @@ public static partial class CrawlerEx {
     public const string CursorFwd = "\e[1C";
     public const string CursorBwd = "\e[1D";
     public const string CursorReport = "\e[6n";
-    public const string CursorSave =  "\e7";
-    public const string CursorRestore =  "\e8";
+    public const string CursorSave = "\e7";
+    public const string CursorRestore = "\e8";
     public const string CursorHide = "\e[?25l";
     public const string CursorShow = "\e[?25h";
 
@@ -114,7 +114,9 @@ public static partial class CrawlerEx {
     public const string StyleFaint = "\e[2m";
     public const string StyleItalic = "\e[3m";
     public const string StyleUnderline = "\e[4m";
+
     public const string StyleBlink = "\e[5m";
+
     // Works: Bold: 1, Dim: 2, Italic: 3, Underline: 4
     // windows terminal: inverse: 7, hide: 8, strikethrough: 9, float underline: 21
     public const string Inverse = "\e[7m";
@@ -226,7 +228,7 @@ public static partial class CrawlerEx {
         return ChooseAt(seq.ToList().AsReadOnly(), at);
     }
     public static T? ChooseAt<T>(this IReadOnlyList<T> seq, float at) {
-        return seq.Any() ? seq[( int ) (at * seq.Count)] : default;
+        return seq.Any() ? seq[(int)(at * seq.Count)] : default;
     }
     public static T? ChooseAt<T>(this IReadOnlyCollection<T> seq, float at) {
         int index = (int)(at * seq.Count);
@@ -321,10 +323,10 @@ public static partial class CrawlerEx {
         return result.AsReadOnly();
     }
 
-    
+
     public static string CommodityTextFull(this Commodity comm, float count) =>
         comm == Commodity.Scrap ? $"{count:F1}¢¢" :
-        comm.IsIntegral() ? $"{( int ) count} {comm}" :
+        comm.IsIntegral() ? $"{(int)count} {comm}" :
         $"{count:F1} {comm}";
     public static string CommodityText(this Commodity comm, float count) =>
         count == 0 ? string.Empty : comm.CommodityTextFull(count);
@@ -373,7 +375,7 @@ public static partial class CrawlerEx {
                     result += currentStyle.StyleString();
                 }
                 if (x < SourceLines[y].Text.Length) {
-                    result+= SourceLines[y].Text[x].ToString();
+                    result += SourceLines[y].Text[x].ToString();
                 } else {
                     result += ' ';
                 }
@@ -398,7 +400,8 @@ public static partial class CrawlerEx {
     public static string Advance(this Style Current, StyledChar Next) => Current.Advance(Next.Style) + Next.Char;
     public static Color Dark(this Color c) => Color.FromArgb(c.A, c.R / 2, c.G / 2, c.B / 2);
     public static void Do<T>(this IEnumerable<T> e) {
-        foreach (var item in e) { }
+        foreach (var item in e) {
+        }
     }
     public static void Do<T>(this IEnumerable<T> e, Action<T> action) {
         foreach (var item in e) {
@@ -414,7 +417,7 @@ public static partial class CrawlerEx {
     public static double Frac(double value) => value - Math.Floor(value);
     public static float Frac(float value) => value - (float)Math.Floor(value);
     public static int StochasticInt(this float expectedValue, ref XorShift rng) {
-        var result = ( int ) Math.Floor(expectedValue);
+        var result = (int)Math.Floor(expectedValue);
         if (rng.NextSingle() < Frac(expectedValue)) {
             ++result;
         }
@@ -468,7 +471,7 @@ public static partial class CrawlerEx {
             // Normal approximation with continuity correction
             // mean = lambda, variance = lambda
             double z = Math.Sqrt(-2 * Math.Log(1 - y)); // Inverse standard normal CDF
-            k = ( int ) (lambda + Math.Sqrt(lambda) * z + 0.5);
+            k = (int)(lambda + Math.Sqrt(lambda) * z + 0.5);
         } else {
             double p = Math.Exp(-lambda);
             var sum = p;
@@ -489,10 +492,10 @@ public static partial class CrawlerEx {
     /// <param name="t">The cumulative probability</param>
     /// <returns>A random sample from the exponential distribution</returns>
     public static float SampleExponential(float t) {
- // Use inverse transform sampling: -mean * ln(1 - U) where U ~ Uniform(0,1)
+        // Use inverse transform sampling: -mean * ln(1 - U) where U ~ Uniform(0,1)
         // We use (1 - NextSingle()) to avoid ln(0)
         double u = 1.0 - t;
-        return ( float ) (-Math.Log(u));
+        return (float)(-Math.Log(u));
     }
 
     public static float HaltonSequence(uint b, uint index) {
@@ -504,7 +507,7 @@ public static partial class CrawlerEx {
             r = r + f * (i % b);
             i = i / b;
         }
-        return ( float ) r;
+        return (float)r;
     }
 
     public static bool IsNumericType(this Type type) {
@@ -528,16 +531,20 @@ public static partial class CrawlerEx {
     public static void Shuffle<T>(ref this XorShift rng, IList<T> list) {
         int n = list.Count;
         while (n > 1) {
-            int k = rng.NextInt(n );
+            int k = rng.NextInt(n);
             n--;
             (list[k], list[n]) = (list[n], list[k]);
         }
     }
     public static string HomePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Crawler");
+
     public static string SavesPath = Path.Combine(HomePath, "Saves");
+
     // For roaming settings
     public static string SharedPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Crawler");
+
     public static string SettingsPath = Path.Combine(SharedPath, "Settings");
+
     // For machine settings and caches
     public static string MachinePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Crawler");
     public static string LogPath = Path.Combine(MachinePath, "Logs");
@@ -568,9 +575,9 @@ public static partial class CrawlerEx {
         }
     }
     public static float Lerp(float a, float b, float t) => a + (b - a) * t;
-    public static float Delerp(float x, float low, float high) => ( x - low ) / ( high - low);
+    public static float Delerp(float x, float low, float high) => (x - low) / (high - low);
     public static double Lerp(double a, double b, double t) => a + (b - a) * t;
-    public static double Delerp(double x, double low, double high) => ( x - low ) / ( high - low);
+    public static double Delerp(double x, double low, double high) => (x - low) / (high - low);
     public static string Input(string prompt = "", string dflt = "") {
         if (prompt != "") {
             Console.Write(prompt);
@@ -611,8 +618,8 @@ public static partial class CrawlerEx {
     }
     public static bool Ended(this IActor actor) => actor.EndState != null;
     public static bool Lives(this IActor actor) => actor.EndState == null;
-    public static int Length<ENUM>() where ENUM : struct, Enum => Enum.GetValues<ENUM>().Length;
-    public static ENUM ChooseRandom<ENUM>(ref this XorShift rng) where ENUM : struct, Enum => Enum.GetValues<ENUM>()[rng.NextInt(Length<ENUM>())];
+    public static int Length<ENUM>() where ENUM: struct, Enum => Enum.GetValues<ENUM>().Length;
+    public static ENUM ChooseRandom<ENUM>(ref this XorShift rng) where ENUM: struct, Enum => Enum.GetValues<ENUM>()[rng.NextInt(Length<ENUM>())];
     static List<string> _messages = new();
     public static Action<string>? OnMessage = message => _messages.Add(message);
     public static void Message(string message) {
@@ -679,17 +686,16 @@ public static partial class CrawlerEx {
     public static int Visits(this IActor actor, Sector sector) => sector.Locations.Count(l => actor.Visited(l));
     public static Color Scale(this Color c, float s) => Color.FromArgb(
         c.A,
-        ( byte ) Math.Clamp(c.R * s, 0, 255),
-        ( byte ) Math.Clamp(c.G* s, 0, 255),
-        ( byte ) Math.Clamp(c.B * s, 0, 255));
+        (byte)Math.Clamp(c.R * s, 0, 255),
+        (byte)Math.Clamp(c.G * s, 0, 255),
+        (byte)Math.Clamp(c.B * s, 0, 255));
     public static float Length(this Point point) => MathF.Sqrt(point.X * point.X + point.Y * point.Y);
-    public static bool ClearFlag<TEnum>(this TEnum e, TEnum flags) where TEnum : struct, Enum => e.SetFlag(flags, false);
+    public static bool ClearFlag<TEnum>(this TEnum e, TEnum flags) where TEnum: struct, Enum => e.SetFlag(flags, false);
     public static bool SetFlag<TEnum>(this ref TEnum e, TEnum flags, bool p = true)
-        where TEnum : struct, Enum
-    {
+        where TEnum: struct, Enum {
         var underlyingType = Enum.GetUnderlyingType(typeof(TEnum));
 
-        bool TryUnderlying<T>(ref TEnum e) where T : unmanaged {
+        bool TryUnderlying<T>(ref TEnum e) where T: unmanaged {
             if (underlyingType == typeof(T)) {
                 ref int eVal = ref Unsafe.As<TEnum, int>(ref e);
                 ref int flagsVal = ref Unsafe.As<TEnum, int>(ref flags);
@@ -704,13 +710,13 @@ public static partial class CrawlerEx {
         }
 
         bool result = TryUnderlying<int>(ref e) ||
-                        TryUnderlying<uint>(ref e) ||
-                        TryUnderlying<long>(ref e) ||
-                        TryUnderlying<ulong>(ref e) ||
-                        TryUnderlying<byte>(ref e) ||
-                        TryUnderlying<sbyte>(ref e) ||
-                        TryUnderlying<short>(ref e) ||
-                        TryUnderlying<ushort>(ref e);
+                      TryUnderlying<uint>(ref e) ||
+                      TryUnderlying<long>(ref e) ||
+                      TryUnderlying<ulong>(ref e) ||
+                      TryUnderlying<byte>(ref e) ||
+                      TryUnderlying<sbyte>(ref e) ||
+                      TryUnderlying<short>(ref e) ||
+                      TryUnderlying<ushort>(ref e);
 
         return result;
     }
@@ -734,7 +740,7 @@ public static partial class CrawlerEx {
     public static List<MenuItem> InteractionMenuItems(this IActor agent, List<IInteraction> interactions, string title, string prefix) {
         List<MenuItem> result = new();
         if (interactions.Count == 0) {
-           result.Add(new MenuItem(prefix, $"{title}\n"));
+            result.Add(new MenuItem(prefix, $"{title}\n"));
         } else {
             var show = interactions.Count > 4 ? ShowArg.Hide : ShowArg.Show;
             result.AddRange(interactions.DetailMenuItems(prefix, show));
@@ -801,7 +807,7 @@ public static partial class CrawlerEx {
             --width;
             yield return i;
         }
-        while (width --> 0) {
+        while (width-- > 0) {
             yield return default;
         }
     }

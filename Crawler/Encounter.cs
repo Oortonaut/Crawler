@@ -1,4 +1,6 @@
-﻿using Crawler.Logging;
+﻿using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;

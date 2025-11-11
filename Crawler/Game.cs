@@ -1,4 +1,6 @@
-﻿using System.Drawing;
+﻿using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Drawing;
 using System.Numerics;
 using Crawler.Logging;
 using Microsoft.Extensions.Logging;
@@ -16,14 +18,14 @@ public class Game {
     GaussianSampler Gaussian;
 
     public static Game NewGame(ulong seed, string crawlerName, int H) {
-        using var activity = LogCat.Game.StartActivity($"NewGame for '{crawlerName}' with H={H}");
+        using var activity = Scope($"NewGame for '{crawlerName}' with H={H}");
 
         var game = new Game(seed);
         game.Construct(crawlerName, H);
         return game;
     }
     public static Game LoadGame(string saveFilePath) {
-        using var activity = LogCat.Game.StartActivity($"LoadGame for '{saveFilePath}'");
+        using var activity = Scope($"LoadGame for '{saveFilePath}'");
         var deserializer = new YamlDotNet.Serialization.Deserializer();
         using var reader = new StreamReader(saveFilePath);
         var saveData = deserializer.Deserialize<SaveGameData>(reader);
@@ -100,19 +102,20 @@ public class Game {
     void Schedule(Encounter encounter, long nextTurn) {
         if (turnForEncounter.TryGetValue(encounter, out var scheduledTurn)) {
             if (nextTurn < scheduledTurn) {
-                LogCat.Log.LogTrace($"Schedule {encounter.Name}: rescheduling to {nextTurn}");
+                Log.LogInformation($"Schedule {encounter}: rescheduling to {nextTurn}");
                 Unschedule(encounter);
             } else {
-                LogCat.Log.LogTrace($"Schedule {encounter.Name}: already scheduled for {scheduledTurn}");
+                Log.LogInformation($"Schedule {encounter}: already scheduled for {scheduledTurn}");
                 return;
             }
         }
+        Log.LogInformation($"Schedule {encounter}: adding to {nextTurn}");
         encountersByTurn.GetOrAddNew(nextTurn).Add(encounter);
         turnForEncounter[encounter] = nextTurn;
     }
     void Unschedule(Encounter encounter) {
         if (turnForEncounter.TryGetValue(encounter, out var scheduledTurn)) {
-            LogCat.Log.LogTrace($"Unschedule {encounter.Name}: {scheduledTurn}");
+            Log.LogInformation($"Unschedule {encounter.Name}: {scheduledTurn}");
             var encounters = encountersByTurn[scheduledTurn];
             encounters.Remove(encounter);
             if (encounters.Count == 0) {
@@ -120,7 +123,7 @@ public class Game {
             }
             turnForEncounter.Remove(encounter);
         } else {
-            LogCat.Log.LogTrace($"Unschedule {encounter.Name}: not scheduled");
+            Log.LogInformation($"Unschedule {encounter.Name}: not scheduled");
         }
     }
     (long turn, List<Encounter>) TurnEncounters() {
@@ -132,17 +135,23 @@ public class Game {
             // TODO: use a 0 sentinel instead of removing
             turnForEncounter.Remove(encounter);
         }
-        LogCat.Log.LogTrace($"Turn {turn}: {result.Count} encounters");
+        Log.LogInformation($"Turn {turn}: {result.Count} encounters");
         return (turn, result);
     }
     SortedDictionary<long, List<Encounter>> encountersByTurn = new();
     Dictionary<Encounter, long> turnForEncounter = new();
 
+    // TODO: use this for log scoping too
+    static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => LogCat.Game.StartActivity(name, kind);
+    static ILogger Log => LogCat.Log;
+    static Meter Metrics => LogCat.GameMetrics;
+
+
     public void Run() {
 
         while (!quit && encountersByTurn.Any()) {
             var (turn, turnEncounters) = TurnEncounters();
-            using var activity = LogCat.Encounter.StartActivity($"Game::Turn {turn}: {turnEncounters.Count} encounters");
+            using var activity = Scope($"Game::Turn {turn}: {turnEncounters.Count} encounters");
             TimeSeconds = turn;
             foreach (var encounter in turnEncounters) {
                 encounter.Tick(turn);

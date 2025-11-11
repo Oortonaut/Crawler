@@ -223,7 +223,7 @@ public class Map {
     }
     void CreateLocations() {
         var expectation = 2.5f * Width * Height;
-        int k = CrawlerEx.SamplePoisson(expectation, ref Rng);
+        int k = CrawlerEx.PoissonQuantile(expectation, ref Rng);
         List<Vector3> locations = new();
 
         uint xseed = ( uint ) Rng.Next() & 0xFFFFFF;
