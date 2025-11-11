@@ -747,8 +747,9 @@ public static partial class CrawlerEx {
     public static Inventory Loot(this Inventory from, XorShift rng, float lootReturn) {
         var loot = new Inventory();
         foreach (var commodity in Enum.GetValues<Commodity>()) {
-            float x = rng.NextSingle();
-            loot[commodity] += from[commodity] * x * lootReturn;
+            float t = (float)(Math.Sqrt(rng.NextDouble()) * lootReturn * 1.5);
+            t = Math.Clamp(t, 0, 1);
+            loot[commodity] += from[commodity] * t;
         }
         var lootableSegments = from.Segments.Where(s => s.Health > 0).ToArray();
         loot.Segments.AddRange(lootableSegments
