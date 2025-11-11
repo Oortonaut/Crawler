@@ -259,7 +259,13 @@ public class Crawler: IActor {
             LastEvent = time;
             return;
         }
-        int elapsed = (int)(time - LastEvent);
+
+        using var activity = LogCat.Game.StartActivity(
+            "Crawler.Tick", System.Diagnostics.ActivityKind.Internal)?
+            .SetTag("crawler.name", Name)
+            .SetTag("crawler.faction", Faction)
+            .SetTag("elapsed_seconds", elapsed);
+            
         Recharge(elapsed);
 
         // Check rations

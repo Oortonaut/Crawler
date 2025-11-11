@@ -67,7 +67,7 @@ public class Encounter {
 
         int ap = 0;
 
-        using var activity = LogCat.Interaction.StartActivity($"{nameof(MenuItems)}({agent.Name})")?
+        using var activity = Scope($"{nameof(MenuItems)}({agent.Name})")?
             .SetTag("Agent", agent.Name).SetTag("Agent.Faction", agent.Faction);
         if (agent is Crawler ac) {
             activity?.SetTag("About", ac.About);
@@ -77,7 +77,7 @@ public class Encounter {
                      .OrderBy(a => a.Faction)
                      .Index()) {
             string prefix = "C" + ( char ) ('A' + index);
-            using var activityOther = LogCat.Interaction.StartActivity($"Menu {prefix}")?
+            using var activityOther = Scope($"Menu {prefix}")?
                 .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("Subject.Faction", subject.Faction);
             var interactions = agent.InteractionsWith(subject).ToList();
             ap += interactions.TickInteractions(agent, prefix);
@@ -94,8 +94,7 @@ public class Encounter {
         if (hourlyArrivals <= 0) return;
 
         float expectedCount = hourlyArrivals * (Tuning.Encounter.DynamicCrawlerLifetimeExpectation / 3600f);
-        int initialCount = CrawlerEx.SamplePoisson(expectedCount, ref Rng);
-        long time = Game.SafeTime;
+        int initialCount = CrawlerEx.PoissonQuantile(expectedCount, ref Rng);
 
         if (initialCount <= 0) {
             return;
@@ -233,9 +232,9 @@ public class Encounter {
         return trader;
     }
     public Crawler GeneratePlayerActor(ulong seed) {
-        using var activity = LogCat.Encounter.StartActivity($"GeneratePlayer {nameof(Encounter)}");
+        using var activity = Scope($"GeneratePlayer {nameof(Encounter)}");
         float wealth = Location.Wealth * 1.0f;
-        int crew = (int)Math.Sqrt(wealth) / 3;
+        int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.65f;
         float segmentWealth = wealth * 0.5f;
         var player = Crawler.NewRandom(seed, Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
@@ -244,7 +243,7 @@ public class Encounter {
         return player;
     }
     public Crawler GenerateBanditActor(ulong seed) {
-        using var activity = LogCat.Encounter.StartActivity($"GenerateBandit {nameof(Encounter)}");
+        using var activity = Scope($"GenerateBandit {nameof(Encounter)}");
         float wealth = Location.Wealth * 0.8f;
         int crew = ( int ) Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.6f;
@@ -256,10 +255,10 @@ public class Encounter {
     }
 
     public Crawler GenerateCivilianActor(ulong seed, Faction civilianFaction) {
-        using var activity = LogCat.Encounter.StartActivity($"GenerateCivilian {nameof(Encounter)}");
+        using var activity = Scope($"GenerateCivilian {nameof(Encounter)}");
         // Similar to Trade but with faction-specific policies
         float wealth = Location.Wealth * 0.75f;
-        int crew = Math.Max(1, (int)(wealth / 40));
+        int crew = Math.Max(1, ( int ) (wealth / 40));
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
         var civilian = Crawler.NewRandom(seed, civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
@@ -270,7 +269,7 @@ public class Encounter {
     }
 
     public Crawler GenerateCapital(ulong seed) {
-        using var activity = LogCat.Encounter.StartActivity($"GenerateCapital {nameof(Encounter)}");
+        using var activity = Scope($"GenerateCapital {nameof(Encounter)}");
         var settlement = GenerateSettlement(seed);
         settlement.Domes += 2;
         settlement.Flags |= EActorFlags.Capital;
@@ -453,7 +452,7 @@ public class Encounter {
         var Risked = new Inventory();
         Risked.Add(penaltyType, penaltyAmt);
 
-        var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent,  Promised, Location);
+        var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent, Promised, Location);
         hazardActor.StoredProposals.Add(new ProposeLootRisk(Rng / 1, hazardActor,
             Risked,
             Tuning.Game.hazardNegativePayoffChance,
@@ -461,7 +460,7 @@ public class Encounter {
         AddActor(hazardActor);
     }
     public Encounter Generate() {
-        using var activity = LogCat.Encounter.StartActivity($"Generate {nameof(Encounter)}");
+        using var activity = Scope($"Generate {nameof(Encounter)}");
         var seed = Rng.Seed();
         switch (Location.Type) {
         case EncounterType.Crossroads:
@@ -492,6 +491,32 @@ public class Encounter {
     public IEnumerable<IActor> ActorsExcept(IActor actor) => Actors.Where(a => a != actor);
     public IEnumerable<IActor> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
 
+    static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => LogCat.Encounter.StartActivity(name, kind);
+    static ILogger Log => LogCat.Log;
+    static Meter Metrics => LogCat.EncounterMetrics;
+
+    // Encounter tick metrics
+    public static readonly Counter<int> EncounterTickCount = Metrics.CreateCounter<int>(
+        "encounter.ticks.total",
+        description: "Total number of encounter ticks executed"
+    );
+
+    public static readonly Histogram<long> EncounterTickDuration = Metrics.CreateHistogram<long>(
+        "encounter.tick.duration.ms",
+        description: "Duration of individual encounter tick execution in milliseconds"
+    );
+
+    // Crawler tick metrics
+    public static readonly Counter<int> CrawlerTickCount = Metrics.CreateCounter<int>(
+        "crawler.ticks.total",
+        description: "Total number of crawler ticks executed"
+    );
+
+    public static readonly Histogram<long> CrawlerTickDuration = Metrics.CreateHistogram<long>(
+        "crawler.tick.duration.ms",
+        description: "Duration of individual crawler tick execution in milliseconds"
+    );
+
     SortedDictionary<long, List<Crawler>> crawlersByTurn = new();
     Dictionary<Crawler, long> turnForCrawler = new();
     public long LastEvent { get; protected set; }
@@ -503,21 +528,26 @@ public class Encounter {
     void Schedule(Crawler crawler, long nextTurn) {
         if (turnForCrawler.TryGetValue(crawler, out var scheduledTurn)) {
             if (nextTurn < scheduledTurn) {
+                Log.LogInformation($"Unscheduling {crawler.Name} at turn {scheduledTurn}: advancing from {nextTurn}");
                 Unschedule(crawler);
             } else {
+                Log.LogInformation($"Scheduling {crawler.Name} at turn {scheduledTurn}: already scheduled earlier {nextTurn}");
                 return;
             }
         }
+        Log.LogInformation($"Scheduling {crawler.Name} at turn {nextTurn}");
         var turnList = crawlersByTurn.GetOrAddNew(nextTurn, () => new List<Crawler>());
         turnList.Add(crawler);
         turnForCrawler[crawler] = nextTurn;
         // No encounter while we are creating it, but it will schedule itself
         if (Location.HasEncounter) {
+            Log.LogInformation($"Rescheduling Encounter {Location.GetEncounter().Name}");
             Game.Instance!.Schedule(Location.GetEncounter());
         }
     }
     void Unschedule(Crawler crawler) {
         if (turnForCrawler.TryGetValue(crawler, out var turn)) {
+            Log.LogInformation($"Unscheduling {crawler.Name} at turn {turn}");
             var turnList = crawlersByTurn[turn];
             turnList.Remove(crawler);
             if (turnList.Count == 0) {
@@ -526,6 +556,7 @@ public class Encounter {
             turnForCrawler.Remove(crawler);
         }
         if (Location.HasEncounter) {
+            Log.LogInformation($"Rescheduling Encounter {Location.GetEncounter().Name}");
             Game.Instance!.Schedule(Location.GetEncounter());
         }
     }
@@ -541,8 +572,11 @@ public class Encounter {
         return crawlers;
     }
     public void Tick(long time) {
+        Log.LogInformation($"Ticking Encounter {this} at time {time}, last event {LastEvent}, next event {NextEvent}");
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
         if (time < LastEvent) {
-            LogCat.Log.LogInformation($"Encounter {Name} ticked backwards from {LastEvent} to {time}");
+            Log.LogInformation($"Encounter {Name} ticked backwards from {LastEvent} to {time}");
             LastEvent = time;
             return;
         }
@@ -551,21 +585,43 @@ public class Encounter {
         if (elapsed == 0) {
             return;
         }
+        using var activity = Scope($"Tick {nameof(Encounter)} {this} to {time} elapsed {elapsed}");
 
         UpdateDynamicCrawlers(time);
 
         while (crawlersByTurn.Count > 0 && NextEvent <= time) {
             foreach (var crawler in TurnCrawlers()) {
+                var crawlerStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
                 crawler.Tick(time);
                 if (crawler.Flags.HasFlag(EActorFlags.Player)) {
                     Game.Instance!.GameMenu();
                 } else {
-                    crawler.Think(elapsed, ActorsExcept(crawler));
+                    if (elapsed > 0) {
+                        crawler.Think(elapsed, ActorsExcept(crawler));
+                    }
                 }
                 Schedule(crawler);
+
+                crawlerStopwatch.Stop();
+                CrawlerTickCount.Add(1, new KeyValuePair<string, object?>("crawler.faction", crawler.Faction));
+                CrawlerTickDuration.Record(crawlerStopwatch.ElapsedMilliseconds,
+                    new KeyValuePair<string, object?>("crawler.name", crawler.Name),
+                    new KeyValuePair<string, object?>("crawler.faction", crawler.Faction)
+                );
             }
         }
 
-        LastEvent = time;
+
+        stopwatch.Stop();
+        Log.LogInformation($"Finished ticking Encounter {this} at time {time}, last event {LastEvent}, next event {NextEvent}");
+        EncounterTickCount.Add(1,
+            new KeyValuePair<string, object?>("encounter.name", Name),
+            new KeyValuePair<string, object?>("encounter.faction", Faction)
+        );
+        EncounterTickDuration.Record(stopwatch.ElapsedMilliseconds,
+            new KeyValuePair<string, object?>("encounter.name", Name),
+            new KeyValuePair<string, object?>("encounter.faction", Faction)
+        );
     }
 }

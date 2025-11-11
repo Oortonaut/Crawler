@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
 namespace Crawler.Logging;
@@ -54,20 +55,36 @@ file sealed class DebugExporter: BaseExporter<Activity> {
 }
 
 public static class DebugExporterExtensions {
-    public static TracerProviderBuilder AddDebugExporter(this TracerProviderBuilder builder) {
-        return builder.AddProcessor(new SimpleActivityExportProcessor(new DebugExporter()));
-    }
+    public static TracerProviderBuilder AddDebugExporter(this TracerProviderBuilder builder) => builder.AddProcessor(new SimpleActivityExportProcessor(new DebugExporter()));
 }
+
 public class DebugLoggerProvider: ILoggerProvider {
     public ILogger CreateLogger(string categoryName) => new DebugLogger();
     public void Dispose() { }
 }
 
 public class DebugLogger: ILogger {
-    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => new Scope<TState>(this);
     public bool IsEnabled(LogLevel logLevel) => true;
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
         Exception? exception, Func<TState, Exception?, string> formatter) {
         Debug.WriteLine($"[{logLevel}] {formatter(state, exception)}");
+    }
+    internal List<ScopeBase> scopes = new();
+    internal List<string> scopeNames = new();
+    public class ScopeBase: IDisposable {
+        public ScopeBase(DebugLogger logger, string name) {
+            _logger = logger;
+            _logger.scopes.Add(this);
+            _logger.scopeNames.Add(name);
+        }
+        public void Dispose() {
+            _logger.scopes.RemoveAt(_logger.scopes.Count - 1);
+            _logger.scopeNames.RemoveAt(_logger.scopeNames.Count - 1);
+        }
+        DebugLogger _logger;
+    }
+    public class Scope<TState>: ScopeBase {
+        public Scope(DebugLogger logger): base(logger, typeof(TState).Name) {}
     }
 }

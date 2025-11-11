@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -9,32 +11,15 @@ namespace Crawler.Logging;
 /// Provides structured logging and tracing across different subsystems.
 /// </summary>
 public static class LogCat {
-    /// <summary>Service name for the entire application</summary>
-    public const string ServiceName = "Crawler";
+    public static readonly string ServiceName = Assembly.GetExecutingAssembly().GetName().Name ?? "Crawler";
+    public static readonly string ServiceVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0";
+    public static readonly ActivitySource Interaction = new($"{ServiceName}.Interaction", ServiceVersion);
+    public static readonly ActivitySource Encounter = new($"{ServiceName}.Encounter", ServiceVersion);
+    public static readonly ActivitySource Game = new($"{ServiceName}.Game", ServiceVersion);
+    public static readonly ActivitySource Console = new($"{ServiceName}.Console", ServiceVersion);
 
-    /// <summary>Version for telemetry</summary>
-    public const string ServiceVersion = "0.1";
-
-    /// <summary>ActivitySource for proposal and interaction system logging</summary>
-    public static readonly ActivitySource Interaction = new(
-        $"{ServiceName}-Interaction",
-        ServiceVersion);
-
-    /// <summary>ActivitySource for encounters</summary>
-    public static readonly ActivitySource Encounter = new(
-        $"{ServiceName}-Encounter",
-        ServiceVersion);
-
-    /// <summary>ActivitySource for game loop and tick events</summary>
-    public static readonly ActivitySource Game = new(
-        $"{ServiceName}-Game",
-        ServiceVersion);
-
-    /// <summary>ActivitySource for console and UI events</summary>
-    public static readonly ActivitySource Console = new(
-        $"{ServiceName}-Console",
-        ServiceVersion);
+    public static readonly Meter GameMetrics = new($"{ServiceName}.Game", ServiceVersion);
+    public static readonly Meter EncounterMetrics = new($"{ServiceName}.Encounter", ServiceVersion);
 
     public static ILogger Log { get; set; } = NullLogger.Instance;
-
 }
