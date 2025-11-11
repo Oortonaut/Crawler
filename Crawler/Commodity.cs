@@ -53,6 +53,7 @@ public enum Commodity {
 }
 
 public enum GameTier {
+    None,
     Early,
     Mid,
     Late
@@ -160,5 +161,11 @@ public static class CommodityEx {
         return 1.0f + scarcity * Tuning.Trade.scarcityWeight * weight;
     }
     public static PowerScaling Unavailability = new(0.7f, new(0.15f, 0.3f), "primitive", "tech");
-    public static float Round(this Commodity commodity, float value) => ( float ) Math.Round(value, commodity.Flags().HasFlag(CommodityFlag.Integral) ? 0 : 1);
+    public static float Round(this Commodity commodity, float value) {
+        if (commodity.IsIntegral()) {
+            return ( float ) Math.Round(value);
+        } else {
+            return ( float ) Math.Round(value * 512) / 512;
+        }
+    }
 }

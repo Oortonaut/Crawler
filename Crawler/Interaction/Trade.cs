@@ -57,30 +57,18 @@ public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"):
 
 public static class TradeEx {
     public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, ulong seed, float wealthFraction) {
+        var rng = new XorShift(seed);
         var faction = Seller.Faction;
         var Location = Seller.Location;
         var wealth = Location.Wealth * wealthFraction;
 
-        // Use bandit markup for bandit faction, regular for others
-        float merchantMarkup = 1.0f;
         Crawler? seller = Seller as Crawler;
-        merchantMarkup = seller?.Markup ?? 1.0f;
-
-        // Get seller's RNG if available, otherwise create a temporary one
-        var rng = new XorShift(seed);
+        float merchantMarkup = seller?.Markup ?? 1.0f;
 
         var commodities = Enum.GetValues<Commodity>()
             .Where(s => s != Commodity.Scrap)
             .Where(s => rng.NextSingle() < s.AvailabilityAt(Location))
             .ToList();
-
-        // Shuffle using RNG
-        int n = commodities.Count;
-        while (n > 1) {
-            int k = rng.NextInt(n);
-            n--;
-            (commodities[k], commodities[n]) = (commodities[n], commodities[k]);
-        }
 
         float CFrac = wealth;
 

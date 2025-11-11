@@ -128,10 +128,9 @@ public class Crawler: IActor {
             float RationsPerDay = TotalPeople * Tuning.Crawler.RationsPerCrewDay;
             float WaterPerDay = WaterPerHr * 24;
             float AirPerDay = AirPerHr * 24;
-            C.Add($" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}");
-            C.Add($" Crew: {CrewInv:F0}  Soldiers: {SoldiersInv:F0}  Passengers: {PassengersInv:F0}  Morale: {MoraleInv}");
-            C.Add($" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)");
-            C.Add($" Fuel: {FuelPerHr:F1}/h, {FuelPerKm*100:F2}/100km");
+            C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}, -{FuelPerHr:F1}/h, -{FuelPerKm*100:F2}/100km";
+            C[4] += $" Crew: {CrewInv:F0}  Soldiers: {SoldiersInv:F0}  Passengers: {PassengersInv:F0}  Morale: {MoraleInv}";
+            C[5] += $" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)";
         } else {
             C = C.Take(3).ToList();
         }
@@ -157,7 +156,8 @@ public class Crawler: IActor {
     }
     public float AirPerHr {
         get {
-            int hitSegments = UndestroyedSegments.Count(s => s.Hits > 0);
+            float hitSegments = UndestroyedSegments
+                .Sum(s => s.Hits / (float)s.MaxHits);
             return TotalPeople * Tuning.Crawler.AirRecyclingLossPerHour * hitSegments;
         }
     }

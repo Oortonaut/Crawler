@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using System.Runtime.CompilerServices;
 using Crawler.Logging;
+using MathNet.Numerics.Distributions;
 
 namespace Crawler;
 using System.Drawing;
@@ -158,7 +159,6 @@ public static partial class CrawlerEx {
         Styles[Style.MenuSomeVisited] = Color.CornflowerBlue.On(menuBg);
         Styles[Style.MenuVisited] = menuFg.On(menuBg);
         Styles[Style.MenuEmpty] = Color.DarkRed.On(menuBg);
-
 
         Color segmentBg = Color.LightGray;
         Color segmentBgInactive = Color.Pink;
@@ -439,9 +439,48 @@ public static partial class CrawlerEx {
         }
     }
     public static float Factorial(int N) => N == 0 ? 1 : Enumerable.Range(1, N).Aggregate(1, (a, b) => a * b);
-    public static float PoissonPMF(int K, float lambda) => (float)(Math.Pow(lambda, K) * Math.Exp(-lambda) / Factorial(K));
-    public static int SamplePoissonAt(float lambda, float u) => MathNet.Numerics.Distributions.Poisson.Sample(lambda);
-    public static int SamplePoisson(float lambda, ref XorShift rng) => SamplePoissonAt(lambda, rng.NextSingle());
+    public static int PoissonQuantileAt(float lambda, float y) {
+        if (lambda <= 0) return 0;
+
+        int k = 0;
+        // e^lambda ~= 2^23
+        if (lambda > 16) {
+            // Normal approximation with continuity correction
+            // mean = lambda, variance = lambda
+            double z = Math.Sqrt(-2 * Math.Log(1 - y)); // Inverse standard normal CDF
+            k = (int)(lambda + Math.Sqrt(lambda) * z + 0.5);
+        } else {
+            float p = (float)Math.Exp(-lambda);
+            var sum = p;
+            while (sum < y) {
+                k++;
+                p *= lambda / k;
+                sum += p;
+            }
+        }
+        return k;
+    }
+    public static int PoissonQuantileAt(double lambda, double y) {
+        if (lambda <= 0) return 0;
+
+        int k = 0;
+        if (lambda > 37) {
+            // Normal approximation with continuity correction
+            // mean = lambda, variance = lambda
+            double z = Math.Sqrt(-2 * Math.Log(1 - y)); // Inverse standard normal CDF
+            k = ( int ) (lambda + Math.Sqrt(lambda) * z + 0.5);
+        } else {
+            double p = Math.Exp(-lambda);
+            var sum = p;
+            while (sum < y) {
+                k++;
+                p *= lambda / k;
+                sum += p;
+            }
+        }
+        return k;
+    }
+    public static int PoissonQuantile(float lambda, ref XorShift rng) => PoissonQuantileAt(lambda, rng.NextSingle());
 
     /// <summary>
     /// Samples from an exponential distribution with a mean of 1.
@@ -751,9 +790,9 @@ public static partial class CrawlerEx {
             t = Math.Clamp(t, 0, 1);
             loot[commodity] += from[commodity] * t;
         }
-        var lootableSegments = from.Segments.Where(s => s.Health > 0).ToArray();
-        loot.Segments.AddRange(lootableSegments
-            .Where(s => rng.NextDouble() < lootReturn));
+        var lootableSegments = from.Segments
+            .Where(s => s.Health > 0)
+            .Where(s => rng.NextSingle() < lootReturn);
         return loot;
     }
     public static (ActorToActor a2s, ActorToActor s2a) ToTo(this IActor attacker, IActor defender) => (attacker.To(defender), defender.To(attacker));
