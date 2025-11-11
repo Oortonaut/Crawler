@@ -514,9 +514,23 @@ public class Game {
         // Show packaged segments in supplies that can be moved to cargo
         var packagedSegments = Player.Supplies.Segments.Where(s => s.IsPackaged).ToList();
 
+        foreach (var pair in Player.Supplies.Pairs) {
+            var commodity = pair.Item1;
+            int i = ( int ) commodity;
+            var amt = pair.Item2;
+            if (amt > 0) {
+                yield return new ActionMenuItem($"PC{i + 1}C", $"{commodity} to Cargo", args => MoveToCargo(commodity, args), EnableArg.Enabled, showOption);
+            }
+            var amt2 = Player.Cargo[commodity];
+            if (amt2 > 0) {
+                yield return new ActionMenuItem($"PC{i + 1}S", $"{commodity} to Supplies", args => MoveFromCargo(commodity, args), EnableArg.Enabled, showOption);
+            }
+
+        }
+
         for (int i = 0; i < packagedSegments.Count; i++) {
             var segment = packagedSegments[i];
-            yield return new ActionMenuItem($"PT{i + 1}M", $"{segment.StateName} to Cargo", _ => MoveToCargo(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PT{i + 1}C", $"{segment.StateName} to Cargo", _ => MoveToCargo(segment), EnableArg.Enabled, showOption);
         }
 
         // Show segments in cargo that can be moved back to supplies
@@ -524,7 +538,7 @@ public class Game {
         for (int i = 0; i < tradeSegments.Count; i++) {
             var segment = tradeSegments[i];
             int index = i;
-            yield return new ActionMenuItem($"PT{i + 1}R", $"{segment.StateName} to Supplies", _ => MoveFromCargo(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PT{i + 1}S", $"{segment.StateName} to Supplies", _ => MoveFromCargo(segment), EnableArg.Enabled, showOption);
         }
     }
 
@@ -536,11 +550,44 @@ public class Game {
         return 0;
     }
 
+    int MoveToCargo(Commodity commodity, string amount) {
+        var amt = Player.Cargo[commodity];
+
+        if (float.TryParse(amount, out float parsed)) {
+            amt = Math.Min(parsed, amt);
+        }
+
+        return MoveToCargo(commodity, amt);
+    }
+
+    int MoveToCargo(Commodity commodity, float amount) {
+        Player.Supplies[commodity] -= amount;
+        Player.Cargo[commodity] += amount;
+        Player.Message($"{amount} {commodity} moved to cargo");
+        return 0;
+    }
+
     int MoveFromCargo(Segment segment) {
         Player.Cargo.Remove(segment);
         Player.Supplies.Add(segment);
         Player.Message($"{segment.Name} returned from cargo");
         Player.UpdateSegmentCache();
+        return 0;
+    }
+
+    int MoveFromCargo(Commodity commodity, string amount) {
+        var amt = Player.Cargo[commodity];
+        if (float.TryParse(amount, out float parsed)) {
+            amt = Math.Min(parsed, amt);
+        }
+
+        return MoveFromCargo(commodity, amt);
+    }
+
+    int MoveFromCargo(Commodity commodity, float amount) {
+        Player.Cargo[commodity] -= amount;
+        Player.Supplies[commodity] += amount;
+        Player.Message($"{amount} {commodity} moved to cargo");
         return 0;
     }
 
@@ -911,7 +958,7 @@ public class Game {
         // Test 24b: GaussianSampler.Quantile is inverse of Gaussian CDF
         RunTest("GaussianSampler.Quantile is inverse of Gaussian CDF", () => {
             for (double t = 1.0 / 256; t < 1.0; t += 1.0 / 128) {
-                double x = GaussianSampler.Quantile(t); 
+                double x = GaussianSampler.Quantile(t);
                 double p = GaussianSampler.CDF(x);
                 if (Math.Abs(p - t) > 0.01)
                     return false;
