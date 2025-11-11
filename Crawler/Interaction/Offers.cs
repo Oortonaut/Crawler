@@ -94,7 +94,7 @@ public record CommodityOffer(Commodity commodity, float amount): IOffer {
     public override string ToString() => Description;
     public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
         Subject.Ended() ? "Taker Dead" :
-        Agent.Supplies.Contains(commodity, amount) == ContainsResult.False ? "No supplies" :
+        Agent.Supplies.Contains(commodity, amount) == ContainsResult.False ? $"lacks {commodity}" :
         null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         Agent.Supplies[commodity] -= Amount;
@@ -128,6 +128,7 @@ public record AttackOffer: IOffer {
         Agent.Ended() ? "Attacker Dead" :
         Subject.Ended() ? "Defender Dead" :
         Agent is not Crawler attacker ? "Can't attack" :
+        Subject is not Crawler defender ? "Invulnerable" :
         attacker.IsDisarmed ? "Disarmed" :
         null;
     public void PerformOn(IActor Agent, IActor Subject) {
