@@ -251,12 +251,10 @@ public class Crawler: IActor {
 
     internal long LastEvent = 0;
     public void Tick(long time) {
-        NextEvent = 0;
-        if (EndState != null) {
-            return;
-        }
-        if (LastEvent == 0) {
-            LastEvent = time;
+        int elapsed = (int)(time - LastEvent);
+        LastEvent = time;
+
+        if (EndState != null || elapsed == 0) {
             return;
         }
 
@@ -365,11 +363,7 @@ public class Crawler: IActor {
         }
     }
     public bool Knows(Location loc) => _locations.ContainsKey(loc);
-    public long NextEvent {
-        get => nextEvent > 0 ? nextEvent : LastEvent + GetDelay();
-        set => nextEvent = Math.Max(nextEvent, Math.Max(value, Game.SafeTime));
-    }
-    long nextEvent = 0;
+    public long NextEvent { get; set; } = 0;
     public int GetDelay() {
         int minDelay = Tuning.MaxDelay;
         int N = 0;

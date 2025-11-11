@@ -382,6 +382,7 @@ public class Game {
         Look();
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
+        Player.NextEvent = TimeSeconds + ap;
         return selected;
     }
     int SectorMap() {
