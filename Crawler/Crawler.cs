@@ -5,7 +5,6 @@ using Crawler.Logging;
 
 namespace Crawler;
 
-
 public class ActorToActor {
     [Flags]
     public enum EFlags {
@@ -87,6 +86,33 @@ public class ActorToActor {
     }
 }
 
+// For this faction, dealing in Controlled commodities requires a license.
+// Early game commodities such as liquor or explosives require a category
+// license for GameTier.EarlyGame (or higher), while late game commodities like trips and
+// gems require a GameTier.LateGame license.
+public class ActorFaction {
+    public ActorFaction(IActor actor, Faction faction) {
+        if (actor.Faction == faction) {
+            if (actor.Faction is Faction.Bandit) {
+                ActorStanding = 25;
+            } else {
+                ActorStanding = 100;
+            }
+            FactionStanding = ActorStanding;
+        } else {
+            ActorStanding = FactionStanding = 10;
+            if (actor.Faction is Faction.Bandit || faction is Faction.Bandit) {
+                ActorStanding = -100;
+                FactionStanding = -100;
+            }
+        }
+    }
+
+    public EArray<CommodityCategory, GameTier> Licenses = new();
+    public bool CanTrade(Commodity c) => Licenses[c.Category()] >= c.Tier();
+    public int ActorStanding { get; set; } // How the actor feels about the faction
+    public int FactionStanding { get; set; } // How the faction feels about the actor
+}
 public class Crawler: IActor {
     XorShift Rng;
     GaussianSampler Gaussian;
@@ -128,7 +154,7 @@ public class Crawler: IActor {
             float RationsPerDay = TotalPeople * Tuning.Crawler.RationsPerCrewDay;
             float WaterPerDay = WaterPerHr * 24;
             float AirPerDay = AirPerHr * 24;
-            C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}, -{FuelPerHr:F1}/h, -{FuelPerKm*100:F2}/100km";
+            C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}, -{FuelPerHr:F1}/h, -{FuelPerKm * 100:F2}/100km";
             C[4] += $" Crew: {CrewInv:F0}  Soldiers: {SoldiersInv:F0}  Passengers: {PassengersInv:F0}  Morale: {MoraleInv}";
             C[5] += $" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)";
         } else {
@@ -192,7 +218,7 @@ public class Crawler: IActor {
                 !To(other).Surrendered &&
                 !IsDisarmed) {
 
-                var extortion = new ProposeAttackOrLoot(Rng/1, Tuning.Bandit.demandFraction);
+                var extortion = new ProposeAttackOrLoot(Rng / 1, Tuning.Bandit.demandFraction);
                 StoredProposals.Add(extortion);
                 To(other).AddProposal(extortion);
             }
@@ -259,18 +285,18 @@ public class Crawler: IActor {
         }
 
         using var activity = LogCat.Game.StartActivity(
-            "Crawler.Tick", System.Diagnostics.ActivityKind.Internal)?
+                "Crawler.Tick", System.Diagnostics.ActivityKind.Internal)?
             .SetTag("crawler.name", Name)
             .SetTag("crawler.faction", Faction)
             .SetTag("elapsed_seconds", elapsed);
-            
+
         Recharge(elapsed);
 
         // Check rations
         if (RationsInv <= 0) {
             Message("You are out of rations and your crew is starving.");
             float liveRate = 0.99f;
-            liveRate = ( float ) Math.Pow(liveRate, elapsed / 3600);
+            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
             CrewInv *= liveRate;
             SoldiersInv *= liveRate;
             PassengersInv *= liveRate;
@@ -281,7 +307,7 @@ public class Crawler: IActor {
         if (WaterInv <= 0) {
             Message("You are out of water. People are dying of dehydration.");
             float keepRate = 0.98f;
-            keepRate = ( float ) Math.Pow(keepRate, elapsed / 3600);
+            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
             CrewInv *= keepRate;
             SoldiersInv *= keepRate;
             PassengersInv *= keepRate;
@@ -328,7 +354,7 @@ public class Crawler: IActor {
             Message("Not enough fuel.");
             return;
         }
-        long arrivalTime = LastEvent + ( int ) (time * 3600);
+        long arrivalTime = LastEvent + (int)(time * 3600);
 
         Location.GetEncounter().RemoveActor(this);
         FuelInv -= fuel;
@@ -362,7 +388,6 @@ public class Crawler: IActor {
             CrawlerEx.Message(Game.Instance!.TimeString() + ": " + message);
         }
     }
-    public bool Knows(Location loc) => _locations.ContainsKey(loc);
     public long NextEvent { get; set; } = 0;
     public int GetDelay() {
         int minDelay = Tuning.MaxDelay;
@@ -395,25 +420,25 @@ public class Crawler: IActor {
         foreach (var segment in _allSegments) {
             _segmentsByClass[segment.SegmentKind].Add(segment);
             switch (segment.State) {
-                case Segment.Working.Pristine:
-                case Segment.Working.Running:
-                    _activeSegmentsByClass[segment.SegmentKind].Add(segment);
-                    _activeSegments.Add(segment);
-                    _undestroyedSegments.Add(segment);
-                    break;
-                case Segment.Working.Damaged:
-                    _disabledSegments.Add(segment);
-                    _undestroyedSegments.Add(segment);
-                    break;
-                case Segment.Working.Destroyed:
-                    _destroyedSegments.Add(segment);
-                    break;
-                case Segment.Working.Deactivated:
-                    _undestroyedSegments.Add(segment);
-                    break;
-                case Segment.Working.Packaged:
-                    _undestroyedSegments.Add(segment);
-                    break;
+            case Segment.Working.Pristine:
+            case Segment.Working.Running:
+                _activeSegmentsByClass[segment.SegmentKind].Add(segment);
+                _activeSegments.Add(segment);
+                _undestroyedSegments.Add(segment);
+                break;
+            case Segment.Working.Damaged:
+                _disabledSegments.Add(segment);
+                _undestroyedSegments.Add(segment);
+                break;
+            case Segment.Working.Destroyed:
+                _destroyedSegments.Add(segment);
+                break;
+            case Segment.Working.Deactivated:
+                _undestroyedSegments.Add(segment);
+                break;
+            case Segment.Working.Packaged:
+                _undestroyedSegments.Add(segment);
+                break;
             }
         }
     }
@@ -479,7 +504,7 @@ public class Crawler: IActor {
             }
             speed *= generationLimit;
             if (totalLift > 0 && liftFraction > 1) {
-                liftFraction = ( float ) Math.Pow(liftFraction, 0.6f);
+                liftFraction = (float)Math.Pow(liftFraction, 0.6f);
                 notes.Add("too heavy");
                 drain *= liftFraction;
                 speed /= liftFraction;
@@ -487,18 +512,20 @@ public class Crawler: IActor {
             if (speed > bestSpeed) {
                 bestSpeed = speed;
                 drain = drainSum;
-                bestMsg = notes.Any() ? "("+string.Join(", ", notes)+")" : "";
+                bestMsg = notes.Any() ? "(" + string.Join(", ", notes) + ")" : "";
             }
         }
         return new Move(bestSpeed, drain, bestMsg == "" ? null : bestMsg);
     }
 
     public float Mass => Supplies.Mass;
-    public float TotalCharge => PowerSegments.Any() ? PowerSegments.Select(s => s switch {
-            ReactorSegment rs => rs.Charge,
-            _ => 0,
-        })
-        .Sum() : 0;
+    public float TotalCharge => PowerSegments.Any()
+        ? PowerSegments.Select(s => s switch {
+                ReactorSegment rs => rs.Charge,
+                _ => 0,
+            })
+            .Sum()
+        : 0;
     public float TotalGeneration =>
         PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generation) +
         PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generation);
@@ -515,7 +542,7 @@ public class Crawler: IActor {
             ("Local Value", 12)
         );
 
-        foreach (var (commodity, amount) in inv.Commodities.Select((amt, idx) => (( Commodity ) idx, amt)).Where(pair => pair.amt > 0)) {
+        foreach (var (commodity, amount) in inv.Commodities.Select((amt, idx) => ((Commodity)idx, amt)).Where(pair => pair.amt > 0)) {
             var value = amount * commodity.CostAt(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
@@ -751,7 +778,7 @@ public class Crawler: IActor {
             return;
         }
         var rngRecvFire = new XorShift(Rng.Seed());
-        
+
         bool wasDestroyed = IsDestroyed;
         int totalDamageDealt = 0;
 
@@ -856,9 +883,10 @@ public class Crawler: IActor {
         return (remaining, $" killing {CrewInv} crew and {moraleLoss} morale");
     }
 
-    Dictionary<IActor, ActorToActor> _relations = new();
-    Dictionary<Location, LocationActor> _locations = new();
+    public EArray<Faction, ActorFaction> FactionRelations { get; } = new();
+    public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
 
+    Dictionary<IActor, ActorToActor> _relations = new();
     public bool Knows(IActor other) => _relations.ContainsKey(other);
     public ActorToActor To(IActor other) {
         return _relations.GetOrAddNew(other, () => NewRelation(other));
@@ -866,30 +894,15 @@ public class Crawler: IActor {
     public ActorToActor NewRelation(IActor to) {
         var result = new ActorToActor();
         bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.GetEncounter().Faction is Faction.Independent;
-        if (Faction is Faction.Bandit && to.Faction is Faction.Player && !isTradeSettlement) {
-            // Bandits check player evilness before turning hostile
-            if (to is Crawler playerCrawler) {
-                float evilness = playerCrawler.EvilPoints;
-                if (evilness >= Tuning.Trade.banditHostilityThreshold) {
-                    // Higher evilness = higher chance of hostility
-                    float hostilityChance = Tuning.Trade.banditHostilityChance * (evilness / Tuning.Trade.banditHostilityThreshold);
-                    hostilityChance = Math.Clamp(hostilityChance, 0.0f, 1.0f);
-
-                    if (Rng.NextDouble() < hostilityChance) {
-                        result.Hostile = true;
-                    }
-                } else {
-                    // Low evilness - bandits might trade instead of fighting
-                    result.Hostile = false;
-                }
-            } else {
-                // Default behavior for non-crawler players
-                result.Hostile = true;
-            }
+        var actorFaction = this.To(to.Faction);
+        if (actorFaction.ActorStanding < 0) {
+            result.Hostile = true;
         }
         return result;
     }
 
+    Dictionary<Location, LocationActor> _locations = new();
+    public bool Knows(Location location) => _locations.ContainsKey(location);
     public LocationActor To(Location location) {
         return _locations.GetOrAddNew(location, () => NewRelation(location));
     }
@@ -911,7 +924,7 @@ public class Crawler: IActor {
             !To(target).Surrendered &&
             !IsDisarmed) {
 
-            var extortion = new ProposeAttackOrLoot(Rng/2, Tuning.Bandit.demandFraction);
+            var extortion = new ProposeAttackOrLoot(Rng / 2, Tuning.Bandit.demandFraction);
             To(target).AddProposal(extortion);
         }
     }

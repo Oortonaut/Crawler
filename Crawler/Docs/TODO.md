@@ -11,7 +11,8 @@
 ## Wish List
                                                                       
 [_] Market views
-
+[_] Better WeakReference - struct Weak<T>, forward object identity for utility
+                                  
 ## Finished
 
 * [x] Use deterministic seeding like I should have from the start (2025-11-08)
