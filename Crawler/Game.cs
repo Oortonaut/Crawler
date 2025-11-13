@@ -97,7 +97,7 @@ public class Game {
 
     bool quit = false;
     public void Schedule(Encounter encounter) {
-        Schedule(encounter, Math.Max(TimeSeconds, encounter.NextEvent));
+        Schedule(encounter, Math.Max(TimeSeconds, encounter.NextEncounterEvent));
     }
     void Schedule(Encounter encounter, long nextTurn) {
         if (turnForEncounter.TryGetValue(encounter, out var scheduledTurn)) {
@@ -151,7 +151,9 @@ public class Game {
 
         while (!quit && encountersByTurn.Any()) {
             var (turn, turnEncounters) = TurnEncounters();
-            using var activity = Scope($"Game::Turn {turn}: {turnEncounters.Count} encounters");
+            using var activity = Scope($"Game::Turn")?
+                .AddTag("#encounters", turnEncounters.Count)
+                .AddTag("turn", turn);
             TimeSeconds = turn;
             foreach (var encounter in turnEncounters) {
                 encounter.Tick(turn);
@@ -179,7 +181,7 @@ public class Game {
 
     int Report() {
         Player.Message(Player.Report());
-        return 0;
+        return 10;
     }
 
     int SegmentDefinitionsReport() {
@@ -194,7 +196,7 @@ public class Game {
         var rng = new XorShift(999);
         var segments = SegmentEx.AllDefs.SelectMany(def => Variants(def)).Select(def => def.NewSegment(rng.Seed())).ToList();
         Player.Message(segments.SegmentReport(PlayerLocation));
-        return 0;
+        return 10;
     }
 
     IEnumerable<MenuItem> EncounterMenuItems() {
@@ -231,7 +233,8 @@ public class Game {
     }
     int GoTo(Location loc) {
         Player.Travel(loc);
-        return 0;
+        // TODO: Travel scheduling is a little weird
+        return 60;
     }
 
     IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
@@ -382,7 +385,7 @@ public class Game {
         Look();
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
-        Player.NextEvent = TimeSeconds + ap;
+        Player.NextEvent = Player.LastEvent + ap;
         return selected;
     }
     int SectorMap() {
@@ -477,7 +480,7 @@ public class Game {
         segment.Activated = !segment.Activated;
         Player.Message($"{segment.Name} {(segment.Activated ? "activated" : "deactivated")}");
         Player.UpdateSegmentCache();
-        return 0;
+        return 10;
     }
 
     int PackagingMenu() {
@@ -509,7 +512,7 @@ public class Game {
         segment.Packaged = !segment.Packaged;
         Player.Message($"{segment.Name} {(segment.Packaged ? "packaged" : "unpackaged")}");
         Player.UpdateSegmentCache();
-        return 0;
+        return 3600 * 3;
     }
 
     int TradeInventoryMenu() {
@@ -557,7 +560,7 @@ public class Game {
         Player.Cargo.Add(segment);
         Player.Message($"{segment.Name} moved to cargo");
         Player.UpdateSegmentCache();
-        return 0;
+        return 1200;
     }
 
     int MoveToCargo(Commodity commodity, string amount) {
@@ -574,7 +577,9 @@ public class Game {
         Player.Supplies[commodity] -= amount;
         Player.Cargo[commodity] += amount;
         Player.Message($"{amount} {commodity} moved to cargo");
-        return 0;
+        // 3 tons/hr
+        int time = (int)(commodity.Mass() * amount / 1200);
+        return Math.Max(time, 1);
     }
 
     int MoveFromCargo(Segment segment) {
@@ -582,7 +587,7 @@ public class Game {
         Player.Supplies.Add(segment);
         Player.Message($"{segment.Name} returned from cargo");
         Player.UpdateSegmentCache();
-        return 0;
+        return 1200;
     }
 
     int MoveFromCargo(Commodity commodity, string amount) {
@@ -598,7 +603,8 @@ public class Game {
         Player.Cargo[commodity] -= amount;
         Player.Supplies[commodity] += amount;
         Player.Message($"{amount} {commodity} moved to cargo");
-        return 0;
+        int time = (int)(commodity.Mass() * amount / 1200);
+        return Math.Max(time, 1);
     }
 
     int Save() {

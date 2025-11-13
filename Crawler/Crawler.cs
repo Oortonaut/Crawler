@@ -210,47 +210,6 @@ public class Crawler: IActor {
     public List<IProposal> StoredProposals { get; private set; } = new();
     public virtual IEnumerable<IProposal> Proposals() => StoredProposals;
 
-    // Check and set ultimatums for mandatory interactions on encounter entry
-    public void CheckAndSetUltimatums(IActor other) {
-        // Bandits demand cargo from players on encounter entry
-        if (Faction == Faction.Bandit && other.Faction == Faction.Player) {
-            float cargoValue = other.Supplies.ValueAt(Location);
-            if (cargoValue >= Tuning.Bandit.minValueThreshold &&
-                Rng.NextSingle() < Tuning.Bandit.demandChance &&
-                !To(other).Hostile &&
-                !To(other).Surrendered &&
-                !IsDisarmed) {
-
-                var extortion = new ProposeAttackOrLoot(Rng / 1, Tuning.Bandit.demandFraction);
-                StoredProposals.Add(extortion);
-                To(other).AddProposal(extortion);
-            }
-        }
-
-        // Settlements and civilian factions scan for contraband
-        if ((Flags & EActorFlags.Settlement) != 0 || Faction.IsCivilian() || Faction == Faction.Independent) {
-            if (other.Faction == Faction.Player && !To(other).Hostile) {
-                var contraband = ScanForContraband(other);
-                if (!contraband.IsEmpty) {
-                    float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
-                    var seizure = new ProposeContrabandSeizure(contraband, penalty);
-                    StoredProposals.Add(seizure);
-                    To(other).AddProposal(seizure);
-                }
-
-                // Also check for taxes if this is a settlement in own territory
-                if ((Flags & EActorFlags.Settlement) != 0 &&
-                    Faction.IsCivilian() &&
-                    Location.Sector.ControllingFaction == Faction) {
-
-                    var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
-                    StoredProposals.Add(taxes);
-                    To(other).AddProposal(taxes);
-                }
-            }
-        }
-    }
-
     // Scan actor's inventory for contraband based on this faction's policies
     public bool HasContraband(IActor target) {
         if (target is not Crawler crawler) {
@@ -301,6 +260,11 @@ public class Crawler: IActor {
     }
 
     internal long LastEvent = 0;
+    public void TickThink(long time) {
+        int elapsed = (int)(time - LastEvent);
+        Tick(time);
+        Think(elapsed, Location.GetEncounter().ActorsExcept(this));
+    }
     public void Tick(long time) {
         int elapsed = (int)(time - LastEvent);
         LastEvent = time;
@@ -414,7 +378,7 @@ public class Crawler: IActor {
         }
     }
     public long NextEvent { get; set; } = 0;
-    public int GetDelay() {
+    public int WeaponDelay() {
         int minDelay = Tuning.MaxDelay;
         int N = 0;
         foreach (var segment in CyclingSegments) {
