@@ -678,6 +678,16 @@ public static partial class CrawlerEx {
         }
         return value;
     }
+    public static TValue GetOrNullAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key) where TValue: new() {
+        return dict.GetOrNullAddNew(key, () => new TValue());
+    }
+    public static TValue GetOrNullAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TValue> gen) {
+        if (!dict.TryGetValue(key, out var value) || value == null) {
+            value = gen();
+            dict[key] = value;
+        }
+        return value;
+    }
     public static bool Visited(this IActor actor, Location location) => actor.Knows(location) && actor.To(location).Visited;
     public static Style StyleFor(this IActor actor, Location location) =>
         actor.Visited(location) ? Style.MenuVisited :
