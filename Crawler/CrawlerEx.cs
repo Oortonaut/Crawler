@@ -700,6 +700,7 @@ public static partial class CrawlerEx {
     }
     public static bool Visited(this IActor actor, Location location) => actor.Knows(location) && actor.To(location).Visited;
     public static Style StyleFor(this IActor actor, Location location) =>
+        actor.Location == location ? Style.MenuInput :
         actor.Visited(location) ? Style.MenuVisited :
         actor.Knows(location) ? Style.MenuSomeVisited :
         Style.MenuUnvisited;

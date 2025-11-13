@@ -202,6 +202,28 @@ public record InventoryOffer(
     Inventory GetInv(IActor Agent) => cargo ? Agent.Cargo : Agent.Supplies;
 }
 
+public record SearchOffer(string Description): IOffer {
+    public string? DisabledFor(IActor Agent, IActor Subject) =>
+        !Agent.HasFlag(EActorFlags.Settlement) ? "Not a Settlement" :
+        Subject is not Crawler subject ? "Not a Crawler" :
+        Agent.Ended() ? "Destroyed" :
+        Agent.Faction is Faction.Bandit ? "Bandit" :
+        null;
+    public void PerformOn(IActor Agent, IActor Subject) {
+        if (Agent is Crawler settlement && Subject is Crawler subject) {
+            var scan = settlement.ScanForContraband(subject);
+            if (!scan.IsEmpty) {
+                // TODO: generalize cargo bays for mission escrow, seized property, etc.
+                // TODO: destroy prohibited goods
+                subject.Supplies.Remove(scan);
+                settlement.Cargo.Add(scan);
+            }
+        }
+    }
+    public float ValueFor(IActor Agent) => 0;
+    public override string ToString() => Description;
+}
+
 public static partial class OfferEx {
     public static IOffer CargoOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo));
     public static IOffer SupplyOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies));

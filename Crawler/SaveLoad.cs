@@ -386,16 +386,16 @@ public static class SaveLoadExtensions {
                 ExpirationTime = extortion.ExpirationTime,
                 RngState = extortion.Rng.GetState()
             },
-            ProposeTaxes taxes => new SavedProposal {
-                Type = "Taxes",
-                TaxRate = taxes.TaxRate,
-                OptionCode = taxes.OptionCode,
-                ExpirationTime = taxes.ExpirationTime
-            },
-            ProposeContrabandSeizure seizure => new SavedProposal {
+            // ProposeTaxes taxes => new SavedProposal {
+            //     Type = "Taxes",
+            //     TaxRate = taxes.TaxRate,
+            //     OptionCode = taxes.OptionCode,
+            //     ExpirationTime = taxes.ExpirationTime
+            // },
+            ProposeSearchSeizeHostile seizure => new SavedProposal {
                 Type = "ContrabandSeizure",
-                Contraband = seizure.Contraband.ToSaveData(),
-                PenaltyAmount = seizure.PenaltyAmount,
+                //Contraband = seizure.Contraband.ToSaveData(),
+                //PenaltyAmount = seizure.PenaltyAmount,
                 OptionCode = seizure.OptionCode,
                 ExpirationTime = seizure.ExpirationTime
             },
@@ -765,14 +765,14 @@ public static class SaveLoadExtensions {
             "AttackOrLoot" => new ProposeAttackOrLoot(new(saved.RngState), saved.DemandFraction) {
                 ExpirationTime = saved.ExpirationTime
             },
-            "Taxes" => new ProposeTaxes(saved.TaxRate) {
-                ExpirationTime = saved.ExpirationTime
-            },
-            "ContrabandSeizure" => saved.Contraband != null
-                ? new ProposeContrabandSeizure(saved.Contraband.ToGameInventory(), saved.PenaltyAmount) {
-                    ExpirationTime = saved.ExpirationTime
-                }
-                : null,
+            //"Taxes" => new ProposeTaxes(saved.TaxRate) {
+            //    ExpirationTime = saved.ExpirationTime
+            //},
+            // "ContrabandSeizure" => saved.Contraband != null
+            //     ? new ProposeSearchSeizeHostile(saved.Contraband.ToGameInventory(), saved.PenaltyAmount) {
+            //         ExpirationTime = saved.ExpirationTime
+            //     }
+            //     : null,
             "PlayerDemand" => new ProposePlayerDemand(new(saved.RngState), saved.DemandFraction, saved.OptionCode) {
                 ExpirationTime = saved.ExpirationTime
             },

@@ -904,6 +904,8 @@ public class Crawler: IActor {
     /// Helper: Set up bandit extortion ultimatum if conditions are met
     /// </summary>
     void SetupBanditExtortion(IActor target) {
+        return;
+
         if (Faction != Faction.Bandit || target.Faction != Faction.Player) return;
 
         float cargoValue = target.Supplies.ValueAt(Location);
@@ -926,25 +928,17 @@ public class Crawler: IActor {
         if (!Flags.HasFlag(EActorFlags.Settlement))
             return;
 
-        if (target.Faction != Faction.Player || To(target).Hostile)
-            return;
-
-        // Contraband scan
-        var contraband = ScanForContraband(target);
-        if (!contraband.IsEmpty) {
-            float penalty = contraband.ValueAt(Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
-            var seizure = new ProposeContrabandSeizure(contraband, penalty);
-            To(target).AddProposal(seizure);
-        }
+        var seizure = new ProposeSearchSeizeHostile(this, target);
+        To(target).AddProposal(seizure);
 
         // Taxes for settlements in own territory
-        if ((Flags & EActorFlags.Settlement) != 0 &&
-            Faction.IsCivilian() &&
-            Location.Sector.ControllingFaction == Faction) {
-
-            var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
-            To(target).AddProposal(taxes);
-        }
+        // if ((Flags & EActorFlags.Settlement) != 0 &&
+        //     Faction.IsCivilian() &&
+        //     Location.Sector.ControllingFaction == Faction) {
+        //
+        //     var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
+        //     To(target).AddProposal(taxes);
+        // }
     }
 
     /// <summary>

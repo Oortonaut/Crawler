@@ -115,8 +115,7 @@ public record ProposeExchange(
         Agent != Subject &&
         agentOffer.EnabledFor(Agent, Subject) &&
         subjectOffer.EnabledFor(Subject, Agent) &&
-        !Agent.To(Subject).Hostile &&
-        !Subject.To(Agent).Hostile;
+        !Agent.Fighting(Subject);
     public virtual IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         yield return new ExchangeInteraction(Agent, agentOffer, Subject, subjectOffer, OptionCode, Description);
     }
@@ -177,7 +176,7 @@ record ProposeHarvestTake(IActor Resource, Inventory Amount, string OptionCode, 
 
 record ProposeLootRisk(XorShift Rng, IActor Resource, Inventory Risk, float RiskChance, string Description): IProposal {
     public bool AgentCapable(IActor agent) => agent == Resource && agent.EndState != EEndState.Looted;
-    public bool SubjectCapable(IActor subject) => subject != Resource && subject.Supplies.Contains(Risk) != ContainsResult.False;
+    public bool SubjectCapable(IActor subject) => subject != Resource && subject.Supplies.Contains(Risk) != FromInventory.None;
     public bool PairCapable(IActor Agent, IActor Subject) => true;
     public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
         var agentOffer = Agent.CargoOffer();
@@ -247,63 +246,54 @@ public record ProposeAcceptSurrender(XorShift Rng, string OptionCode): IProposal
 }
 
 
-public record ProposeDemand(
-    IOffer agentOfferComply,
-    IOffer agentOfferRefuse,
-    IOffer? subjectOfferDemanded,
+public abstract record ProposeDemand(
+    IOffer Carrot,
+    IOffer Stick,
     string Ultimatum,
-    int timeout = 300,
+    long timeout = 300,
     string OptionCode = "D"): IProposal {
     public virtual bool AgentCapable(IActor agent) => true;
     public virtual bool SubjectCapable(IActor subject) => subject is Crawler;
+    // Unfulfillable offers are allowed
     public virtual bool PairCapable(IActor Agent, IActor Subject) =>
         Agent != Subject &&
-        agentOfferComply.EnabledFor(Agent, Subject) &&
-        agentOfferRefuse.EnabledFor(Agent, Subject) &&
-        SubjectOffer(Subject).EnabledFor(Subject, Agent);
+        (useCarrot ? Carrot.EnabledFor(Agent, Subject) : Stick.EnabledFor(Agent, Subject));
 
     public virtual IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
-        if (ExpirationTime == 0 || Game.SafeTime <= ExpirationTime) {
-            yield return new ExchangeInteraction(Agent, agentOfferComply, Subject, SubjectOffer(Subject), OptionCode + "Y", Ultimatum);
-            yield return new ExchangeInteraction(Agent, agentOfferRefuse, Subject, new EmptyOffer(), OptionCode + "N", Ultimatum);
+        if (useCarrot) {
+            yield return new ExchangeInteraction(Agent, Carrot, Subject, Demand(Agent, Subject), OptionCode + "Y", $"Accept {Ultimatum}");
+            yield return new ExchangeInteraction(Agent, Stick, Subject, new EmptyOffer(), "", $"Refuse {Ultimatum}");
         } else {
-            yield return new ExchangeInteraction(Agent, agentOfferRefuse, Subject, new EmptyOffer(), "", Ultimatum, Immediacy.Immediate);
+            yield return new ExchangeInteraction(Agent, Stick, Subject, new EmptyOffer(), "", $"Failed {Ultimatum}", Immediacy.Immediate);
         }
     }
-    protected virtual IOffer SubjectOffer(IActor subject) => subjectOfferDemanded ?? throw new InvalidDataException($"You must override {nameof(SubjectOffer)} or specify {nameof(ProposeDemand)}");
+    protected abstract IOffer Demand(IActor agent, IActor subject);
 
     public virtual string Description => Ultimatum;
     public virtual long ExpirationTime { get; set; } = Game.SafeTime + timeout;
     public override string ToString() => Description;
-
+    bool useCarrot => ExpirationTime == 0 || Game.SafeTime <= ExpirationTime;
 }
 
 // Bandit extortion: "Hand over cargo or I attack"
 public record ProposeAttackOrLoot(XorShift Rng, float DemandFraction = 0.5f)
-    : ProposeDemand(
-        new EmptyOffer(),
-        new AttackOffer(), 
-        null,
-        "Extort",
-        OptionCode: "D") {
+    : ProposeDemand(new EmptyOffer(), new AttackOffer(), "Extort", OptionCode: "D") {
 
     public override bool PairCapable(IActor Agent, IActor Subject) =>
         base.PairCapable(Agent, Subject) &&
         !Agent.To(Subject).Hostile &&
         !Agent.To(Subject).Surrendered;
 
-    protected override IOffer SubjectOffer(IActor subject) => subject.SupplyOffer(Rng/1, DemandFraction);
+    protected override IOffer Demand(IActor agent, IActor subject) => subject.SupplyOffer(Rng/1, DemandFraction);
     public override string Description => "Extort cargo";
 }
 
+/*
 // Civilian faction taxes: "Pay taxes or face hostility"
 public record ProposeTaxes(float TaxRate = 0.05f)
-    : ProposeDemand(
+    : ProposeDemand(null,
         new EmptyOffer(),
-        new HostilityOffer("refuses to pay taxes"),
-        null,
-        "Demand taxes",
-        OptionCode: "D") {
+        new HostilityOffer("refuses to pay taxes"), "Demand taxes", OptionCode: "D") {
 
     public override bool AgentCapable(IActor agent) =>
         (agent.Flags & EActorFlags.Settlement) != 0 && agent.Faction.IsCivilian();
@@ -317,7 +307,7 @@ public record ProposeTaxes(float TaxRate = 0.05f)
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Hostile;
 
-    protected override IOffer SubjectOffer(IActor subject) {
+    protected override IOffer Demand(IActor subject) {
         float cargoValue = subject.Supplies.ValueAt(subject.Location);
         float taxAmount = cargoValue * TaxRate;
         return new ScrapOffer(taxAmount);
@@ -325,42 +315,38 @@ public record ProposeTaxes(float TaxRate = 0.05f)
 
     public override string Description => "Demand taxes";
 }
+*/
 
 // Contraband seizure: "Surrender prohibited goods or pay fine"
-public record ProposeContrabandSeizure(Inventory Contraband, float PenaltyAmount)
+public record ProposeSearchSeizeHostile(Crawler Settlement, IActor Subject)
     : ProposeDemand(
-        new EmptyOffer(),
-        new HostilityOffer("refuses to surrender contraband"),
-        null,
-        "Seize contraband",
-        OptionCode: "C") {
+        new SearchOffer("allw boarding and search"),
+        new HostilityOffer("Refuse search"),
+        "Seize contraband", OptionCode: "C") {
 
-    public override bool AgentCapable(IActor agent) =>
-        (agent.Flags & EActorFlags.Settlement) != 0 ||
-        (agent.Faction == Faction.Independent || agent.Faction.IsCivilian());
-
-    public override bool SubjectCapable(IActor subject) =>
-        subject.Faction == Faction.Player && subject.Supplies.Contains(Contraband) != ContainsResult.False;
-
+    public override bool AgentCapable(IActor agent) => agent == Settlement;
+    public override bool SubjectCapable(IActor subject) => subject == Subject;
     public override bool PairCapable(IActor Agent, IActor Subject) =>
         base.PairCapable(Agent, Subject) &&
-        !Agent.To(Subject).Hostile &&
-        !Subject.To(Agent).Hostile &&
-        Agent.To(Subject).StoredProposals.Any(p => p is ProposeContrabandSeizure);
+        !Agent.Fighting(Subject);
 
-    protected override IOffer SubjectOffer(IActor subject) => new InventoryOffer(false, Contraband);
+    protected override IOffer Demand(IActor agent, IActor subject) =>
+        new InventoryOffer(false, Search());
 
     public override string Description => "Seize contraband";
+    Inventory Search() {
+        var contraband = Settlement.ScanForContraband(Subject);
+        if (!contraband.IsEmpty) {
+            float penalty = contraband.ValueAt(Settlement.Location) * Tuning.Civilian.contrabandPenaltyMultiplier;
+        }
+        return contraband;
+    }
 }
 
 // Player demands: Let player threaten vulnerable NPCs
 public record ProposePlayerDemand(XorShift Rng, float DemandFraction = 0.5f, string OptionCode = "X")
-    : ProposeDemand(
-        new EmptyOffer(),
-        new AttackOffer(),
-        null,
-        "Threaten for cargo",
-        OptionCode: OptionCode) {
+    : ProposeDemand(new EmptyOffer(),
+        new AttackOffer(), "Threaten for cargo", OptionCode: OptionCode) {
 
     public override bool AgentCapable(IActor agent) =>
         agent.Faction == Faction.Player && agent is Crawler { IsDisarmed: false };
@@ -373,7 +359,7 @@ public record ProposePlayerDemand(XorShift Rng, float DemandFraction = 0.5f, str
         !Agent.To(Subject).Hostile &&
         !Subject.To(Agent).Surrendered;
 
-    protected override IOffer SubjectOffer(IActor subject) => new CompoundOffer(
+    protected override IOffer Demand(IActor agent, IActor subject) => new CompoundOffer(
         subject.SupplyOffer(Rng/1, DemandFraction),
         subject.CargoOffer(Rng/2, (DemandFraction + 1) / 2)
     );
