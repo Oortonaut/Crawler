@@ -8,8 +8,9 @@ public enum TradePolicy {
     Subsidized, // 0.7x base price - government subsidy or local production
     Legal, // 1.0x base price - normal trade
     Taxed, // 1.3x markup - import tariffs
-    Controlled, // 1.75x markup + transaction fee - heavily regulated
-    Prohibited // Cannot trade - illegal in this faction's territory
+    Controlled, // 1.75x markup. Can carry but can't transact without license
+    Restricted, // higher markup, license fees, and tariffs. Illegal to carry without license.
+    Prohibited // Cannot trade - illegal in this faction's territory. No carry or transactions allowed.
 }
 
 // Policy record encapsulates both commodity and segment trade policies
@@ -27,7 +28,7 @@ public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"):
     public bool PairCapable(IActor agent, IActor subject) =>
         subject != agent &&
         Stuff.EnabledFor(agent, subject) &&
-        agent.Disengaged(subject);
+        !agent.Fighting(subject);
     public IEnumerable<IInteraction> GetInteractions(IActor Seller, IActor Buyer) {
         var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
         yield return interaction;
@@ -76,7 +77,7 @@ public static class TradeEx {
             // Check faction policy for this commodity
             var policy = Tuning.FactionPolicies.GetPolicy(faction, commodity);
 
-            // Skip prohibited goods
+            // TODO: Make prohibited availability dependent on bandit faction standing
             if (policy == TradePolicy.Prohibited && rng.NextSingle() > 0.5f) {
                 continue;
             }
@@ -107,21 +108,10 @@ public static class TradeEx {
             var sellOffer = new CommodityOffer(commodity, (float)Math.Floor(saleQuantity));
             var sellPrice = saleQuantity * askPrice;
 
-            // TODO: Transaction fees should count multiple buys as a single transaction
-            // Add transaction fee for restricted goods
-            if (policy == TradePolicy.Controlled) {
-                sellPrice += Tuning.Trade.restrictedTransactionFee;
-            }
-
             yield return new ProposeSellBuy(sellOffer, sellPrice, "B");
 
             var buyOffer = new CommodityOffer(commodity, (float)Math.Ceiling(saleQuantity));
             var buyPrice = saleQuantity * bidPrice;
-
-            // Transaction fee applies to purchases too
-            if (policy == TradePolicy.Controlled) {
-                buyPrice = Math.Max(0, buyPrice - Tuning.Trade.restrictedTransactionFee);
-            }
 
             yield return new ProposeBuySell(buyPrice, buyOffer, "S");
         }
@@ -132,18 +122,13 @@ public static class TradeEx {
             var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
 
             // Skip prohibited segments
-            if (policy == TradePolicy.Prohibited) {
+            if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
                 continue;
             }
 
             var localCost =  segment.CostAt(Location);
             var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
             var price = localCost * merchantMarkup * policyMultiplier;
-
-            // Add transaction fee for restricted segments
-            if (policy == TradePolicy.Controlled) {
-                price += Tuning.Trade.restrictedTransactionFee;
-            }
 
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }
@@ -157,7 +142,7 @@ public static class TradeEx {
             var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
 
             // Skip prohibited segments
-            if (policy == TradePolicy.Prohibited) {
+            if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
                 continue;
             }
 
@@ -166,11 +151,6 @@ public static class TradeEx {
             markup *= merchantMarkup * policyMultiplier;
             Seller.Cargo.Segments.Add(segment);
             var price = segment.Cost * markup;
-
-            // Add transaction fee for restricted segments
-            if (policy == TradePolicy.Controlled) {
-                price += Tuning.Trade.restrictedTransactionFee;
-            }
 
             yield return new ProposeSellBuy(new SegmentOffer(segment), price);
         }

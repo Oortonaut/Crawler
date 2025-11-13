@@ -78,7 +78,8 @@ public static class FactionEx {
 
     private static readonly string[] _policyArchetypes = [
         "Authoritarian", "Libertarian", "Pious", "Debauched",
-        "Industrial", "Mercantile", "Militaristic", "Isolationist"
+        "Industrial", "Mercantile", "Militaristic", "Isolationist",
+        "Protectionist", "Technocratic", "Xenophobic", "Corporatist"
     ];
 
     private static void ApplyArchetypePolicy(int archetype,
@@ -94,7 +95,7 @@ public static class FactionEx {
                 break;
             case 1: // Libertarian
                 commodityPolicy[CommodityCategory.Vice] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Legal;
+                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Taxed;
                 commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
                 break;
             case 2: // Pious
@@ -131,12 +132,36 @@ public static class FactionEx {
                 commodityPolicy[CommodityCategory.Vice] = TradePolicy.Controlled;
                 segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
                 break;
+            case 8: // Protectionist
+                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Restricted;
+                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Taxed;
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Prohibited;
+                segmentPolicy[SegmentKind.Offense] = TradePolicy.Restricted;
+                break;
+            case 9: // Technocratic
+                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Restricted;
+                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Restricted;
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Taxed;
+                break;
+            case 10: // Xenophobic
+                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Restricted;
+                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Restricted;
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Restricted;
+                segmentPolicy[SegmentKind.Offense] = TradePolicy.Restricted;
+                break;
+            case 11: // Corporatist
+                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Restricted;
+                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Taxed;
+                break;
         }
     }
 
     public static IEnumerable<Policy> GenerateFactionPolicies(int N, ulong seed) {
         var rng = new XorShift(seed);
-        float[] policyWeights = [1, 1, 1, 1, 1, 1, 1, 1]; // TODO: Use an enum for policies
+        float[] policyWeights = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]; // TODO: Use an enum for policies
         for (int i = 0; i < N; i++) {
             yield return GenerateFactionPolicy(policyWeights, rng.Seed());
         }

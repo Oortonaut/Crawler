@@ -408,3 +408,60 @@ public record ProposeRepairBuy(string OptionCode = "R"): IProposal {
     public long ExpirationTime => 0;
     public override string ToString() => Description;
 }
+
+public record ProposeLicenseBuy(string OptionCode = "I"): IProposal {
+    public bool AgentCapable(IActor agent) =>
+        (agent.Flags & EActorFlags.Settlement) != 0;
+    public bool SubjectCapable(IActor subject) =>
+        subject is Crawler;
+    public bool PairCapable(IActor Agent, IActor Subject) =>
+        !Agent.To(Subject).Hostile &&
+        !Subject.To(Agent).Hostile;
+    public string Description => $"Purchase trade licenses";
+    public IEnumerable<IInteraction> GetInteractions(IActor Agent, IActor Subject) {
+        if (Subject is not Crawler buyer) yield break;
+
+        var agentFaction = Agent.Faction;
+        var buyerRelation = buyer.To(agentFaction);
+
+        // Define license prices
+        var controlledPrices = new EArray<GameTier, float> {
+            [GameTier.None] = 0f,
+            [GameTier.Early] = 1000f,
+            [GameTier.Mid] = 5000f,
+            [GameTier.Late] = 25000f
+        };
+
+        var restrictedPrices = new EArray<GameTier, float> {
+            [GameTier.None] = 0f,
+            [GameTier.Early] = 5000f,
+            [GameTier.Mid] = 20000f,
+            [GameTier.Late] = 80000f
+        };
+
+        // Iterate through all commodity categories
+        foreach (CommodityCategory category in Enum.GetValues<CommodityCategory>()) {
+            var policy = Tuning.FactionPolicies.GetPolicy(agentFaction, category);
+
+            // Only offer licenses for Controlled or Restricted goods
+            if (policy != TradePolicy.Controlled && policy != TradePolicy.Restricted) {
+                continue;
+            }
+
+            var prices = policy == TradePolicy.Controlled ? controlledPrices : restrictedPrices;
+            var currentLicense = buyerRelation.Licenses[category];
+
+            // Offer licenses at each tier higher than what the player currently has
+            foreach (GameTier tier in Enum.GetValues<GameTier>()) {
+                if (tier > currentLicense) {
+                    var price = prices[tier];
+                    var licenseOffer = new LicenseOffer(agentFaction, category, tier, price);
+                    yield return new ExchangeInteraction(Agent, licenseOffer, Subject, new ScrapOffer(price), OptionCode);
+                }
+            }
+        }
+    }
+
+    public long ExpirationTime => 0;
+    public override string ToString() => Description;
+}

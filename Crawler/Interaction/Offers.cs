@@ -61,6 +61,27 @@ public record RepairOffer(
     public float ValueFor(IActor Agent) => price;
 }
 
+public record LicenseOffer(
+    Faction AgentFaction,
+    CommodityCategory Category,
+    GameTier Tier,
+    float price): IOffer {
+    public virtual string Description => $"{Category} License ({Tier})";
+    public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
+        Agent.Ended() ? "Issuer Dead" :
+        Subject.Ended() ? "Buyer Dead" :
+        Subject is not Crawler buyer ? "Not a Crawler" :
+        buyer.To(AgentFaction).Licenses[Category] >= Tier ? "Already Licensed" :
+        null;
+    public virtual void PerformOn(IActor Agent, IActor Subject) {
+        if (Subject is Crawler buyer) {
+            buyer.To(AgentFaction).Licenses[Category] = Tier;
+            buyer.Message($"Acquired {Category} License ({Tier}) for {AgentFaction} territory");
+        }
+    }
+    public float ValueFor(IActor Agent) => price;
+}
+
 public record AcceptSurrenderOffer(float value, string _description): IOffer {
     public string Description => _description;
     public string? DisabledFor(IActor Agent, IActor Subject) =>

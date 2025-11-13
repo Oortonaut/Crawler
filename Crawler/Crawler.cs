@@ -110,8 +110,11 @@ public class ActorFaction {
 
     public EArray<CommodityCategory, GameTier> Licenses = new();
     public bool CanTrade(Commodity c) => Licenses[c.Category()] >= c.Tier();
+    public bool CanTrade(SegmentDef segdef) =>
+        segdef.SegmentKind == SegmentKind.Offense ? Licenses[CommodityCategory.Dangerous] >= weaponTier(segdef) : true;
     public int ActorStanding { get; set; } // How the actor feels about the faction
     public int FactionStanding { get; set; } // How the faction feels about the actor
+    GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
 public class Crawler: IActor {
     XorShift Rng;
@@ -249,6 +252,12 @@ public class Crawler: IActor {
     }
 
     // Scan actor's inventory for contraband based on this faction's policies
+    public bool HasContraband(IActor target) {
+        if (target is not Crawler crawler) {
+            return false;
+        }
+        return !ScanForContraband(crawler).IsEmpty;
+    }
     public Inventory ScanForContraband(IActor target) {
         var contraband = new Inventory();
 

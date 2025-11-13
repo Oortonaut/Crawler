@@ -21,6 +21,7 @@ public static partial class Tuning {
 
     public static class Civilian {
         public static float taxRate = 0.05f;             // 5% tax on cargo value at checkpoints
+        // TODO: Vary these by TradePolicy
         public static float contrabandScanChance = 0.7f; // 70% chance to detect contraband
         public static float contrabandPenaltyMultiplier = 2.0f; // Fine is 2x value of contraband
     }
@@ -70,21 +71,22 @@ public static partial class Tuning {
         public static float banditHostilityChance = 0.3f;    // Base chance of turning hostile at threshold
 
         // Trade prohibition enforcement
-        public static float contrabandScanChance = 0.7f;     // Chance to detect contraband
-        public static float restrictedTransactionFee = 15f;  // Fee for restricted goods
+        public static float restrictedScanChance = 0.7f;     // Chance to detect contraband
 
         // Policy-based pricing multipliers
         public static float subsidizedMultiplier = 0.7f;
         public static float legalMultiplier = 1.0f;
         public static float taxedMultiplier = 1.3f;
-        public static float restrictedMultiplier = 1.75f;
+        public static float controlledMultiplier = 1.75f;
+        public static float restrictedMultiplier = 2.75f;
         public static float prohibitedMultiplier = 5.0f;
 
         public static float PolicyMultiplier(TradePolicy policy) => policy switch {
             TradePolicy.Subsidized => subsidizedMultiplier,
             TradePolicy.Legal => legalMultiplier,
             TradePolicy.Taxed => taxedMultiplier,
-            TradePolicy.Controlled => restrictedMultiplier,
+            TradePolicy.Controlled => controlledMultiplier,
+            TradePolicy.Restricted => restrictedMultiplier,
             TradePolicy.Prohibited => prohibitedMultiplier, // gray or black market only, based on reputation (tbi)
             _ => legalMultiplier
         };
