@@ -262,21 +262,37 @@ public class Crawler: IActor {
         var contraband = new Inventory();
 
         // Random chance to detect
-        if (Rng.NextSingle() > Tuning.Civilian.contrabandScanChance) {
-            return contraband; // Scan failed
-        }
+        //if (Rng.NextSingle() > Tuning.Civilian.contrabandScanChance) {
+        //    return contraband; // Scan failed
+        //}
 
-        // Check each commodity
-        foreach (var commodity in Enum.GetValues<Commodity>()) {
-            var policy = Tuning.FactionPolicies.GetPolicy(Faction, commodity);
-            if (policy == TradePolicy.Prohibited) {
-                float amount = target.Supplies[commodity];
-                if (amount > 0) {
+        if (target is Crawler subject) {
+            var targetToFaction = subject.To(this.Faction);
+            // Check each commodity
+            foreach (var commodityAmount in subject.Supplies.Pairs) {
+                var (commodity, amount) = commodityAmount;
+                amount += subject.Cargo[commodity];
+                var policy = Tuning.FactionPolicies.GetPolicy(Faction, commodity);
+                var licensed = targetToFaction.CanTrade(commodity);
+                if (!licensed && amount > 0) {
                     contraband.Add(commodity, amount);
                 }
             }
+            foreach (var segment in subject.Cargo.Segments) {
+                var policy = Tuning.FactionPolicies.GetPolicy(Faction, segment.SegmentKind);
+                var licensed = targetToFaction.CanTrade(segment.SegmentDef);
+                if (!licensed) {
+                    contraband.Add(segment);
+                }
+            }
+            foreach (var segment in subject.Supplies.Segments.Where(s => s.IsPackaged)) {
+                var policy = Tuning.FactionPolicies.GetPolicy(Faction, segment.SegmentKind);
+                var licensed = targetToFaction.CanTrade(segment.SegmentDef);
+                if (!licensed) {
+                    contraband.Add(segment);
+                }
+            }
         }
-
         return contraband;
     }
 
