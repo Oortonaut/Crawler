@@ -115,7 +115,7 @@ public record CommodityOffer(Commodity commodity, float amount): IOffer {
     public override string ToString() => Description;
     public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
         Subject.Ended() ? "Taker Dead" :
-        Agent.Supplies.Contains(commodity, amount) == ContainsResult.False ? $"lacks {commodity}" :
+        Agent.Supplies.Contains(commodity, amount) == FromInventory.None ? $"lacks {commodity}" :
         null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         Agent.Supplies[commodity] -= Amount;
@@ -133,7 +133,7 @@ public record SegmentOffer(Segment Segment): IOffer {
     public override string ToString() => Description;
     public string? DisabledFor(IActor Agent, IActor Subject) =>
         Subject.Ended() ? "Taker Dead" :
-        Agent.Cargo.Contains(Segment) == ContainsResult.False ? "No cargo" :
+        Agent.Cargo.Contains(Segment) == FromInventory.None ? "No cargo" :
         null;
     public void PerformOn(IActor Agent, IActor Subject) {
         Agent.Cargo.Remove(Segment);
@@ -189,7 +189,7 @@ public record InventoryOffer(
     public Inventory Promised => _promised ?? Delivered;
     public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
         Subject.Ended() ? "Taker Dead" :
-        GetInv(Agent).Contains(Delivered) == ContainsResult.False ? "No inventory" :
+        GetInv(Agent).Contains(Delivered) == FromInventory.None ? "No inventory" :
         null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         Subject.Cargo.Add(Delivered);
@@ -209,9 +209,8 @@ public static partial class OfferEx {
     public static IOffer SupplyOffer(this IActor actor, XorShift rng, float fraction) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies.Loot(rng, fraction)));
     public static bool EnabledFor(this IOffer Offer, IActor Agent, IActor Subject) => Offer.DisabledFor(Agent, Subject) == null;
     public static bool HostileTo(this IActor from, IActor to) => from.To(to).Hostile;
-    public static bool AtWar(this IActor from, IActor to) => from.HostileTo(to) && to.HostileTo(from);
-    public static bool Engaged(this IActor from, IActor to) => from.HostileTo(to) || to.HostileTo(from);
+    public static bool Warring(this IActor from, IActor to) => from.HostileTo(to) && to.HostileTo(from);
+    public static bool Fighting(this IActor from, IActor to) => from.HostileTo(to) || to.HostileTo(from);
     public static bool PeacefulTo(this IActor from, IActor to) => !from.To(to).Hostile;
-    public static bool Disengaged(this IActor from, IActor to) => !from.Engaged(to);
     public static bool SurrenderedTo(this IActor from, IActor to) => from.To(to).Surrendered;
 }

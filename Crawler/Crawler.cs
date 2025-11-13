@@ -873,7 +873,7 @@ public class Crawler: IActor {
     }
 
     public EArray<Faction, ActorFaction> FactionRelations { get; } = new();
-    public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
+    public ActorFaction To(Faction faction) => FactionRelations.GetOrNullAddNew(faction, () => new ActorFaction(this, faction));
 
     Dictionary<IActor, ActorToActor> _relations = new();
     public bool Knows(IActor other) => _relations.ContainsKey(other);
@@ -883,7 +883,7 @@ public class Crawler: IActor {
     public ActorToActor NewRelation(IActor to) {
         var result = new ActorToActor();
         bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.GetEncounter().Faction is Faction.Independent;
-        var actorFaction = this.To(to.Faction);
+        var actorFaction = To(to.Faction);
         if (actorFaction.ActorStanding < 0) {
             result.Hostile = true;
         }
@@ -922,7 +922,8 @@ public class Crawler: IActor {
     /// Helper: Scan for contraband and set up seizure/tax ultimatums if needed
     /// </summary>
     void SetupContrabandAndTaxes(IActor target) {
-        if (!((Flags & EActorFlags.Settlement) != 0 || Faction.IsCivilian() || Faction == Faction.Independent))
+        var toFaction = To(target.Faction);
+        if (!Flags.HasFlag(EActorFlags.Settlement))
             return;
 
         if (target.Faction != Faction.Player || To(target).Hostile)

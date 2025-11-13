@@ -3,9 +3,9 @@
 namespace Crawler;
 
 
-public enum ContainsResult {
-    False,      // Cannot fulfill (even with overdraft)
-    True,       // Can fulfill from current inventory
+public enum FromInventory {
+    None,      // Cannot fulfill (even with overdraft)
+    Primary,       // Can fulfill from current inventory
     Overdraft   // Can fulfill, but requires pulling from overdraft
 }
 
@@ -130,7 +130,7 @@ public class Inventory {
     }
     public void Remove(Inventory other) {
         var containsResult = Contains(other);
-        if (containsResult == ContainsResult.False) {
+        if (containsResult == FromInventory.None) {
             throw new Exception("Inventory doesn't contain other.");
         }
 
@@ -161,7 +161,7 @@ public class Inventory {
         return comm.Round(paid);
     }
 
-    public ContainsResult Contains(Inventory other) {
+    public FromInventory Contains(Inventory other) {
         // Check if current inventory alone can fulfill
         var needsOverdraft = false;
         var shortfallCommodities = new EArray<Commodity, float>();
@@ -193,12 +193,12 @@ public class Inventory {
 
         // If current inventory is sufficient, return True
         if (!needsOverdraft) {
-            return ContainsResult.True;
+            return FromInventory.Primary;
         }
 
         // If no overdraft available, return False
         if (Overdraft == null) {
-            return ContainsResult.False;
+            return FromInventory.None;
         }
 
         // Recursively check if overdraft can fulfill the shortfall
@@ -206,32 +206,32 @@ public class Inventory {
         var overdraftResult = Overdraft.Contains(shortfallInventory);
 
         // If overdraft can fulfill (either directly or via its own overdraft chain)
-        if (overdraftResult != ContainsResult.False) {
-            return ContainsResult.Overdraft;
+        if (overdraftResult != FromInventory.None) {
+            return FromInventory.Overdraft;
         }
 
-        return ContainsResult.False;
+        return FromInventory.None;
     }
-    public ContainsResult Contains(Commodity commodity, float amt) {
+    public FromInventory Contains(Commodity commodity, float amt) {
         amt = commodity.Round(amt);
         var held = _commodities[commodity];
         if (held >= amt) {
-            return ContainsResult.True;
+            return FromInventory.Primary;
         } else if (Overdraft == null) {
-            return ContainsResult.False;
+            return FromInventory.None;
         } else {
-            return Overdraft.Contains(commodity, amt - held) == ContainsResult.False ? ContainsResult.False : ContainsResult.Overdraft;
+            return Overdraft.Contains(commodity, amt - held) == FromInventory.None ? FromInventory.None : FromInventory.Overdraft;
         }
     }
-    public ContainsResult Contains(Segment segment, int n = 1) {
+    public FromInventory Contains(Segment segment, int n = 1) {
         var here = Segments.Count(s => s.SegmentDef == segment.SegmentDef);
         if (here <= n) {
-            return ContainsResult.True;
+            return FromInventory.Primary;
         } else if (Overdraft == null) {
-            return ContainsResult.False;
+            return FromInventory.None;
         } else {
             n -= here;
-            return Overdraft.Contains(segment, n) == ContainsResult.False ? ContainsResult.False : ContainsResult.Overdraft;
+            return Overdraft.Contains(segment, n) == FromInventory.None ? FromInventory.None : FromInventory.Overdraft;
         }
     }
     public void AddRandomInventory(ulong seed, Location Loc, int crew, float supplyDays, float goodsWealth, float segmentWealth, bool includeCore = false, EArray<SegmentKind, float>? segmentClassWeights = null, Faction faction = Faction.Player) {

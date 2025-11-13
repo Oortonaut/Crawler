@@ -93,6 +93,8 @@ public class Encounter {
     float hourlyArrivals => Tuning.Encounter.HourlyArrivals[Location.Type];
     long lastDynamicEvent = 0;
     void InitDynamicCrawlers() {
+        return;
+
         float expectedCount = hourlyArrivals * (Tuning.Encounter.DynamicCrawlerLifetimeExpectation / 3600f);
         int initialCount = CrawlerEx.PoissonQuantile(expectedCount, ref Rng);
 
@@ -126,6 +128,8 @@ public class Encounter {
         return crawler;
     }
     void UpdateDynamicCrawlers(long currentTime) {
+        return;
+
         int elapsed = (int)(currentTime - lastDynamicEvent);
         if (elapsed < 0) {
             throw new InvalidOperationException($"TODO: Retrocausality");

@@ -615,6 +615,16 @@ public static partial class CrawlerEx {
                 yield return interaction;
             }
         }
+        foreach (var proposal in agent.To(subject).StoredProposals) {
+            foreach (var interaction in proposal.TestGetInteractions(agent, subject)) {
+                yield return interaction;
+            }
+        }
+        foreach (var proposal in subject.To(agent).StoredProposals) {
+            foreach (var interaction in proposal.TestGetInteractions(subject, agent)) {
+                yield return interaction;
+            }
+        }
     }
     public static bool Ended(this IActor actor) => actor.EndState != null;
     public static bool Lives(this IActor actor) => actor.EndState == null;
