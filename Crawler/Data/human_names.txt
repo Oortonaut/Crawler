@@ -1262,6 +1262,7 @@ birgitta
 birgitte
 birmingham
 biswajit
+bitch
 bjorn
 bladen
 blain
@@ -1329,6 +1330,7 @@ booker
 bora
 boris
 borja
+borza
 bosiljka
 boston
 bowen
@@ -1511,6 +1513,7 @@ buhr
 bui
 building
 bulent
+bull
 bulletin
 bunni
 bunnie
@@ -1623,8 +1626,6 @@ car
 cara
 caralie
 careen
-career
-careers
 caren
 carena
 carenza
@@ -2292,6 +2293,7 @@ courtenay
 courtnay
 courtney
 covadonga
+cow
 craig
 crawford
 cressida
@@ -2320,6 +2322,7 @@ cristofaro
 cristy
 croix
 crosby
+crow
 cruz
 crysta
 crystal
@@ -3530,7 +3533,6 @@ fernando
 ferne
 fey
 feynman
-ffion
 fia
 fiann
 fianna
@@ -4406,6 +4408,7 @@ hor-lam
 horst
 hortense
 hortensia
+horza
 hossein
 hot
 hotline
@@ -4416,12 +4419,6 @@ howden
 howie
 how-kee
 hoy
-hpone
-hq
-hqs
-hr
-hrdata
-hrinfo
 hsieh
 hsing-ju
 hsin-shi
@@ -4630,7 +4627,6 @@ issi
 issie
 issy
 italo
-iteam
 iteke
 itzel
 iva
@@ -8220,6 +8216,7 @@ quoc-vu
 quon
 quyen
 quynh
+rabbit
 rabia
 rachael
 rachel
@@ -9007,6 +9004,7 @@ seth
 setsuko
 seungchul
 seven
+severian
 severin
 severino
 seyar
@@ -9657,14 +9655,10 @@ taylah
 tayler
 taylor
 tc
-tchangid
 tdr
 teagan
 teague
-team
 tec
-tech
-technical
 tecla
 ted
 tedda
@@ -9749,8 +9743,8 @@ thanh-son
 thanh-tinh
 thanos
 thayne
-the
 thea
+thecla
 theadora
 theda
 thedora
@@ -10299,6 +10293,7 @@ waverley
 waverly
 waylon
 wayne
+weasel
 weber
 wee-lin
 wee-seng
