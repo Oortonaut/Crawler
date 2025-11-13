@@ -41,14 +41,14 @@ public class Game {
         Rng = new XorShift(seed);
         Welcome();
 
-        StoredProposals = [
+        //StoredProposals = [
             //new ProposeLootTake(Rng / 'L', "L"),
             //new ProposeAttackDefend("A"),
             //new ProposeAcceptSurrender(Rng / "S", "S"),
             //new ProposeRepairBuy("R"),
             //new ProposeLicenseBuy("I"),
             //new ProposePlayerDemand(Rng/'D', 0.5f, "X"),
-        ];
+        //];
     }
     protected void Welcome() {
         Console.Write(Style.None.Format() + CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
@@ -1214,7 +1214,6 @@ public class Game {
 
     Crawler? _player;
     public Crawler Player => _player!;
-    public List<IProposal> StoredProposals { get; }
 
     List<Encounter> allEncounters = new();
     // Accessor methods for save/load
