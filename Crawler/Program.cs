@@ -7,6 +7,7 @@ using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using OpenTelemetry.Logs;
 
 // Initialize OpenTelemetry
 using var tracerProvider = Sdk.CreateTracerProviderBuilder()
@@ -22,14 +23,20 @@ using var tracerProvider = Sdk.CreateTracerProviderBuilder()
 
 using var meterProvider = Sdk.CreateMeterProviderBuilder()
     .AddMeter(LogCat.GameMetrics.Name)
-    .AddMeter(LogCat.GameMetrics.Name)
+    .AddMeter(LogCat.EncounterMetrics.Name)
     .AddOtlpExporter()
     .Build();
+
+//using var loggerProvider = Sdk.CreateLoggerProviderBuilder()
+//    .AddInstrumentation()
+//    .AddOtlpExporter()
+//    .Build();
 
 var loggerFactory = LoggerFactory.Create(builder => {
     builder.AddProvider(new DebugLoggerProvider());
     builder.AddOpenTelemetry( /*...*/);
 });
+
 
 LogCat.Log = loggerFactory.CreateLogger("Crawler");
 
