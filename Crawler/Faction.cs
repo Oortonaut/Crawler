@@ -5,7 +5,7 @@ namespace Crawler;
 public enum Faction {
     Player, // eg a Player crawler
     Bandit, // a Bandit crawler
-    Independent,  // Traveling merchants
+    Independent, // Traveling merchants
 
     // Civilian factions - regional powers controlling sectors
     // Generated during map creation based on highest population settlements
@@ -33,9 +33,27 @@ public enum Faction {
     //Hero,
     //Mercenary,
     //World,
+    //Creature,
 }
+public class FactionToFaction {
+    public ActorToActor DefaultCrawlerRelation { get; set; } = new();
 
-public static class FactionEx {
+    public static FactionToFaction Get(Faction from, Faction to) => factionToFaction.GetOrAddNew((from, to));
+
+    static Dictionary<(Faction, Faction), FactionToFaction> factionToFaction = new();
+}
+public class FactionAndFaction {
+    public static FactionAndFaction Get(Faction a, Faction b) {
+        if (a > b) {
+            (a, b) = (b, a);
+        }
+        return factionAndFaction.GetOrAddNew((a, b));
+    }
+    static Dictionary<(Faction, Faction), FactionAndFaction> factionAndFaction = new();
+}
+public static partial class FactionEx {
+    public static FactionToFaction To(this Faction from, Faction to) => FactionToFaction.Get(from, to);
+    public static FactionAndFaction And(this Faction a, Faction b) => FactionAndFaction.Get(a, b);
     public static bool IsCivilian(this Faction faction) =>
         faction >= Faction.Civilian0 && faction <= Faction.Civilian19;
 
@@ -87,78 +105,78 @@ public static class FactionEx {
         EArray<SegmentKind, TradePolicy> segmentPolicy) {
 
         switch (archetype) {
-            case 0: // Authoritarian
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Prohibited;
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
-                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Controlled;
-                segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
-                break;
-            case 1: // Libertarian
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Taxed;
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
-                break;
-            case 2: // Pious
-                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
-                break;
-            case 3: // Debauched
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Taxed;
-                break;
-            case 4: // Industrial
-                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Taxed;
-                segmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
-                break;
-            case 5: // Mercantile
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Taxed;
-                break;
-            case 6: // Militaristic
-                segmentPolicy[SegmentKind.Offense] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Controlled;
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
-                break;
-            case 7: // Isolationist
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Controlled;
-                segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
-                break;
-            case 8: // Protectionist
-                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Restricted;
-                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Taxed;
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Prohibited;
-                segmentPolicy[SegmentKind.Offense] = TradePolicy.Restricted;
-                break;
-            case 9: // Technocratic
-                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Restricted;
-                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Restricted;
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Taxed;
-                break;
-            case 10: // Xenophobic
-                commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Restricted;
-                commodityPolicy[CommodityCategory.Vice] = TradePolicy.Restricted;
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Restricted;
-                segmentPolicy[SegmentKind.Offense] = TradePolicy.Restricted;
-                break;
-            case 11: // Corporatist
-                commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
-                commodityPolicy[CommodityCategory.Religious] = TradePolicy.Restricted;
-                commodityPolicy[CommodityCategory.Raw] = TradePolicy.Taxed;
-                break;
+        case 0: // Authoritarian
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Prohibited;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Controlled;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
+            break;
+        case 1: // Libertarian
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Taxed;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+            break;
+        case 2: // Pious
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Prohibited;
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
+            break;
+        case 3: // Debauched
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Taxed;
+            break;
+        case 4: // Industrial
+            commodityPolicy[CommodityCategory.Raw] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Taxed;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
+            break;
+        case 5: // Mercantile
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Raw] = TradePolicy.Taxed;
+            break;
+        case 6: // Militaristic
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Controlled;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
+            break;
+        case 7: // Isolationist
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Controlled;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Taxed;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Controlled;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Controlled;
+            break;
+        case 8: // Protectionist
+            commodityPolicy[CommodityCategory.Raw] = TradePolicy.Restricted;
+            commodityPolicy[CommodityCategory.Refined] = TradePolicy.Taxed;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Prohibited;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Restricted;
+            break;
+        case 9: // Technocratic
+            commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Restricted;
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Restricted;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Taxed;
+            break;
+        case 10: // Xenophobic
+            commodityPolicy[CommodityCategory.Dangerous] = TradePolicy.Restricted;
+            commodityPolicy[CommodityCategory.Vice] = TradePolicy.Restricted;
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Restricted;
+            segmentPolicy[SegmentKind.Offense] = TradePolicy.Restricted;
+            break;
+        case 11: // Corporatist
+            commodityPolicy[CommodityCategory.Luxury] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Refined] = TradePolicy.Subsidized;
+            commodityPolicy[CommodityCategory.Religious] = TradePolicy.Restricted;
+            commodityPolicy[CommodityCategory.Raw] = TradePolicy.Taxed;
+            break;
         }
-    }
 
+    }
     public static IEnumerable<Policy> GenerateFactionPolicies(int N, ulong seed) {
         var rng = new XorShift(seed);
         float[] policyWeights = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]; // TODO: Use an enum for policies
@@ -166,6 +184,7 @@ public static class FactionEx {
             yield return GenerateFactionPolicy(policyWeights, rng.Seed());
         }
     }
+
     public static Policy GenerateFactionPolicy(float[] policyWeights, ulong seed) {
         var rng = new XorShift(seed);
         var commodityPolicy = Tuning.FactionPolicies.CreateCommodityDefaultPolicy(TradePolicy.Legal);
@@ -186,46 +205,3 @@ public static class FactionEx {
         return new(commodityPolicy, segmentPolicy, description);
     }
 }
-/*
-public class FactionToFaction {
-    public delegate IEnumerable<MenuItem> MenuItemFunc(IActor agent, IActor subject);
-    MenuItemFunc? menuItemsFor = null;
-    public IEnumerable<MenuItem> MenuItemsFor(IActor agent, IActor subject) => menuItemsFor?.Invoke(agent, subject) ?? [];
-    public void SetMenuFunc(MenuItemFunc func) => menuItemsFor = func;
-    public CrawlerToCrawler DefaultCrawlerRelation { get; set; } = new();
-
-    public static FactionToFaction Get(Faction from, Faction to) {
-        if (!factionToFaction.TryGetValue((from, to), out FactionToFaction factionFaction)) {
-            factionFaction = new FactionToFaction();
-            factionToFaction.Add((from, to), factionFaction);
-        }
-        return factionFaction;
-    }
-
-    static Dictionary<(Faction, Faction), FactionToFaction> factionToFaction = new ();
-}
-
-public class FactionAndFaction {
-    public static FactionAndFaction Get(Faction a, Faction b) {
-        if (a > b) {
-            (a, b) = (b, a);
-        }
-        if (!factionAndFaction.TryGetValue((a, b), out var factionFaction)) {
-            factionFaction = new();
-            factionAndFaction.Add((a, b), factionFaction);
-        }
-        return factionFaction;
-    }
-    static Dictionary<(Faction, Faction), FactionAndFaction> factionAndFaction = new();
-}
-
-public static class FactionEx {
-    public static FactionToFaction To(this Faction from, Faction to) => FactionToFaction.Get(from, to);
-    public static FactionAndFaction And(this Faction a, Faction b) => FactionAndFaction.Get(a, b);
-    public static IEnumerable<MenuItem> FactionMenuItems(this IActor from, IActor to) {
-        var f2f = from.Faction.To(to.Faction);
-
-        return from.Faction.To(to.Faction).MenuItemsFor(from, to);
-    }
-}
-*/

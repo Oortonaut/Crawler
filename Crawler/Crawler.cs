@@ -457,7 +457,7 @@ public class Crawler: IActor {
         return new Move(bestSpeed, drain, bestMsg == "" ? null : bestMsg);
     }
 
-    public float Mass => Supplies.Mass;
+    public float Mass => Supplies.Mass + Cargo.Mass;
     public float TotalCharge => PowerSegments.Any()
         ? PowerSegments.Select(s => s switch {
                 ReactorSegment rs => rs.Charge,

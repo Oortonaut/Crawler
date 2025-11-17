@@ -52,145 +52,6 @@ public struct IntDispenser() {
     }
 }
 public static partial class CrawlerEx {
-    public static int GetColorIndex(this ConsoleColor c) {
-        int[] mapping = [
-            30, 94, 92, 96, 91, 95, 93, 37,
-            90, 34, 32, 36, 31, 35, 33, 97,
-        ];
-        return mapping[(int)c];
-    }
-    public static string On(this ConsoleColor fg, ConsoleColor bg) {
-        int fgB = GetColorIndex(fg);
-        int bgB = GetColorIndex(bg) + 10;
-        return $"\e[{fgB};{bgB}m";
-    }
-    public static int GetColorIndex(this Color color) {
-        int r = color.R * 6 / 256;
-        int g = color.G * 6 / 256;
-        int b = color.B * 6 / 256;
-        if (r == g && g == b) {
-            int gray = color.R * 24 / 256;
-            return gray + 216 + 16;
-        }
-        return 16 + r * 36 + g * 6 + b;
-    }
-    public static string On(this Color fg, Color bg) {
-        return $"\e[38;2;{fg.R};{fg.G};{fg.B}m\e[48;2;{bg.R};{bg.G};{bg.B}m";
-//        return $"\e[38;5;{fg.GetColorIndex()}m\e[48;5;{bg.GetColorIndex()}m";
-    }
-    public static Dictionary<Style, string> Styles = new();
-    public const string ClearScreenToEnd = "\e[0J";
-    public const string ClearScreenToStart = "\e[1J";
-    public const string ClearScreen = "\e[2J";
-    public const string ClearConsole = "\e[3J";
-    public const string ClearLine = "\e[2K";
-    public const string ClearLineToEnd = "\e[K";
-    public const string ClearLineToStart = "\e[1K";
-    public static string CursorPosition(int x, int y) => $"\e[{y};{x}H";
-    public static string CursorHome = "\e[H";
-    public static string CursorX(int x) => $"\e[{x}G";
-    public static string Margin(int l) => $"\e[{l}s";
-    public static string Margin(int l, int r) => $"\e[{l};{r}s";
-    public const string EnableMargin = "\e[?69h";
-    public const string DisableMargin = "\e[?69l";
-    public const string CursorUp = "\e[1A";
-    public const string CursorDown = "\e[1B";
-    public const string CursorFwd = "\e[1C";
-    public const string CursorBwd = "\e[1D";
-    public const string CursorReport = "\e[6n";
-    public const string CursorSave = "\e7";
-    public const string CursorRestore = "\e8";
-    public const string CursorHide = "\e[?25l";
-    public const string CursorShow = "\e[?25h";
-
-    public const string ClearTabHere = "\e[0g";
-    public const string ClearTabs = "\e[3g";
-    public const string SetTab = "\eH";
-
-    public static string Scroll(int lines) => lines > 0 ? $"\e[{lines}S" : $"\e[{-lines}T";
-
-    public const string StyleDefault = "\e[m";
-    public const string StyleBold = "\e[1m";
-    public const string StyleFaint = "\e[2m";
-    public const string StyleItalic = "\e[3m";
-    public const string StyleUnderline = "\e[4m";
-
-    public const string StyleBlink = "\e[5m";
-
-    // Works: Bold: 1, Dim: 2, Italic: 3, Underline: 4
-    // windows terminal: inverse: 7, hide: 8, strikethrough: 9, float underline: 21
-    public const string Inverse = "\e[7m";
-    public const string Hide = "\e[8m";
-    public const string Strikethrough = "\e[9m";
-    public const string StyleNoUnderline = "\e[21m";
-    public const string StyleNormalIntensity = "\e[22m";
-    public const string StyleNotBold = "\e[22m";
-    public const string StyleNotFaint = "\e[22m";
-    public const string StyleNotItalic = "\e[23m";
-    public const string StyleNotUnderline = "\e[24m";
-    public const string StyleNotBlink = "\e[25m";
-    public const string StyleNotInverse = "\e[27m";
-    public const string StyleNotHide = "\e[28m";
-    public const string StyleNotStrikethrough = "\e[29m";
-    public const string StyleNotfloatUnderline = "\e[22m";
-
-    public static string StyleNone = "\e[m";
-    public static Point WindowSize => new Point(Console.WindowWidth, Console.WindowHeight);
-    public static Point BufferSize => new Point(Console.BufferWidth, Console.BufferHeight);
-    static CrawlerEx() {
-        InitStyles();
-    }
-    static void InitStyles() {
-        Color bg = Color.DarkSlateGray.Scale(0.25f);
-        Color fg = Color.LightGray;
-
-        StyleNone = fg.On(bg);
-        Styles[Style.Name] = Color.Yellow.On(bg);
-        Styles[Style.Em] = Color.SandyBrown.On(bg);
-        Styles[Style.UL] = StyleUnderline;
-
-        Color menuBg = bg;
-        Color menuFg = fg;
-
-        Styles[Style.MenuNormal] = menuFg.On(menuBg);
-        Styles[Style.MenuDisabled] = Color.OrangeRed.On(menuBg);
-        Styles[Style.MenuTitle] = Color.LightGray.On(Color.OrangeRed);
-        Styles[Style.MenuOption] = Color.Yellow.On(menuBg);
-        Styles[Style.MenuInput] = Color.LightGray.On(menuBg);
-        Styles[Style.MenuUnvisited] = Color.Aquamarine.On(menuBg);
-        Styles[Style.MenuSomeVisited] = Color.CornflowerBlue.On(menuBg);
-        Styles[Style.MenuVisited] = menuFg.On(menuBg);
-        Styles[Style.MenuEmpty] = Color.DarkRed.On(menuBg);
-
-        Color segmentBg = Color.LightGray;
-        Color segmentBgInactive = Color.Pink;
-        Color segmentBgPackaged = Color.LightCyan;
-        Color segmentFg = Color.Green.Dark();
-        Color damagedFg = Color.Red.Dark();
-        Styles[Style.SegmentNone] = segmentFg.On(segmentBg);
-        Styles[Style.SegmentActive] = segmentFg.On(segmentBg);
-        Styles[Style.SegmentPackaged] = segmentFg.On(segmentBgPackaged);
-        Styles[Style.SegmentDeactivated] = segmentFg.On(segmentBgInactive);
-        Styles[Style.SegmentDisabled] = damagedFg.On(segmentBgInactive);
-        Styles[Style.SegmentDestroyed] = damagedFg.On(segmentBg);
-
-    }
-    public static string Format(this Style style, string text = "") {
-        if (Styles.TryGetValue(style, out var result)) {
-            return result + text + StyleNone;
-        } else {
-            return StyleNone + text;
-        }
-    }
-    public static string StyleString(this Style style) {
-        if (Styles.TryGetValue(style, out var result)) {
-            return result;
-        } else {
-            return "";
-        }
-    }
-    public static StyledChar On(this Style style, char c) => new(style, c);
-    public static StyledString On(this Style style, string text) => new(style, text);
 
     const uint Prime1 = 2654435761U;
     const uint Prime2 = 2246822519U;
@@ -224,118 +85,12 @@ public static partial class CrawlerEx {
     public static uint Rotate(uint x, int k) => (x >> k) | (x << (32 - k));
     public static ulong Rotate(ulong x, int k) => (x >> k) | (x << (64 - k));
 
-    public static T? ChooseAt<T>(this IEnumerable<T> seq, float at) {
-        return ChooseAt(seq.ToList().AsReadOnly(), at);
-    }
-    public static T? ChooseAt<T>(this IReadOnlyList<T> seq, float at) {
-        return seq.Any() ? seq[(int)(at * seq.Count)] : default;
-    }
-    public static T? ChooseAt<T>(this IReadOnlyCollection<T> seq, float at) {
-        int index = (int)(at * seq.Count);
-        return seq.Skip(index).FirstOrDefault();
-    }
-    public static T? ChooseRandom<T>(ref this XorShift rng, IReadOnlyList<T> seq) {
-        return ChooseAt(seq, rng.NextSingle());
-    }
-    public static T? ChooseRandom<T>(ref this XorShift rng, IReadOnlyCollection<T> seq) {
-        return ChooseAt(seq, rng.NextSingle());
-    }
-    public static T? ChooseRandom<T>(ref this XorShift rng, IEnumerable<T> seq) {
-        return ChooseAt(seq, rng.NextSingle());
-    }
-
-    public static T? ChooseWeightedAt<T>(this IEnumerable<(T Item, float Weight)> inSeq, float at) {
-        var seq = inSeq.ToArray();
-        var weights = new List<float>();
-        float totalWeight = 0;
-        foreach (var (item, weight) in seq) {
-            totalWeight += weight;
-            weights.Add(totalWeight);
-        }
-        if (totalWeight == 0) return default;
-        int selected = weights.BinarySearch(at * totalWeight);
-        if (selected < 0) {
-            selected = ~selected;
-        }
-        return seq[selected].Item;
-    }
-    public static T? ChooseWeightedRandom<T>(this IEnumerable<(T Item, float Weight)> seq, ref XorShift rng) {
-        return ChooseWeightedAt(seq, rng.NextSingle());
-    }
-
-    public static IReadOnlyList<T> ChooseRandomK<T>(this IEnumerable<T> seq, int k, XorShift rng) {
-        if (k < 0) throw new ArgumentOutOfRangeException(nameof(k), "k must be non-negative");
-        if (k == 0) return Array.Empty<T>();
-
-        // Reservoir sampling for k items (Vitter's algorithm R)
-        List<T> reservoir = new(k);
-        int count = 0;
-        foreach (var item in seq) {
-            if (count < k) {
-                reservoir.Add(item);
-            } else {
-                // pick a random index in [0, count] and replace if < k
-                int j = rng.NextInt(0, count + 1);
-                if (j < k) reservoir[j] = item;
-            }
-            count++;
-        }
-
-        // If fewer than k items were present, return only what we have.
-        if (count <= k) return reservoir.AsReadOnly();
-
-        return reservoir.AsReadOnly();
-    }
-
-    public static IReadOnlyList<T> ChooseWeightedRandomK<T>(this IEnumerable<(T Item, float Weight)> seq, int k, XorShift rng) {
-        if (k < 0) throw new ArgumentOutOfRangeException(nameof(k), "k must be non-negative");
-        if (k == 0) return Array.Empty<T>();
-
-        // Efraimidis–Spirakis weighted sampling without replacement.
-        // For each item with weight w > 0, generate key = log(U) / w (U ~ Uniform(0,1))
-        // and pick the top-k by key (larger is better; keys are <= 0).
-        var keys = new List<(T item, double key)>();
-        foreach (var (item, weight) in seq) {
-            if (weight > 0f && !float.IsNaN(weight) && !float.IsInfinity(weight)) {
-                float u = rng.NextSingle();
-                // Avoid log(0). Using a tiny floor ensures numerical stability.
-                if (u <= 0f) u = float.Epsilon;
-                double key = Math.Log(u) / weight;
-                keys.Add((item, key));
-            }
-        }
-
-        if (keys.Count == 0) {
-            return Array.Empty<T>();
-        }
-
-        if (k >= keys.Count) {
-            var all = new List<T>(keys.Count);
-            foreach (var kv in keys) all.Add(kv.item);
-            return all.AsReadOnly();
-        }
-
-        keys.Sort((a, b) => b.key.CompareTo(a.key)); // descending by key
-        var result = new List<T>(k);
-        for (int i = 0; i < k; i++) {
-            result.Add(keys[i].item);
-        }
-        return result.AsReadOnly();
-    }
-
-
     public static string CommodityTextFull(this Commodity comm, float count) =>
         comm == Commodity.Scrap ? $"{count:F1}¢¢" :
         comm.IsIntegral() ? $"{(int)count} {comm}" :
         $"{count:F1} {comm}";
     public static string CommodityText(this Commodity comm, float count) =>
         count == 0 ? string.Empty : comm.CommodityTextFull(count);
-
-    public static IEnumerable<float> Normalize(this IEnumerable<float> e) {
-        var sum = e.Sum();
-        var recip = 1.0f / sum;
-        return e.Select(item => item * recip);
-    }
     // No interpolation from 0 to 1
     public static float Interpolate(this float[] a, float idx) {
         int i = (int)idx;
@@ -351,69 +106,6 @@ public static partial class CrawlerEx {
         return a0 * (1 - t) + a1 * t;
     }
 
-    public static string StringJoin(this IEnumerable<string> e, string sep = "") {
-        return string.Join(sep, e);
-    }
-    public static string JoinStyled(this IEnumerable<StyledString> e, string sep = "") {
-        return string.Join(sep, e.Select(s => s.Styled));
-    }
-    public static string TransposeJoinStyled(this IEnumerable<StyledString> e, string sep = "\n") {
-        var SourceLines = e.ToArray();
-        var MaxSourceWidth = SourceLines.Max(s => s.Text.Length);
-        var result = string.Empty;
-        for (int x = 0; x < MaxSourceWidth; x++) {
-            if (x > 0) {
-                result += sep;
-            }
-            string line = string.Empty;
-            Style currentStyle = Style.None;
-
-            for (int y = 0; y < SourceLines.Length; y++) {
-                var style = SourceLines[y].Style;
-                if (style != currentStyle) {
-                    currentStyle = style;
-                    result += currentStyle.StyleString();
-                }
-                if (x < SourceLines[y].Text.Length) {
-                    result += SourceLines[y].Text[x].ToString();
-                } else {
-                    result += ' ';
-                }
-            }
-            result += CrawlerEx.StyleNone;
-        }
-        return result;
-    }
-    // Used for streaming styled text. Emits the style string if the next style is
-    // different from the current one, and updates the current style.
-    public static string Advance(this Style Current, Style Next) {
-        if (Current != Next) {
-            Current = Next;
-            return Next.StyleString();
-        } else {
-            return "";
-        }
-    }
-    // Helpers for styled strings
-    public static string Advance(this Style Current, Style Next, string text) => Current.Advance(Next) + text;
-    public static string Advance(this Style Current, StyledString Next) => Current.Advance(Next.Style) + Next.Text;
-    public static string Advance(this Style Current, StyledChar Next) => Current.Advance(Next.Style) + Next.Char;
-    public static Color Dark(this Color c) => Color.FromArgb(c.A, c.R / 2, c.G / 2, c.B / 2);
-    public static void Do<T>(this IEnumerable<T> e) {
-        foreach (var item in e) {
-        }
-    }
-    public static void Do<T>(this IEnumerable<T> e, Action<T> action) {
-        foreach (var item in e) {
-            action(item);
-        }
-    }
-    public static void Do<T, U>(this IEnumerable<T> e, Action<T, U> action, U arg) {
-        foreach (var item in e) {
-            action(item, arg);
-        }
-    }
-
     public static double Frac(double value) => value - Math.Floor(value);
     public static float Frac(float value) => value - (float)Math.Floor(value);
     public static int StochasticInt(this float expectedValue, ref XorShift rng) {
@@ -422,24 +114,6 @@ public static partial class CrawlerEx {
             ++result;
         }
         return result;
-    }
-    public static IEnumerable<(int X, int Y)> Index<T>(this T[,] array) {
-        int H = array.GetLength(0);
-        int W = array.GetLength(1);
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                yield return (x, y);
-            }
-        }
-    }
-    public static void Fill<T>(this T[,] array, T value) {
-        int H = array.GetLength(0);
-        int W = array.GetLength(1);
-        for (int y = 0; y < H; y++) {
-            for (int x = 0; x < W; x++) {
-                array[y, x] = value;
-            }
-        }
     }
     public static float Factorial(int N) => N == 0 ? 1 : Enumerable.Range(1, N).Aggregate(1, (a, b) => a * b);
     public static int PoissonQuantileAt(float lambda, float y) {
@@ -528,14 +202,6 @@ public static partial class CrawlerEx {
             return false;
         }
     }
-    public static void Shuffle<T>(ref this XorShift rng, IList<T> list) {
-        int n = list.Count;
-        while (n > 1) {
-            int k = rng.NextInt(n);
-            n--;
-            (list[k], list[n]) = (list[n], list[k]);
-        }
-    }
     public static string HomePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Crawler");
 
     public static string SavesPath = Path.Combine(HomePath, "Saves");
@@ -582,9 +248,9 @@ public static partial class CrawlerEx {
         if (prompt != "") {
             Console.Write(prompt);
         }
-        Console.Write(CrawlerEx.CursorSave);
+        Console.Write(AnsiEx.CursorSave);
         Console.Write(Style.MenuInput.Format(dflt));
-        Console.Write(CrawlerEx.CursorRestore);
+        Console.Write(AnsiEx.CursorRestore);
         var line = Console.ReadLine();
         if (line == null) {
             throw new EndOfStreamException("User pressed break");
@@ -635,18 +301,6 @@ public static partial class CrawlerEx {
             Console.WriteLine(message);
         }
     }
-    public static IEnumerable<string> ZipColumns(this IList<string> left, IList<string> right) {
-        var leftWidth = left.Max(x => x.Length);
-        var rightWidth = right.Max(x => x.Length);
-        int count = Math.Max(left.Count, right.Count);
-        for (int i = 0; i < count; i++) {
-            string leftString = i < left.Count ? left[i] : string.Empty;
-            string rightString = i < right.Count ? right[i] : string.Empty;
-            leftString = leftString.PadRight(leftWidth);
-            //rightString = rightString.PadRight(rightWidth);
-            yield return $"{leftString} {rightString}";
-        }
-    }
     public static bool HasFlag(this IActor agent, EActorFlags flags) => agent.Flags.HasFlag(flags);
     public static bool SurrenderedTo(this IActor agent, IActor other) => agent.To(other).Surrendered;
     public static int Attack(this Crawler attacker, IActor defender) {
@@ -670,26 +324,6 @@ public static partial class CrawlerEx {
             return 0;
         }
     }
-    public static TValue GetOrAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key) where TValue: new() {
-        return dict.GetOrAddNew(key, () => new TValue());
-    }
-    public static TValue GetOrAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TValue> gen) {
-        if (!dict.TryGetValue(key, out var value)) {
-            value = gen();
-            dict[key] = value;
-        }
-        return value;
-    }
-    public static TValue GetOrNullAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key) where TValue: new() {
-        return dict.GetOrNullAddNew(key, () => new TValue());
-    }
-    public static TValue GetOrNullAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TValue> gen) {
-        if (!dict.TryGetValue(key, out var value) || value == null) {
-            value = gen();
-            dict[key] = value;
-        }
-        return value;
-    }
     public static bool Visited(this IActor actor, Location location) => actor.Knows(location) && actor.To(location).Visited;
     public static Style StyleFor(this IActor actor, Location location) =>
         actor.Location == location ? Style.MenuInput :
@@ -697,11 +331,6 @@ public static partial class CrawlerEx {
         actor.Knows(location) ? Style.MenuSomeVisited :
         Style.MenuUnvisited;
     public static int Visits(this IActor actor, Sector sector) => sector.Locations.Count(l => actor.Visited(l));
-    public static Color Scale(this Color c, float s) => Color.FromArgb(
-        c.A,
-        (byte)Math.Clamp(c.R * s, 0, 255),
-        (byte)Math.Clamp(c.G * s, 0, 255),
-        (byte)Math.Clamp(c.B * s, 0, 255));
     public static float Length(this Point point) => MathF.Sqrt(point.X * point.X + point.Y * point.Y);
     public static bool ClearFlag<TEnum>(this TEnum e, TEnum flags) where TEnum: struct, Enum => e.SetFlag(flags, false);
     public static bool SetFlag<TEnum>(this ref TEnum e, TEnum flags, bool p = true)
@@ -815,26 +444,6 @@ public static partial class CrawlerEx {
         return loot;
     }
     public static (ActorToActor a2s, ActorToActor s2a) ToTo(this IActor attacker, IActor defender) => (attacker.To(defender), defender.To(attacker));
-    public static IEnumerable<T?> PadTo<T>(this IEnumerable<T> source, int width) {
-        foreach (var i in source) {
-            --width;
-            yield return i;
-        }
-        while (width-- > 0) {
-            yield return default;
-        }
-    }
-    public static IEnumerable<(T a, T b)> Pairwise<T>(this IEnumerable<T> source) {
-        using var enumerator = source.GetEnumerator();
-        if (!enumerator.MoveNext()) {
-            yield break;
-        }
-        T previous = enumerator.Current;
-        while (enumerator.MoveNext()) {
-            yield return (previous, enumerator.Current);
-            previous = enumerator.Current;
-        }
-    }
     public static float EscapeChance(this Crawler crawler) {
         float chance = 1;
         // are there any faster enemies?

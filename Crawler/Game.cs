@@ -51,7 +51,7 @@ public class Game {
         //];
     }
     protected void Welcome() {
-        Console.Write(Style.None.Format() + CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.Write(Style.None.Format() + AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine($"Game Seed: {Seed}");
     }
 
@@ -325,7 +325,7 @@ public class Game {
     }
 
     int Look() {
-        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
 
         Console.Write($"DATE {DateString()} TIME {TimeString()}   ");
@@ -391,7 +391,7 @@ public class Game {
     }
     int SectorMap() {
         var sector = PlayerLocation.Sector;
-        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine(DrawSectorMap());
         Console.WriteLine(sector.Look() + " " + PlayerLocation.PosString);
         Console.WriteLine(PlayerEncounter().ViewFrom(Player));
@@ -404,7 +404,7 @@ public class Game {
         return ap;
     }
     int WorldMap() {
-        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine(Map.DumpMap(Player));
         Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
         CrawlerEx.ShowMessages();
@@ -673,7 +673,7 @@ public class Game {
     }
 
     int XorShiftTests() {
-        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine("XorShift Random Number Generator - Comprehensive Unit Tests");
         Console.WriteLine(new string('=', 70));
         Console.WriteLine();
@@ -1073,7 +1073,7 @@ public class Game {
 
     int PriceStatisticsReport() {
         XorShift rng = new XorShift(1);
-        Console.Write(CrawlerEx.CursorPosition(1, 1) + CrawlerEx.ClearScreen);
+        Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine("Surveying all locations for price statistics...");
         Console.WriteLine("\nPrice Factors Analysis (NEW BID-ASK MODEL):");
         Console.WriteLine("MidPrice = BaseValue * LocationMarkup * ScarcityPremium * RestrictedMarkup");
