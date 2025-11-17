@@ -5,8 +5,8 @@ public enum Commodity {
     Fuel,
     Crew,
     Morale,
-    Passengers, // not affected by morale
-    Soldiers, //     ""
+    Isotopes, // mid-game raw material
+    Nanomaterials, // late-game refined material
 
     // Life support
     Air,
@@ -87,8 +87,8 @@ public static class CommodityEx {
         new CommodityData(7.5f, 0.0002f, 0.001f, CommodityFlag.None, GameTier.Early, CommodityCategory.Essential), // Fuel
         new CommodityData(60.0f, 1.0f, 0.08f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Essential), // Crew
         new CommodityData(1.5f, 0.0f, 0.0f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Essential), // Morale
-        new CommodityData(3.5f, 1.0f, 0.08f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Consumer), // Passengers
-        new CommodityData(30f, 1.2f, 0.10f, CommodityFlag.Integral, GameTier.Mid, CommodityCategory.Dangerous), // Soldiers
+        new CommodityData(450f, 0.5f, 1.5f, CommodityFlag.Bulky, GameTier.Mid, CommodityCategory.Raw), // Isotopes
+        new CommodityData(5500f, 0.05f, 0.03f, CommodityFlag.None, GameTier.Late, CommodityCategory.Refined), // Nanomaterials
 
         // Life support
         new CommodityData(11.5f, 0.1f, 0.087f, CommodityFlag.None, GameTier.Early, CommodityCategory.Essential), // Air

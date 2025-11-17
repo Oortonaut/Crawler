@@ -291,7 +291,6 @@ public class Encounter {
         float goodsWealth = Location.Wealth * domes * 0.5f;
         float segmentWealth = Location.Wealth * domes * 0.25f;
         var settlement = Crawler.NewRandom(settlementRng.Seed(), Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
-        settlement.PassengersInv = Location.Population - crew;
         settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
@@ -340,8 +339,8 @@ public class Encounter {
             Commodity.Crew => ("Disabled Crawler", $"You find a disabled crawler with {amtStr} crew running low on oxygen.", $"Rescue {amtStr} Crew"),
             Commodity.Morale => ("Hidden Entertainment", "You find cached entertainment media. It will invigorate the crew.", $"Take Media ({amtStr} Morale)"),
             Commodity.Scrap => ("Abandoned Crawler", "This abandoned crawler can be scrapped.", $"Scrap for {amtStr}¢¢"),
-            Commodity.Passengers => ("Stranded Passengers", $"You find {amtStr} stranded passengers in need of transport.", $"Rescue {amtStr} Passengers"),
-            Commodity.Soldiers => ("Stranded Soldiers", $"You find {amtStr} armed soldiers whose vehicle broke down.", $"Pick Up {amtStr} Soldiers"),
+            Commodity.Isotopes => ("Isotope Deposit", $"You find a deposit of radioactive isotopes.", $"Extract {amtStr} Isotopes"),
+            Commodity.Nanomaterials => ("Nanomaterial Cache", $"You find a cache of advanced nanomaterials.", $"Retrieve {amtStr} Nanomaterials"),
             Commodity.Air => ("Air Cache", "You find pressurized air canisters.", $"Take {amtStr} Air"),
             Commodity.Water => ("Water Cache", "You find sealed water containers.", $"Take {amtStr} Water"),
             Commodity.Biomass => ("Biomass Deposit", "You find a deposit of organic material.", $"Harvest {amtStr} Biomass"),
@@ -412,8 +411,8 @@ public class Encounter {
                 Commodity.Rations => $"{prefix}{amtStr} rations",
                 Commodity.Crew => $"{prefix}{amtStr} crew",
                 Commodity.Morale => $"{prefix}{amtStr} morale",
-                Commodity.Passengers => $"{prefix}{amtStr} passengers",
-                Commodity.Soldiers => $"{prefix}{amtStr} soldiers",
+                Commodity.Isotopes => $"{prefix}{amtStr} isotopes",
+                Commodity.Nanomaterials => $"{prefix}{amtStr} nanomaterials",
                 Commodity.Air => $"{prefix}{amtStr} air",
                 Commodity.Water => $"{prefix}{amtStr} water",
                 Commodity.Biomass => $"{prefix}{amtStr} biomass",

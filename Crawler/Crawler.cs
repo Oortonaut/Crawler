@@ -158,7 +158,7 @@ public class Crawler: IActor {
             float WaterPerDay = WaterRecyclingLossPerHr * 24;
             float AirPerDay = AirLeakagePerHr * 24;
             C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}, -{FuelPerHr:F1}/h, -{FuelPerKm * 100:F2}/100km";
-            C[4] += $" Crew: {CrewInv:F0}  Soldiers: {SoldiersInv:F0}  Passengers: {PassengersInv:F0}  Morale: {MoraleInv}";
+            C[4] += $" Crew: {CrewInv:F0}  Morale: {MoraleInv}";
             C[5] += $" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)";
         } else {
             C = C.Take(3).ToList();
@@ -171,6 +171,7 @@ public class Crawler: IActor {
     static Crawler() {
     }
     // Hourly fuel, wages, and rations are the primary timers.
+    // Fuel use keeps the crawler size down
     //
     public float FuelPerHr => StandbyDrain / FuelEfficiency;
     public float WagesPerHr => CrewInv * Tuning.Crawler.WagesPerCrewDay / 24;
@@ -179,9 +180,7 @@ public class Crawler: IActor {
     public float FuelPerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
 
     // Water recycling loss goes up as the number of people increases
-    public float WaterRequirement => CrewInv * Tuning.Crawler.WaterPerCrew +
-                                     SoldiersInv * Tuning.Crawler.WaterPerSoldier +
-                                     PassengersInv * Tuning.Crawler.WaterPerPassenger;
+    public float WaterRequirement => CrewInv * Tuning.Crawler.WaterPerCrew;
     public float WaterRecyclingLossPerHr => WaterRequirement * Tuning.Crawler.WaterRecyclingLossPerHour;
     // Air leakage increases with crawler damage
     public float AirLeakagePerHr {
@@ -191,7 +190,7 @@ public class Crawler: IActor {
             return TotalPeople * Tuning.Crawler.AirLeakagePerDamagedSegment * hitSegments;
         }
     }
-    public float TotalPeople => CrewInv + SoldiersInv + PassengersInv;
+    public float TotalPeople => CrewInv;
     // Returns negative values if not reachable
     public (float Fuel, float Time) FuelTimeTo(Location location) {
         float dist = Location.Distance(location);
@@ -562,7 +561,7 @@ public class Crawler: IActor {
             } else {
                 nameString += $" [Settlement]";
             }
-            nameString += $" ({Domes} Domes, {Supplies[Commodity.Passengers]} Civilians)";
+            nameString += $" ({Domes} Domes)";
         }
         return $"{nameString}\n{result}";
     }
@@ -595,13 +594,13 @@ public class Crawler: IActor {
         get => Supplies[Commodity.Air];
         set => Supplies[Commodity.Air] = value;
     }
-    public float PassengersInv {
-        get => Supplies[Commodity.Passengers];
-        set => Supplies[Commodity.Passengers] = value;
+    public float IsotopesInv {
+        get => Supplies[Commodity.Isotopes];
+        set => Supplies[Commodity.Isotopes] = value;
     }
-    public float SoldiersInv {
-        get => Supplies[Commodity.Soldiers];
-        set => Supplies[Commodity.Soldiers] = value;
+    public float NanomaterialsInv {
+        get => Supplies[Commodity.Nanomaterials];
+        set => Supplies[Commodity.Nanomaterials] = value;
     }
     public void End(EEndState state, string message = "") {
         EndMessage = $"{state}: {message}";
@@ -720,8 +719,6 @@ public class Crawler: IActor {
             float liveRate = 0.99f;
             liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
             CrewInv *= liveRate;
-            SoldiersInv *= liveRate;
-            PassengersInv *= liveRate;
             RationsInv = 0;
         }
 
@@ -731,8 +728,6 @@ public class Crawler: IActor {
             float keepRate = 0.98f;
             keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
             CrewInv *= keepRate;
-            SoldiersInv *= keepRate;
-            PassengersInv *= keepRate;
             WaterInv = 0;
         }
 
@@ -741,20 +736,6 @@ public class Crawler: IActor {
         if (maxPopulation < TotalPeople) {
             Message("You are out of air. People are suffocating.");
             var died = TotalPeople - maxPopulation;
-            if (died >= PassengersInv) {
-                died -= PassengersInv;
-                PassengersInv = 0;
-            } else {
-                PassengersInv -= died;
-                died = 0;
-            }
-            if (died >= SoldiersInv) {
-                died -= SoldiersInv;
-                SoldiersInv = 0;
-            } else {
-                SoldiersInv -= died;
-                died = 0;
-            }
             if (died >= CrewInv) {
                 died -= CrewInv;
                 CrewInv = 0;

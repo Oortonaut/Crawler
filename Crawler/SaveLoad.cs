@@ -50,8 +50,8 @@ public class SavedInventory {
     public float Fuel { get; set; }
     public float Crew { get; set; }
     public float Morale { get; set; }
-    public float Passengers { get; set; }
-    public float Soldiers { get; set; }
+    public float Isotopes { get; set; }
+    public float Nanomaterials { get; set; }
 
     // Life support
     public float Air { get; set; }
@@ -256,8 +256,8 @@ public static class SaveLoadExtensions {
             Fuel = inventory[Commodity.Fuel],
             Crew = inventory[Commodity.Crew],
             Morale = inventory[Commodity.Morale],
-            Passengers = inventory[Commodity.Passengers],
-            Soldiers = inventory[Commodity.Soldiers],
+            Isotopes = inventory[Commodity.Isotopes],
+            Nanomaterials = inventory[Commodity.Nanomaterials],
 
             // Life support
             Air = inventory[Commodity.Air],
@@ -673,8 +673,8 @@ public static class SaveLoadExtensions {
         inventory[Commodity.Fuel] = savedInv.Fuel;
         inventory[Commodity.Crew] = savedInv.Crew;
         inventory[Commodity.Morale] = savedInv.Morale;
-        inventory[Commodity.Passengers] = savedInv.Passengers;
-        inventory[Commodity.Soldiers] = savedInv.Soldiers;
+        inventory[Commodity.Isotopes] = savedInv.Isotopes;
+        inventory[Commodity.Nanomaterials] = savedInv.Nanomaterials;
 
         // Life support
         inventory[Commodity.Air] = savedInv.Air;

@@ -162,15 +162,13 @@ public static partial class Tuning {
 
         // Life support consumption
         public static float WaterPerCrew = 0.030f; // m^3 per crew
-        public static float WaterPerSoldier = 0.025f; // m^3 per soldier
-        public static float WaterPerPassenger = 0.100f; // m^3 per passenger
         public static float WaterRecyclingLossPerHour = 0.002f; // 0.2% per hour
 
         public static float AirPerPerson = 1.0f; // liters of liquid air per person
         public static float AirLeakagePerDamagedSegment = 0.005f; // 0.5% per hour per damaged segment
 
         public static EArray<Commodity, float> DefaultCommodityWeights => [
-            1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f, // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+            1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f, // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
             0.2f, 0.5f, 1.0f, // Air, Water, Rations
             0.3f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Biomass, Ore, Silicates, Metal, Chemicals, Glass
             0.4f, 0.4f, 0.6f, 0.7f, 0.4f, // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -183,7 +181,7 @@ public static partial class Tuning {
         public static EArray<Faction, EArray<Commodity, float>> CommodityWeights = [
             // Player - balanced loadout
             [
-                1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 0.2f, 0.5f, 1.0f,                     // Air, Water, Rations
                 0.3f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 0.4f, 0.4f, 0.6f, 0.7f, 0.4f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -193,7 +191,7 @@ public static partial class Tuning {
             ],
             // Bandit - combat focused, less crew support
             [
-                1.5f, 0.8f, 0.8f, 0.6f, 0.2f, 0.8f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.5f, 0.8f, 0.8f, 0.6f, 0.3f, 0.4f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 0.1f, 0.3f, 0.7f,                     // Air, Water, Rations
                 0.2f, 0.4f, 0.2f, 0.5f, 0.4f, 0.2f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 0.3f, 0.3f, 0.6f, 0.5f, 0.8f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -203,7 +201,7 @@ public static partial class Tuning {
             ],
             // Trade - high on trade goods, low on combat
             [
-                2.0f, 1.2f, 0.9f, 0.8f, 0.8f, 0.3f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                2.0f, 1.2f, 0.9f, 0.8f, 0.9f, 0.7f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 0.5f, 0.8f, 1.2f,                     // Air, Water, Rations - life support for trade
                 0.8f, 0.9f, 0.7f, 1.0f, 1.0f, 0.8f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 0.9f, 1.2f, 0.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -282,7 +280,7 @@ public static partial class Tuning {
         public static EArray<EncounterType, EArray<Commodity, float>> EncounterCommodityMarkup = [
             // None - all commodities at base price
             [
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.0f, 1.0f, 1.0f,                     // Air, Water, Rations
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -292,7 +290,7 @@ public static partial class Tuning {
             ],
             // Crossroads - cheap scrap, fuel premium
             [
-                0.9f, 1.2f, 1.3f, 1.0f, 1.2f, 1.4f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                0.9f, 1.2f, 1.3f, 1.0f, 1.0f, 1.1f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.1f, 1.0f, 1.1f,                     // Air, Water, Rations
                 1.0f, 1.0f, 1.0f, 1.1f, 1.1f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 1.1f, 1.0f, 1.2f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -302,7 +300,7 @@ public static partial class Tuning {
             ],
             // Settlement - cheap basics, morale services, manufactured goods
             [
-                0.8f, 0.9f, 0.9f, 1.2f, 0.9f, 1.0f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                0.8f, 0.9f, 0.9f, 1.2f, 1.0f, 0.95f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 0.8f, 0.7f, 0.8f,                     // Air, Water, Rations - cheap life support
                 0.9f, 1.0f, 1.0f, 1.0f, 0.9f, 0.9f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 0.9f, 0.9f, 1.0f, 0.9f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -312,7 +310,7 @@ public static partial class Tuning {
             ],
             // Resource - expensive scrap/crew, cheap raw materials
             [
-                2.0f, 0.7f, 2.5f, 0.8f, 2.0f, 2.2f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                2.0f, 0.7f, 2.5f, 0.8f, 0.7f, 1.3f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.2f, 1.0f, 1.4f,                     // Air, Water, Rations
                 0.6f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass - cheap raw
                 0.9f, 0.9f, 0.8f, 1.1f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -322,7 +320,7 @@ public static partial class Tuning {
             ],
             // Hazard - everything expensive, low morale, desperate trades
             [
-                1.5f, 1.8f, 3.0f, 0.6f, 2.5f, 2.8f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.5f, 1.8f, 3.0f, 0.6f, 1.4f, 1.5f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.5f, 1.4f, 2.0f,                     // Air, Water, Rations - life support premium
                 1.3f, 1.2f, 1.2f, 1.3f, 1.4f, 1.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -334,7 +332,7 @@ public static partial class Tuning {
         public static EArray<TerrainType, EArray<Commodity, float>> TerrainCommodityMarkup = [
             // Flat - baseline prices
             [
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.0f, 1.0f, 1.0f,                     // Air, Water, Rations
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -344,7 +342,7 @@ public static partial class Tuning {
             ],
             // Rough - fuel premium, morale harder
             [
-                1.1f, 1.2f, 1.1f, 0.9f, 1.1f, 1.1f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.1f, 1.2f, 1.1f, 0.9f, 1.1f, 1.1f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.1f, 1.1f, 1.1f,                     // Air, Water, Rations
                 1.1f, 1.0f, 1.0f, 1.1f, 1.1f, 1.1f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.1f, 1.1f, 1.1f, 1.1f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -354,7 +352,7 @@ public static partial class Tuning {
             ],
             // Broken - logistics costs
             [
-                1.3f, 1.5f, 1.4f, 0.8f, 1.3f, 1.4f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.3f, 1.5f, 1.4f, 0.8f, 1.3f, 1.4f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.3f, 1.3f, 1.2f,                     // Air, Water, Rations
                 1.2f, 1.1f, 1.1f, 1.2f, 1.2f, 1.2f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.2f, 1.2f, 1.2f, 1.2f, 1.3f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -364,7 +362,7 @@ public static partial class Tuning {
             ],
             // Shattered - fuel very expensive, harsh conditions
             [
-                1.5f, 2.0f, 1.8f, 0.7f, 1.6f, 1.8f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                1.5f, 2.0f, 1.8f, 0.7f, 1.6f, 1.8f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 1.6f, 1.5f, 1.4f,                     // Air, Water, Rations
                 1.3f, 1.2f, 1.2f, 1.3f, 1.4f, 1.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
@@ -374,7 +372,7 @@ public static partial class Tuning {
             ],
             // Ruined - extreme premiums on everything
             [
-                2.0f, 2.5f, 2.2f, 0.5f, 2.0f, 2.3f,  // Scrap, Fuel, Crew, Morale, Passengers, Soldiers
+                2.0f, 2.5f, 2.2f, 0.5f, 2.0f, 2.3f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
                 2.0f, 1.8f, 1.6f,                     // Air, Water, Rations
                 1.5f, 1.4f, 1.4f, 1.5f, 1.6f, 1.5f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
                 1.5f, 1.5f, 1.5f, 1.6f, 1.8f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
