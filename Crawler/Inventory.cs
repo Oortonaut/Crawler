@@ -253,7 +253,7 @@ public class Inventory {
         float water = Tuning.Crawler.WaterPerCrew * crewSupplyDays;
         float waterLeakage = Tuning.Crawler.WaterRecyclingLossPerHour * supplyHours;
         float air = Tuning.Crawler.AirPerPerson * crew;
-        float airLeakage = Tuning.Crawler.AirRecyclingLossPerHour * supplyHours; // one segment leaking
+        float airLeakage = Tuning.Crawler.AirLeakagePerDamagedSegment * supplyHours; // one segment leaking
         float startMorale = Gaussians.NextSingle(10, 1);
         var appxDraw = Segments.Sum(seg => seg.Drain);
         float fuelPerHr = Tuning.Crawler.StandbyFraction * appxDraw;

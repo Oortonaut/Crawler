@@ -162,12 +162,12 @@ public static partial class Tuning {
 
         // Life support consumption
         public static float WaterPerCrew = 0.030f; // m^3 per crew
-        public static float WaterPerPassenger = 0.100f; // m^3 per passenger
         public static float WaterPerSoldier = 0.025f; // m^3 per soldier
+        public static float WaterPerPassenger = 0.100f; // m^3 per passenger
         public static float WaterRecyclingLossPerHour = 0.002f; // 0.2% per hour
 
         public static float AirPerPerson = 1.0f; // liters of liquid air per person
-        public static float AirRecyclingLossPerHour = 0.005f; // 0.5% per hour per damaged segment
+        public static float AirLeakagePerDamagedSegment = 0.005f; // 0.5% per hour per damaged segment
 
         public static EArray<Commodity, float> DefaultCommodityWeights => [
             1.0f, 1.0f, 1.0f, 1.0f, 0.5f, 0.3f, // Scrap, Fuel, Crew, Morale, Passengers, Soldiers

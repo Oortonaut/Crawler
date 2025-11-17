@@ -155,8 +155,8 @@ public class Crawler: IActor {
         C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h";
         if (this == viewer) {
             float RationsPerDay = TotalPeople * Tuning.Crawler.RationsPerCrewDay;
-            float WaterPerDay = WaterPerHr * 24;
-            float AirPerDay = AirPerHr * 24;
+            float WaterPerDay = WaterRecyclingLossPerHr * 24;
+            float AirPerDay = AirLeakagePerHr * 24;
             C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}, -{FuelPerHr:F1}/h, -{FuelPerKm * 100:F2}/100km";
             C[4] += $" Crew: {CrewInv:F0}  Soldiers: {SoldiersInv:F0}  Passengers: {PassengersInv:F0}  Morale: {MoraleInv}";
             C[5] += $" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)";
@@ -170,24 +170,25 @@ public class Crawler: IActor {
 
     static Crawler() {
     }
+    // Hourly fuel, wages, and rations are the primary timers.
+    //
     public float FuelPerHr => StandbyDrain / FuelEfficiency;
-    public float FuelPerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
     public float WagesPerHr => CrewInv * Tuning.Crawler.WagesPerCrewDay / 24;
     public float RationsPerHr => TotalPeople * Tuning.Crawler.RationsPerCrewDay / 24;
-    public float WaterPerHr {
-        get {
-            float crewWater = CrewInv * Tuning.Crawler.WaterPerCrew;
-            float soldierWater = SoldiersInv * Tuning.Crawler.WaterPerSoldier;
-            float passengerWater = PassengersInv * Tuning.Crawler.WaterPerPassenger;
-            float totalWater = crewWater + soldierWater + passengerWater;
-            return totalWater * Tuning.Crawler.WaterRecyclingLossPerHour;
-        }
-    }
-    public float AirPerHr {
+
+    public float FuelPerKm => Tuning.Crawler.FuelPerKm * MovementDrain / FuelEfficiency;
+
+    // Water recycling loss goes up as the number of people increases
+    public float WaterRequirement => CrewInv * Tuning.Crawler.WaterPerCrew +
+                                     SoldiersInv * Tuning.Crawler.WaterPerSoldier +
+                                     PassengersInv * Tuning.Crawler.WaterPerPassenger;
+    public float WaterRecyclingLossPerHr => WaterRequirement * Tuning.Crawler.WaterRecyclingLossPerHour;
+    // Air leakage increases with crawler damage
+    public float AirLeakagePerHr {
         get {
             float hitSegments = UndestroyedSegments
                 .Sum(s => s.Hits / (float)s.MaxHits);
-            return TotalPeople * Tuning.Crawler.AirRecyclingLossPerHour * hitSegments;
+            return TotalPeople * Tuning.Crawler.AirLeakagePerDamagedSegment * hitSegments;
         }
     }
     public float TotalPeople => CrewInv + SoldiersInv + PassengersInv;
@@ -280,62 +281,11 @@ public class Crawler: IActor {
             .SetTag("elapsed_seconds", elapsed);
 
         Recharge(elapsed);
+        Decay(elapsed);
 
-        // Check rations
-        if (RationsInv <= 0) {
-            Message("You are out of rations and your crew is starving.");
-            float liveRate = 0.99f;
-            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
-            CrewInv *= liveRate;
-            SoldiersInv *= liveRate;
-            PassengersInv *= liveRate;
-            RationsInv = 0;
-        }
-
-        // Check water
-        if (WaterInv <= 0) {
-            Message("You are out of water. People are dying of dehydration.");
-            float keepRate = 0.98f;
-            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
-            CrewInv *= keepRate;
-            SoldiersInv *= keepRate;
-            PassengersInv *= keepRate;
-            WaterInv = 0;
-        }
-
-        // Check air
-        if (AirInv <= 0) {
-            Message("You are out of air. People are suffocating.");
-            float keepRate = 0.95f;
-            CrewInv *= keepRate;
-            SoldiersInv *= keepRate;
-            PassengersInv *= keepRate;
-            AirInv = 0;
-        }
-
-        if (IsDepowered) {
-            Message("Your life support systems are offline.");
-            MoraleInv -= 1.0f;
-        }
-        if (CrewInv == 0) {
-            // TODO: List killers
-            if (RationsInv == 0) {
-                End(EEndState.Starved, "All the crew have starved.");
-            } else if (WaterInv == 0) {
-                End(EEndState.Killed, "All the crew have died of dehydration.");
-            } else if (AirInv == 0) {
-                End(EEndState.Killed, "All the crew have suffocated.");
-            } else {
-                End(EEndState.Killed, "The crew have been killed.");
-            }
-        }
-        if (MoraleInv == 0) {
-            End(EEndState.Revolt, "The crew has revolted.");
-        }
-        if (!UndestroyedSegments.Any()) {
-            End(EEndState.Destroyed, "Your crawler has been utterly destroyed.");
-        }
         UpdateSegmentCache();
+        // post-update
+        TestEnded();
     }
     public void Travel(Location loc) {
         var (fuel, time) = FuelTimeTo(loc);
@@ -703,7 +653,7 @@ public class Crawler: IActor {
         }
         return fire;
     }
-    public void Recharge(int elapsed) {
+    void Recharge(int elapsed) {
         Segments.Do(s => s.Tick(elapsed));
         float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate(elapsed));
         overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate(elapsed));
@@ -711,8 +661,8 @@ public class Crawler: IActor {
         float hours = elapsed / 3600f;
         ScrapInv -= WagesPerHr * hours;
         RationsInv -= RationsPerHr * hours;
-        WaterInv -= WaterPerHr * hours;
-        AirInv -= AirPerHr * hours;
+        WaterInv -= WaterRecyclingLossPerHr * hours;
+        AirInv -= AirLeakagePerHr * hours;
         FuelInv -= FuelPerHr * hours;
     }
     // Returns excess (wasted) power
@@ -762,6 +712,86 @@ public class Crawler: IActor {
         reactorSegments.Zip(segmentCharge, (rs, charge) => rs.Charge -= delta * (charge / totalCharge)).Do();
         return 0;
     }
+
+    void Decay(int elapsed) {
+        // Check rations
+        if (RationsInv <= 0) {
+            Message("You are out of rations and your crew is starving.");
+            float liveRate = 0.99f;
+            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
+            CrewInv *= liveRate;
+            SoldiersInv *= liveRate;
+            PassengersInv *= liveRate;
+            RationsInv = 0;
+        }
+
+        // Check water
+        if (WaterInv <= 0) {
+            Message("You are out of water. People are dying of dehydration.");
+            float keepRate = 0.98f;
+            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
+            CrewInv *= keepRate;
+            SoldiersInv *= keepRate;
+            PassengersInv *= keepRate;
+            WaterInv = 0;
+        }
+
+        // Check air
+        float maxPopulation = (int)(AirInv / Tuning.Crawler.AirPerPerson);
+        if (maxPopulation < TotalPeople) {
+            Message("You are out of air. People are suffocating.");
+            var died = TotalPeople - maxPopulation;
+            if (died >= PassengersInv) {
+                died -= PassengersInv;
+                PassengersInv = 0;
+            } else {
+                PassengersInv -= died;
+                died = 0;
+            }
+            if (died >= SoldiersInv) {
+                died -= SoldiersInv;
+                SoldiersInv = 0;
+            } else {
+                SoldiersInv -= died;
+                died = 0;
+            }
+            if (died >= CrewInv) {
+                died -= CrewInv;
+                CrewInv = 0;
+            } else {
+                CrewInv -= died;
+                died = 0;
+            }
+        }
+
+        if (IsDepowered) {
+            Message("Your life support systems are offline.");
+            MoraleInv -= 1.0f;
+        }
+
+    }
+
+    void TestEnded() {
+        if (CrewInv == 0) {
+            // TODO: List killers
+            if (RationsInv == 0) {
+                End(EEndState.Starved, "All the crew have starved.");
+            } else if (WaterInv == 0) {
+                End(EEndState.Killed, "All the crew have died of dehydration.");
+            } else if (AirInv == 0) {
+                End(EEndState.Killed, "All the crew have suffocated.");
+            } else {
+                End(EEndState.Killed, "The crew have been killed.");
+            }
+        }
+        if (MoraleInv == 0) {
+            End(EEndState.Revolt, "The crew has revolted.");
+        }
+        if (!UndestroyedSegments.Any()) {
+            End(EEndState.Destroyed, "Your crawler has been utterly destroyed.");
+        }
+    }
+
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         if (!Supplies.Segments.Any() || !fire.Any()) {
             return;
