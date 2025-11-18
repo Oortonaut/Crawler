@@ -4,7 +4,7 @@ Crawler is An ANSI trading game with some fighting and exploration.
 
 Upgrade your crawler, a massive train with legs or treads that lets you explore, survive, and even thrive in the harsh environment of Proxima D. 
 
-Inspired by BBS door games and Eve Online.
+Inspired by BBS door games, Elite, and Eve Online.
 
 ## Author's Note
 
