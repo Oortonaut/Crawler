@@ -1,12 +1,13 @@
 ﻿using System.Collections;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace Crawler;
 
 public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictionary<ENUM, T>, IReadOnlyList<T>, IReadOnlyDictionary<ENUM, T> where ENUM : struct, Enum, IConvertible {
     public EArray() {
         _values = new T[_count];
-        _addIndex.Value = 0;
+        _addIndex = 0;
     }
     public EArray(params T[] items): this() {
         _values = items;
@@ -25,27 +26,49 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
             this[key] = value;
         }
     }
-    T IDictionary<ENUM, T>.this[ENUM key] {
-        get {
-            return _values[(int)(object)key];
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static int ToIndex(ENUM key) {
+        if (Unsafe.SizeOf<ENUM>() == sizeof(int)) {
+            return Unsafe.As<ENUM, int>(ref key);
         }
+        if (Unsafe.SizeOf<ENUM>() == sizeof(byte)) {
+            return Unsafe.As<ENUM, byte>(ref key);
+        }
+        if (Unsafe.SizeOf<ENUM>() == sizeof(short)) {
+            return Unsafe.As<ENUM, short>(ref key);
+        }
+        return (int)(object)key;
+    }
+
+    T IDictionary<ENUM, T>.this[ENUM key] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get {
+            return _values[ToIndex(key)];
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set {
-            _values[(int)(object)key] = value;
+            _values[ToIndex(key)] = value;
         }
     }
     T IReadOnlyDictionary<ENUM, T>.this[ENUM key] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get {
-            return _values[( int ) ( object ) key];
+            return _values[ToIndex(key)];
         }
     }
-    public ref T this[ENUM key] => ref _values[(int)(object)key];
+
+    public ref T this[ENUM key] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get {
+            return ref _values[ToIndex(key)];
+        }
+    }
     public void Initialize() {
         _values.Initialize();
     }
     public void Initialize(T value) {
-        for (int i = 0; i < _values.Length; ++i) {
-            _values[i] = value;
-        }
+        Array.Fill(_values, value);
     }
     public void Initialize(Func<T> valueFunc) {
         for (int i = 0; i < _values.Length; ++i) {
@@ -57,15 +80,18 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
 
     public static int[] UnderlyingKeys() => _keysUnderlying;
     public void Add(T value) {
-        if (_addIndex.Value >= _values.Length) {
+        if (_addIndex >= _values.Length) {
             throw new InvalidOperationException("Cannot add more items: array is full");
         }
-        _values[_addIndex.Value++] = value;
+        _values[_addIndex++] = value;
     }
     public EArray<ENUM, T> Clone() => new(_values.ToArray());
 
-    public IEnumerator<T> GetEnumerator() {
-        return _values!.Cast<T>().GetEnumerator();
+    public Enumerator GetEnumerator() {
+        return new Enumerator(_values);
+    }
+    IEnumerator<T> IEnumerable<T>.GetEnumerator() {
+        return GetEnumerator();
     }
     IEnumerator IEnumerable.GetEnumerator() {
         return GetEnumerator();
@@ -92,12 +118,7 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     }
 
     public int IndexOf(T item) {
-        for (int i = 0; i < _values.Length; i++) {
-            if (EqualityComparer<T>.Default.Equals(_values[i], item)) {
-                return i;
-            }
-        }
-        return -1;
+        return Array.IndexOf(_values, item);
     }
 
     public void Insert(int index, T item) {
@@ -119,7 +140,7 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     }
 
     public void Clear() {
-        _addIndex.Value = 0;
+        _addIndex = 0;
         Array.Clear(_values, 0, _values.Length);
     }
 
@@ -133,7 +154,7 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     public void Add(ENUM key, T value) => this[key] = value;
 
     public bool ContainsKey(ENUM key) {
-        return (int)(object)key < _count;
+        return ToIndex(key) < _count;
     }
 
     public bool Remove(ENUM key) {
@@ -172,6 +193,23 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
         return Pairs().Select(p => new KeyValuePair<ENUM, T>(p.Key, p.Value)).GetEnumerator();
     }
 
+    public struct Enumerator : IEnumerator<T> {
+        readonly T[] _items;
+        int _index;
+
+        internal Enumerator(T[] items) {
+            _items = items;
+            _index = -1;
+        }
+
+        public T Current => _items[_index];
+        object IEnumerator.Current => Current!;
+
+        public bool MoveNext() => ++_index < _items.Length;
+        public void Reset() => _index = -1;
+        public void Dispose() { }
+    }
+
     T[] _values;
     static ENUM[] _keys;
     static int _count;
@@ -183,7 +221,8 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
         _count = _keysUnderlying.Length;
     }
 
-    static ThreadLocal<int> _addIndex = new ThreadLocal<int>(() => 0);
+    [ThreadStatic]
+    static int _addIndex;
 }
 
 public static partial class EArrayEx {
