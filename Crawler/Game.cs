@@ -438,13 +438,15 @@ public class Game {
             return 0;
         }, EnableArg.Enabled, ShowArg.Hide),
         new ActionMenuItem("GIVE", "", args => GiveCommodity(args), EnableArg.Enabled, ShowArg.Hide),
+        new ActionMenuItem("DMG", "", args => DamageSegment(args), EnableArg.Enabled, ShowArg.Hide),
     ];
     IEnumerable<MenuItem> PlayerMenuItems() {
         yield return MenuItem.Sep;
         yield return new MenuItem("", Style.MenuTitle.Format("Player Menu"));
-        yield return new ActionMenuItem("PP", "Power...", _ => PowerMenu());
-        yield return new ActionMenuItem("PK", "Packaging...", _ => PackagingMenu());
-        yield return new ActionMenuItem("PT", "Trade Cargo...", _ => TradeInventoryMenu());
+        yield return new ActionMenuItem("PP", "Seg Power", _ => PowerMenu());
+        yield return new ActionMenuItem("PK", "Seg Packaging", _ => PackagingMenu());
+        yield return new ActionMenuItem("PT", "Supplies<->Cargo", _ => TradeInventoryMenu());
+        yield return new ActionMenuItem("PR", "Repair", _ => RepairMenu());
 
         foreach (var item in PowerMenuItems(ShowArg.Hide)) {
             yield return item;
@@ -453,6 +455,9 @@ public class Game {
             yield return item;
         }
         foreach (var item in TradeInventoryMenuItems(ShowArg.Hide)) {
+            yield return item;
+        }
+        foreach (var item in RepairMenuItems(ShowArg.Hide)) {
             yield return item;
         }
     }
@@ -482,6 +487,26 @@ public class Game {
         Player.Message($"{segment.Name} {(segment.Activated ? "activated" : "deactivated")}");
         Player.UpdateSegmentCache();
         return 10;
+    }
+
+    int RepairMenu() {
+        var (selected, ap) = CrawlerEx.MenuRun("Repair Menu", [
+            MenuItem.Cancel,
+            .. RepairMenuItems(),
+        ]);
+        return ap;
+    }
+
+    IEnumerable<MenuItem> RepairMenuItems(ShowArg show = ShowArg.Show) {
+        yield return new ActionMenuItem("PR0", $"Repair Off {(Player.RepairMode == RepairMode.Off ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.Off), EnableArg.Enabled, show);
+        yield return new ActionMenuItem("PR1", $"Repair Lowest {(Player.RepairMode == RepairMode.RepairLowest ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.RepairLowest), EnableArg.Enabled, show);
+        yield return new ActionMenuItem("PR2", $"Repair Highest {(Player.RepairMode == RepairMode.RepairHighest ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.RepairHighest), EnableArg.Enabled, show);
+    }
+
+    int SetRepairMode(RepairMode mode) {
+        Player.RepairMode = mode;
+        Player.Message($"Repair mode set to: {mode}");
+        return 0;
     }
 
     int PackagingMenu() {
@@ -659,6 +684,35 @@ public class Game {
 
         Player.Supplies[matchingCommodity] += amount;
         Player.Message($"Added {amount} {matchingCommodity}");
+        return 0;
+    }
+
+    int DamageSegment(string args) {
+        var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2) {
+            Player.Message("Usage: DMG <segment index> <damage amount>");
+            return 0;
+        }
+
+        if (!int.TryParse(parts[0], out int segmentIndex)) {
+            Player.Message($"Invalid segment index: {parts[0]}");
+            return 0;
+        }
+
+        if (!int.TryParse(parts[1], out int damageAmount)) {
+            Player.Message($"Invalid damage amount: {parts[1]}");
+            return 0;
+        }
+
+        if (segmentIndex < 0 || segmentIndex >= Player.Segments.Count) {
+            Player.Message($"Segment index {segmentIndex} out of range (0-{Player.Segments.Count - 1})");
+            return 0;
+        }
+
+        var segment = Player.Segments[segmentIndex];
+        segment.Hits += damageAmount;
+        Player.Message($"Applied {damageAmount} damage to {segment.Name} (HP: {segment.Health:F1}/{segment.MaxHits})");
+        Player.UpdateSegmentCache();
         return 0;
     }
 

@@ -366,9 +366,9 @@ public class ReactorSegment(ulong seed, ReactorDef reactorDef, IActor? Owner): P
         set => _charge = Math.Clamp(value, 0, Capacity);
     }
     // Returns remaining generation
-    public float Generate(int duration) {
+    public float Generate(float durationHrs) {
         if (IsActive) {
-            float Expected = Charge + Generation * duration / 3600;
+            float Expected = Charge + Generation * durationHrs;
             Charge = Expected;
             return Expected - Charge;
         } else {
@@ -385,7 +385,7 @@ public class ReactorSegment(ulong seed, ReactorDef reactorDef, IActor? Owner): P
 public record ChargerDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ChargeTier)
     : PowerDef(Symbol, Size, Name, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
     public override ChargerSegment NewSegment(ulong seed) => new(seed, this, null);
-    public float Charge => Tuning.Segments.ChargerTiers[ChargeTier];
+    public float Generation => Tuning.Segments.ChargerTiers[ChargeTier];
 
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
@@ -395,12 +395,12 @@ public record ChargerDef(char Symbol, Tier Size, string Name, Tier WeightTier, T
     }
 }
 public class ChargerSegment(ulong seed, ChargerDef ChargerDef, IActor? Owner): PowerSegment(seed, ChargerDef, Owner) {
-    public float Generation => ChargerDef.Charge;
+    public float Generation => ChargerDef.Generation;
 
     // Returns remaining generation
-    public float Generate(int duration) {
+    public float Generate(float durationHrs) {
         if (IsActive) {
-            return Generation * duration / 3600;
+            return Generation * durationHrs;
         }
         return 0;
     }

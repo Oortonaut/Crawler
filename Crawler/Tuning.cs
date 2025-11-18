@@ -167,6 +167,12 @@ public static partial class Tuning {
         public static float AirPerPerson = 1.0f; // liters of liquid air per person
         public static float AirLeakagePerDamagedSegment = 0.005f; // 0.5% per hour per damaged segment
 
+        // Self-repair system
+        public static float RepairCrewPerHp = 6.0f;
+        public static float RepairPowerPerHp = 10.0f;
+        public static float RepairScrapPerHp = 50.0f;
+        public static float RepairTime = 3600.0f;
+
         public static EArray<Commodity, float> DefaultCommodityWeights => [
             1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f, // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
             0.2f, 0.5f, 1.0f, // Air, Water, Rations

@@ -222,4 +222,7 @@ public static partial class CollectionEx {
         var recip = 1.0f / sum;
         return e.Select(item => item * recip);
     }
+
+    // Structure construction
+    public static Stack<T> ToStack<T>(this IEnumerable<T> e) => new Stack<T>(e);
 }

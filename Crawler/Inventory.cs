@@ -359,7 +359,7 @@ public class Inventory {
         }
     }
 
-    public Inventory WithOverdraft(Inventory od) {
+    public Inventory SetOverdraft(Inventory od) {
         Overdraft = od;
         return this;
     }

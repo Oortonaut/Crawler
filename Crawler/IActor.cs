@@ -164,7 +164,7 @@ public interface IActor {
 public class StaticActor(string name, string brief, Faction faction, Inventory inv, Location location): IActor {
     public string Name => name;
     public Faction Faction => faction;
-    public Inventory Supplies { get; } = new Inventory().WithOverdraft(inv);
+    public Inventory Supplies { get; } = new Inventory().SetOverdraft(inv);
     public Inventory Cargo { get; } = inv;
     public EActorFlags Flags { get; set; } = EActorFlags.None;
     public Location Location { get; set; } = location;

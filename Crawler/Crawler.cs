@@ -5,6 +5,12 @@ using Crawler.Logging;
 
 namespace Crawler;
 
+public enum RepairMode {
+    Off,
+    RepairLowest,
+    RepairHighest,
+}
+
 public class ActorToActor {
     [Flags]
     public enum EFlags {
@@ -150,14 +156,15 @@ public class Crawler: IActor {
     public string Name { get; set; }
     public string Brief(IActor viewer) {
         var C = CrawlerDisplay(viewer).Split('\n').ToList();
+        var hitRepairTime =
 
         C[1] += $" Power: {TotalCharge:F1} + {TotalGeneration:F1}/t  Drain: Off:{OffenseDrain:F1}  Def:{DefenseDrain:F1}  Move:{MovementDrain:F1}";
-        C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h";
+        C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h  Repair: {RepairMode}";
         if (this == viewer) {
             float RationsPerDay = TotalPeople * Tuning.Crawler.RationsPerCrewDay;
             float WaterPerDay = WaterRecyclingLossPerHr * 24;
             float AirPerDay = AirLeakagePerHr * 24;
-            C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}, -{FuelPerHr:F1}/h, -{FuelPerKm * 100:F2}/100km";
+            C[3] += $" Cash: {ScrapInv:F1}¢¢  Fuel: {FuelInv:F1}, {FuelPerHr:F1}/h, {FuelPerKm * 100:F2}/100km";
             C[4] += $" Crew: {CrewInv:F0}  Morale: {MoraleInv}";
             C[5] += $" Rations: {RationsInv:F1} ({RationsPerDay:F1}/d)  Water: {WaterInv:F1} ({WaterPerDay:F1}/d)  Air: {AirInv:F1} ({AirPerDay:F1}/d)";
         } else {
@@ -172,7 +179,7 @@ public class Crawler: IActor {
     }
     // Hourly fuel, wages, and rations are the primary timers.
     // Fuel use keeps the crawler size down
-    //
+    // right now there's not much advantage to having any craw
     public float FuelPerHr => StandbyDrain / FuelEfficiency;
     public float WagesPerHr => CrewInv * Tuning.Crawler.WagesPerCrewDay / 24;
     public float RationsPerHr => TotalPeople * Tuning.Crawler.RationsPerCrewDay / 24;
@@ -352,6 +359,7 @@ public class Crawler: IActor {
         _activeSegments.Clear();
         _disabledSegments.Clear();
         _destroyedSegments.Clear();
+        _undestroyedSegments.Clear();
         _segmentsByClass.Initialize(() => new List<Segment>());
         _activeSegmentsByClass.Initialize(() => new List<Segment>());
 
@@ -403,7 +411,8 @@ public class Crawler: IActor {
     public IEnumerable<DefenseSegment> DefenseSegments => _activeSegmentsByClass[SegmentKind.Defense].Cast<DefenseSegment>();
     public IEnumerable<DefenseSegment> CoreDefenseSegments => _activeSegmentsByClass[SegmentKind.Defense].Cast<DefenseSegment>();
     public IEnumerable<PowerSegment> PowerSegments => _activeSegmentsByClass[SegmentKind.Power].Cast<PowerSegment>();
-
+    public IEnumerable<ReactorSegment> ReactorSegments => PowerSegments.OfType<ReactorSegment>();
+    public IEnumerable<ChargerSegment> ChargerSegments => PowerSegments.OfType<ChargerSegment>();
     public float Speed => SpeedOn(Location.Terrain);
     public float Lift => LiftOn(Location.Terrain);
     public float MovementDrain => MovementDrainOn(Location.Terrain);
@@ -457,16 +466,10 @@ public class Crawler: IActor {
     }
 
     public float Mass => Supplies.Mass + Cargo.Mass;
-    public float TotalCharge => PowerSegments.Any()
-        ? PowerSegments.Select(s => s switch {
-                ReactorSegment rs => rs.Charge,
-                _ => 0,
-            })
-            .Sum()
-        : 0;
+    public float TotalCharge => ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Charge);
     public float TotalGeneration =>
-        PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generation) +
-        PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generation);
+        ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Generation) +
+        ChargerSegments.Aggregate(0.0f, (i, s) => i + s.Generation);
 
     // TODO: Replace with a power scaling
     public float FuelEfficiency => 0.4f;
@@ -654,62 +657,116 @@ public class Crawler: IActor {
     }
     void Recharge(int elapsed) {
         Segments.Do(s => s.Tick(elapsed));
-        float overflowPower = PowerSegments.OfType<ReactorSegment>().Sum(s => s.Generate(elapsed));
-        overflowPower += PowerSegments.OfType<ChargerSegment>().Sum(s => s.Generate(elapsed));
-        FeedPower(overflowPower);
+        float overflowPower = 0;
         float hours = elapsed / 3600f;
+        overflowPower += ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Generate(hours));
+        overflowPower += ChargerSegments.Aggregate(0.0f, (i, s) => i + s.Generate(hours));
+        float excessPower = FeedPower(overflowPower);
+        excessPower = Repair(excessPower, elapsed); // doesn't return accurate excess :(
+
         ScrapInv -= WagesPerHr * hours;
         RationsInv -= RationsPerHr * hours;
         WaterInv -= WaterRecyclingLossPerHr * hours;
         AirInv -= AirLeakagePerHr * hours;
         FuelInv -= FuelPerHr * hours;
     }
-    // Returns excess (wasted) power
-    float FeedPower(float delta) {
-        if (delta <= 0) {
-            return 0;
-        }
+    float repairProgress = 0;
+    // Self-repair system: use excess power to repair damaged segments
+    float Repair(float power, int elapsed) {
+        // TODO: We should consume the energy if we have undestroyed segments and are adding repair progress
+        // At the moment the energy is only consumed when we do the repair
+        // Not a problem because nothing follows this to use it.
 
-        var reactorSegments = PowerSegments.OfType<ReactorSegment>();
-        // Distributes the power to segments based on their charge available
-        var segmentCapAvail = reactorSegments.Select(s => s.Capacity - s.Charge);
-        var totalCapAvail = segmentCapAvail.Sum();
-        delta = Math.Clamp(delta, 0, totalCapAvail);
-        float result = 0;
-        if (delta > totalCapAvail) {
-            result = delta - totalCapAvail;
-            delta = totalCapAvail;
+        float maxRepairsCrew = CrewInv / Tuning.Crawler.RepairCrewPerHp;
+        float maxRepairsPower = power / Tuning.Crawler.RepairPowerPerHp;
+        float maxRepairsScrap =  ScrapInv / Tuning.Crawler.RepairScrapPerHp;
+        float maxRepairs = Math.Min(Math.Min(maxRepairsCrew, maxRepairsPower), maxRepairsScrap);
+        float maxRepairsHr = maxRepairs * elapsed / Tuning.Crawler.RepairTime;
+        float repairHitsFloat = maxRepairsHr + repairProgress;
+        int repairHits = (int)repairHitsFloat;
+        repairProgress = repairHitsFloat - repairHits;
+        var candidates = UndestroyedSegments.Where(s => s.Hits > 0);
+        if (RepairMode is RepairMode.Off || !candidates.Any()) {
+            repairProgress = 0;
+            return power;
+        } else if (RepairMode is RepairMode.RepairHighest) {
+            var damagedSegments = candidates.OrderByDescending(s => s.Hits).ToStack();
+            while (repairHits > 0 && damagedSegments.Count > 0) {
+                var segment = damagedSegments.Pop();
+                --repairHits;
+                --segment.Hits;
+            }
+        } else if (RepairMode is RepairMode.RepairLowest) {
+            var damagedSegments = candidates.OrderBy(s => s.Health).ToList();
+            while (repairHits > 0 && damagedSegments.Count > 0) {
+                int health = damagedSegments[0].Health;
+                foreach (var segment in damagedSegments.TakeWhile(s => s.Health <= health).Where(s => s.Hits > 0)) {
+                    if (repairHits <= 0) {
+                        break;
+                    }
+                    --repairHits;
+                    --segment.Hits;
+                }
+            }
         }
-        if (delta <= 0) {
-            return result;
-        }
-        // Distributes the power to segments based on their charge available
-        // ( this is the same as the above, but with a different order of operations)
-        reactorSegments.Zip(segmentCapAvail, (rs, capacity) => rs.Charge += delta * (capacity / totalCapAvail)).Do();
-        return 0;
+        int repaired = (int)repairHitsFloat - repairHits;
+
+        float repairScrap = Tuning.Crawler.RepairScrapPerHp * repaired;
+        float repairPower = Tuning.Crawler.RepairPowerPerHp * repaired;
+        Message($"Repaired {repaired} Hits for {repairScrap:F1}¢¢.");
+
+        power -= repairPower;
+        ScrapInv -= repairScrap;
+
+
+        return power;
     }
-    float DrawPower(float delta) {
-        if (delta <= 0) {
-            return 0;
+    // Returns excess (wasted) power
+    float FeedPower(float energy) {
+        if (energy <= 0) {
+            return energy;
         }
 
-        var reactorSegments = PowerSegments.OfType<ReactorSegment>();
+        var reactorSegments = ReactorSegments.ToArray();
+        // Calculate the amount of charge to distribute
+        var segmentChargeNeeded = reactorSegments.Select(s => s.Capacity - s.Charge).ToArray();
+        if (!segmentChargeNeeded.Any()) {
+            return energy;
+        }
+        var totalChargeNeeded = segmentChargeNeeded.Sum();
+        if (totalChargeNeeded <= 0) {
+            return energy;
+        }
+        float bonusRecharge = Math.Clamp(energy, 0, totalChargeNeeded);
+        energy -= bonusRecharge;
         // Distributes the power to segments based on their charge available
-        var segmentCharge = reactorSegments.Select(s => s.Charge);
-        var totalCharge = segmentCharge.Sum();
-        delta = Math.Clamp(delta, 0, totalCharge);
-        float result = 0;
-        if (delta > totalCharge) {
-            result = delta - totalCharge;
-            delta = totalCharge;
+        foreach (var (segment, chargeNeeded) in reactorSegments.Zip(segmentChargeNeeded)) {
+            segment.Charge += chargeNeeded * (bonusRecharge / totalChargeNeeded);
         }
-        if (delta <= 0) {
-            return result;
+        return energy;
+    }
+    float DrawPower(float energy) {
+        if (energy <= 0) {
+            return energy;
         }
+
+        var reactorSegments = ReactorSegments.ToArray();
+        // Pulls power from segments based on their charge available
+        var segmentChargeAvail = reactorSegments.Select(s => s.Charge).ToArray();
+        if (!segmentChargeAvail.Any()) {
+            return energy;
+        }
+        var totalChargeAvail = segmentChargeAvail.Sum();
+        if (totalChargeAvail <= 0) {
+            return energy;
+        }
+        float chargeDrawn = Math.Clamp(energy, 0, totalChargeAvail);
+        energy -= chargeDrawn;
+
         // Distributes the power to segments based on their charge available
         // ( this is the same as the above, but with a different order of operations)
-        reactorSegments.Zip(segmentCharge, (rs, charge) => rs.Charge -= delta * (charge / totalCharge)).Do();
-        return 0;
+        reactorSegments.Zip(segmentChargeAvail, (segment, chargeAvail) => segment.Charge -= chargeDrawn * (chargeAvail / totalChargeAvail)).Do();
+        return energy;
     }
 
     void Decay(int elapsed) {
@@ -1024,4 +1081,5 @@ public class Crawler: IActor {
     public double GetGaussianZSin() => Gaussian.GetZSin();
     public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
     public int Domes { get; set; } = 0;
+    public RepairMode RepairMode { get; set; } = RepairMode.Off;
 }
