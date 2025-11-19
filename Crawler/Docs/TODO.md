@@ -2,8 +2,8 @@
                   
 ## Big Ol' Bugs
 
-* [ ] Wait needs to wait for any messages and then reschedule the player
-* [ ] attack is off
+* [ ] Wait function needs to wait for any messages and then reschedule the player
+* [ ] Sometimes I'll enter an encounter and a combat will have been resolved already, with damaged bandits or settlements. 
 
 ## Missing Features
 
@@ -20,11 +20,11 @@
 * [x] Make a separate combat mode - improved scheduling
 * [x] Change to 1-5 minute scheduling -- hourly max delay
 * [x] Refactor generate fire and weapon segments to support fire rate.
-* [ip 10-27] Improve and show prohibition states
-* [ ] Need a --seed command line option
-* [ ] Time not flowing properly outside of combat
-* [ ] Improve the suffocation mechanic
-* [ ] Change Passengers and Soldiers to a mid-game raw material and a late-game refined material
-* [ ] Dynamic crawlers don't appear to be following the right seed - sometimes it will spawn with one in seed=1, sometimes one will appear after a few hours, and sometimes you starve first.
-* [ ] dynamic crawlers are off
-* [ ] Self-repair
+* [x] Improve and show prohibition states
+* [x] Need a --seed command line option
+* [x] Time not flowing properly outside of combat
+* [x] Improve the suffocation mechanic
+* [x] Change Passengers and Soldiers to a mid-game raw material and a late-game refined material
+* [x] Dynamic crawlers don't appear to be following the right seed - sometimes it will spawn with one in seed=1, sometimes one will appear after a few hours, and sometimes you starve first.
+* [x] dynamic crawlers are off
+* [x] Self-repair
