@@ -136,14 +136,14 @@ public class Game {
             // TODO: use a 0 sentinel instead of removing
             turnForEncounter.Remove(encounter);
         }
-        Log.LogInformation($"Turn {turn}: {result.Count} encounters");
+        //Log.LogInformation($"Turn {turn}: {result.Count} encounters");
         return (turn, result);
     }
     SortedDictionary<long, List<Encounter>> encountersByTurn = new();
     Dictionary<Encounter, long> turnForEncounter = new();
 
     // TODO: use this for log scoping too
-    static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => LogCat.Game.StartActivity(name, kind);
+    static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => null; // LogCat.Game.StartActivity(name, kind);
     static ILogger Log => LogCat.Log;
     static Meter Metrics => LogCat.GameMetrics;
 

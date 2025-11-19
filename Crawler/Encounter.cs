@@ -38,7 +38,8 @@ public class Encounter {
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Faction = faction;
-        lastDynamicEvent = LastEncounterEvent = Game.SafeTime;
+        LastEncounterEvent = Game.SafeTime;
+        lastDynamicEvent = Game.SafeTime - CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f);
         Game.Instance!.RegisterEncounter(this);
     }
     XorShift Rng;
@@ -90,36 +91,8 @@ public class Encounter {
     }
 
     // Dynamic crawler management
-    float hourlyArrivals => Tuning.Encounter.HourlyArrivals[Location.Type];
+    float hourlyArrivals => Tuning.Encounter.HourlyArrivalsPerPop[Location.Type] * Location.Population * Tuning.Encounter.CrawlerDensity;
     long lastDynamicEvent = 0;
-    void InitDynamicCrawlers() {
-        return;
-
-        float expectedCount = hourlyArrivals * (Tuning.Encounter.DynamicCrawlerLifetimeExpectation / 3600f);
-        int initialCount = CrawlerEx.PoissonQuantile(expectedCount, ref Rng);
-
-        if (initialCount <= 0) {
-            return;
-        }
-
-        long time = lastDynamicEvent;
-        // Calculate arrival times and sort by them
-        var arrivals = new List<(long arrivalTime, int lifetime)>();
-        for (int i = 0; i < initialCount; i++) {
-            int lifetime = (int)(CrawlerEx.SampleExponential(Rng.NextSingle()) * Tuning.Encounter.DynamicCrawlerLifetimeExpectation);
-            // Spread initial arrivals across the lifetime expectation window
-            long arrivalTime = time - (int)(Rng.NextSingle() * lifetime);
-            arrivals.Add((arrivalTime, lifetime));
-        }
-        arrivals = arrivals.OrderBy(a => a.arrivalTime).ToList();
-
-        lastDynamicEvent = LastEncounterEvent = arrivals.First().arrivalTime;
-        // Add crawlers in order of arrival time
-        foreach (var (arrivalTime, lifetime) in arrivals) {
-            var crawler = AddDynamicCrawler(Rng.Seed(), arrivalTime, lifetime);
-        }
-    }
-
     Crawler AddDynamicCrawler(ulong seed, long arrivalTime, int lifetime) {
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
@@ -128,23 +101,12 @@ public class Encounter {
         return crawler;
     }
     void UpdateDynamicCrawlers(long currentTime) {
-        return;
-
         int elapsed = (int)(currentTime - lastDynamicEvent);
         if (elapsed < 0) {
             throw new InvalidOperationException($"TODO: Retrocausality");
         }
         if (elapsed == 0) {
             return;
-        }
-
-        // Remove actors whose exit time has been reached
-        var expiredActors = actors
-            .Select(a => (a.Key, a.Value))
-            .Where(actorRelation => actorRelation.Value.ShouldExit(currentTime))
-            .Select(a => a.Key).ToList();
-        foreach (var actor in expiredActors) {
-            RemoveActor(actor);
         }
 
         // Sample how many crawlers should arrive
@@ -158,7 +120,9 @@ public class Encounter {
                 int lifetime = CrawlerEx.PoissonQuantile(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, ref Rng);
                 // Arrivals spread across the next minute (60 seconds)
                 long arrivalTime = currentTime - Rng.NextInt64(elapsed);
-                arrivals.Add((arrivalTime, lifetime));
+                if (arrivalTime + lifetime > currentTime) {
+                    arrivals.Add((arrivalTime, lifetime));
+                }
             }
 
             // Add crawlers in order of arrival time
@@ -167,6 +131,14 @@ public class Encounter {
             }
         }
         lastDynamicEvent = currentTime;
+        // Remove actors whose exit time has been reached
+        var expiredActors = actors
+            .Select(a => (a.Key, a.Value))
+            .Where(actorRelation => actorRelation.Value.ShouldExit(currentTime))
+            .Select(a => a.Key).ToList();
+        foreach (var actor in expiredActors) {
+            RemoveActor(actor);
+        }
     }
 
     Location location;
@@ -478,7 +450,6 @@ public class Encounter {
         case EncounterType.Resource: GenerateResource(seed); break;
         case EncounterType.Hazard: GenerateHazard(seed); break;
         }
-        InitDynamicCrawlers();
         return this;
     }
     public Crawler GenerateFactionActor(ulong seed, Faction faction, long arrivalTime, int? lifetime) {
@@ -497,7 +468,7 @@ public class Encounter {
     public IEnumerable<IActor> ActorsExcept(IActor actor) => Actors.Where(a => a != actor);
     public IEnumerable<IActor> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
 
-    static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => LogCat.Encounter.StartActivity(name, kind);
+    static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => null; //LogCat.Encounter.StartActivity(name, kind);
     static ILogger Log => LogCat.Log;
     static Meter Metrics => LogCat.EncounterMetrics;
 
@@ -536,7 +507,7 @@ public class Encounter {
             if (eventTime < LastEncounterEvent)
                 throw new InvalidOperationException($"Encounter {Name} has a crawler with a negative NextEvent: {crawler.Name} {crawler.NextEvent}");
         }
-        Log.LogInformation($"Rescheduling {crawler.Name} at turn {eventTime}");
+        //Log.LogInformation($"Rescheduling {crawler.Name} at turn {eventTime}");
         Schedule(crawler, eventTime);
     }
     void Schedule(Crawler crawler, long nextTurn) {
@@ -549,16 +520,18 @@ public class Encounter {
                 return;
             }
         }
-        Log.LogInformation($"Scheduling {crawler.Name} at turn {nextTurn}");
-        var turnList = crawlersByTurn.GetOrAddNew(nextTurn, () => new List<Crawler>());
+        //Log.LogInformation($"Scheduling {crawler.Name} at turn {nextTurn}");
+        var turnList = crawlersByTurn.GetOrAddNew(nextTurn, () => NewTurn());
         turnList.Add(crawler);
         turnForCrawler[crawler] = nextTurn;
         // No encounter while we are creating it, but it will schedule itself
         if (Location.HasEncounter) {
-            Log.LogInformation($"Rescheduling Encounter {Location.GetEncounter().Name}");
+            //Log.LogInformation($"Rescheduling Encounter {Location.GetEncounter().Name}");
             Game.Instance!.Schedule(Location.GetEncounter());
         }
     }
+    Stack<List<Crawler>> reserveTurns = new();
+    List<Crawler> NewTurn() => reserveTurns.TryPop(out var result) ? result : new List<Crawler>();
     void Unschedule(Crawler crawler) {
         if (turnForCrawler.TryGetValue(crawler, out var turn)) {
             Log.LogInformation($"Unscheduling {crawler.Name} at turn {turn}");
@@ -566,6 +539,7 @@ public class Encounter {
             turnList.Remove(crawler);
             if (turnList.Count == 0) {
                 crawlersByTurn.Remove(turn);
+                reserveTurns.Push(turnList);
             }
             turnForCrawler.Remove(crawler);
         }
@@ -586,7 +560,7 @@ public class Encounter {
         return crawlers;
     }
     public void Tick(long time) {
-        Log.LogInformation($"Ticking Encounter {this} at time {time}, last event {LastEncounterEvent}, next event {NextEncounterEvent}");
+        //Log.LogInformation($"Ticking Encounter {this} at time {time}, last event {LastEncounterEvent}, next event {NextEncounterEvent}");
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         if (time < LastEncounterEvent) {

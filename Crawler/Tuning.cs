@@ -27,7 +27,8 @@ public static partial class Tuning {
     }
 
     public static class Encounter {
-        public static EArray<EncounterType, float> HourlyArrivals = [0, 0.125f, 0.4f, 0.08f, 0.04f];
+        public static float CrawlerDensity = 0.08f;
+        public static EArray<EncounterType, float> HourlyArrivalsPerPop = [0, 0.125f, 0.4f, 0.08f, 0.04f];
         // Faction spawn weights by terrain type: Player, Bandit, Trade
         public static EArray<TerrainType, EArray<Faction, float>> crawlerSpawnWeight = [
             [0, 2, 12],    // Flat - more trade

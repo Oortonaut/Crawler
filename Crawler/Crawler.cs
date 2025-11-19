@@ -305,9 +305,13 @@ public class Crawler: IActor {
         FuelInv -= fuel;
         Location = loc;
         loc.GetEncounter().AddActorAt(this, arrivalTime);
+        NextEvent = arrivalTime;
     }
     public void Think(int elapsed, IEnumerable<IActor> Actors) {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
+        if (Flags.HasFlag(EActorFlags.Player)) {
+            return;
+        }
 
         if (IsDepowered) {
             Message($"{Name} has no power.");
