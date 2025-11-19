@@ -9282,7 +9282,7 @@ sing-pin
 sinh
 siobhan
 sioux
-siouxie
+siouxsie
 sir
 sisely
 sisile
@@ -9505,10 +9505,8 @@ suzy
 sven
 svend
 svenn-erik
-svr
 swact
 swandi
-swd
 swee-joo
 sybil
 sybila
@@ -9654,8 +9652,6 @@ tayla
 taylah
 tayler
 taylor
-tc
-tdr
 teagan
 teague
 tec
@@ -9676,7 +9672,6 @@ teigan
 teiichi
 teirtza
 tej
-tele
 telma
 temperance
 tenille
@@ -9897,7 +9892,6 @@ toshinari
 toss
 tova
 tove
-toyanne
 toyoji
 trace
 tracee
@@ -10027,7 +10021,6 @@ ursula
 úrsula
 ursulina
 ursuline
-usa
 usama
 usman
 usrouter
