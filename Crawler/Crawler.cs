@@ -338,14 +338,18 @@ public class Crawler: IActor {
         }
     }
     public long NextEvent { get; set; } = 0;
-    public int WeaponDelay() {
+    public int? WeaponDelay() {
         int minDelay = Tuning.MaxDelay;
         int N = 0;
         foreach (var segment in CyclingSegments) {
             minDelay = Math.Min(minDelay, segment.Cycle);
             ++N;
         }
-        return minDelay;
+        if (N > 0) {
+            return minDelay;
+        } else {
+            return null;
+        }
     }
 
     Inventory _inventory = new Inventory();

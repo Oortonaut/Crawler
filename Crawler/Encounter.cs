@@ -152,6 +152,9 @@ public class Encounter {
             throw new ArgumentException("Actor is already in encounter");
         }
 
+        // Update caching when actors join
+        if (actor.Flags.HasFlag(EActorFlags.Player)) UpdatePlayerStatus();
+
         long exitTime = lifetime.HasValue ? arrivalTime + lifetime.Value : 0;
         var metadata = new EncounterActor {
             ArrivalTime = arrivalTime,
@@ -188,6 +191,10 @@ public class Encounter {
 
         actor.Leave(remainingActors);
         actors.Remove(actor);
+
+        // Update caching when actors leave
+        if (actor.Flags.HasFlag(EActorFlags.Player)) UpdatePlayerStatus();
+
         if (actor is Crawler crawler) {
             Unschedule(crawler);
         }
@@ -494,73 +501,86 @@ public class Encounter {
         description: "Duration of individual crawler tick execution in milliseconds"
     );
 
-    SortedDictionary<long, List<Crawler>> crawlersByTurn = new();
-    Dictionary<Crawler, long> turnForCrawler = new();
+    // Replaced SortedDictionary with PriorityQueue + Lazy Deletion for O(log N) performance
+    PriorityQueue<Crawler, long> eventQueue = new();
+    Dictionary<Crawler, long> scheduledTimes = new();
+
     public long LastEncounterEvent { get; protected set; }
-    public long NextEncounterEvent => crawlersByTurn.Any() ? crawlersByTurn.Keys.Min() : LastEncounterEvent + Tuning.MaxDelay;
+
+    // Tracks if the player is present to toggle between High Precision and Batched modes
+    bool _hasPlayer = false;
+    void UpdatePlayerStatus() {
+        _hasPlayer = actors.Keys.Any(a => a.Flags.HasFlag(EActorFlags.Player));
+    }
+
+    public long NextEncounterEvent {
+        get {
+            if (eventQueue.Count == 0) return LastEncounterEvent + Tuning.MaxDelay;
+            
+            eventQueue.TryPeek(out _, out long nextCrawlerEvent);
+
+            // High Precision Mode: If player is here, we must run exactly at the next event
+            if (_hasPlayer) return nextCrawlerEvent;
+
+            // Batch Mode: For background encounters, only wake up the Game loop hourly.
+            // This prevents thousands of micro-updates from clogging the global scheduler.
+            long batchInterval = Tuning.MaxDelay;
+            long batchTarget = LastEncounterEvent + batchInterval;
+
+            // If the next event is within the current batch window, wait until the window closes.
+            if (nextCrawlerEvent < batchTarget) {
+                return batchTarget;
+            }
+
+            // If the next event is further out than the batch window, sleep until then.
+            return nextCrawlerEvent;
+        }
+    }
+
+    // Re-entrancy guard
+    bool isTicking = false;
+
     public void Schedule(Crawler crawler) {
         long eventTime = crawler.NextEvent;
         if (eventTime == 0) {
-            int delay = crawler.WeaponDelay();
+            int delay = crawler.WeaponDelay() ?? Tuning.MaxDelay;
             eventTime = LastEncounterEvent + delay;
         } else {
             if (eventTime < LastEncounterEvent)
                 throw new InvalidOperationException($"Encounter {Name} has a crawler with a negative NextEvent: {crawler.Name} {crawler.NextEvent}");
         }
-        //Log.LogInformation($"Rescheduling {crawler.Name} at turn {eventTime}");
+        
         Schedule(crawler, eventTime);
     }
+
     void Schedule(Crawler crawler, long nextTurn) {
-        if (turnForCrawler.TryGetValue(crawler, out var scheduledTurn)) {
-            if (nextTurn < scheduledTurn) {
-                Log.LogInformation($"Unscheduling {crawler.Name} at turn {scheduledTurn}: advancing from {nextTurn}");
-                Unschedule(crawler);
-            } else {
-                Log.LogInformation($"Scheduling {crawler.Name} at turn {scheduledTurn}: already scheduled earlier {nextTurn}");
-                return;
-            }
+        // Lazy Deletion: If already scheduled later/same, ignore. If earlier, mark old time stale.
+        if (scheduledTimes.TryGetValue(crawler, out var scheduledTurn)) {
+            if (nextTurn >= scheduledTurn) return;
+            // Implicitly unschedule by overwriting the authoritative time in scheduledTimes
         }
-        //Log.LogInformation($"Scheduling {crawler.Name} at turn {nextTurn}");
-        var turnList = crawlersByTurn.GetOrAddNew(nextTurn, () => NewTurn());
-        turnList.Add(crawler);
-        turnForCrawler[crawler] = nextTurn;
-        // No encounter while we are creating it, but it will schedule itself
-        if (Location.HasEncounter) {
-            //Log.LogInformation($"Rescheduling Encounter {Location.GetEncounter().Name}");
-            Game.Instance!.Schedule(Location.GetEncounter());
-        }
+        
+        scheduledTimes[crawler] = nextTurn;
+        eventQueue.Enqueue(crawler, nextTurn);
+
+        UpdateGlobalSchedule();
     }
-    Stack<List<Crawler>> reserveTurns = new();
-    List<Crawler> NewTurn() => reserveTurns.TryPop(out var result) ? result : new List<Crawler>();
+
     void Unschedule(Crawler crawler) {
-        if (turnForCrawler.TryGetValue(crawler, out var turn)) {
-            Log.LogInformation($"Unscheduling {crawler.Name} at turn {turn}");
-            var turnList = crawlersByTurn[turn];
-            turnList.Remove(crawler);
-            if (turnList.Count == 0) {
-                crawlersByTurn.Remove(turn);
-                reserveTurns.Push(turnList);
-            }
-            turnForCrawler.Remove(crawler);
+        if (scheduledTimes.Remove(crawler)) {
+            // Removing from scheduledTimes makes the entry in PriorityQueue "stale" (ignored on pop)
         }
-        if (Location.HasEncounter) {
-            Log.LogInformation($"Rescheduling Encounter {Location.GetEncounter().Name}");
+        UpdateGlobalSchedule();
+    }
+
+    void UpdateGlobalSchedule() {
+        // Optimization: Don't poke Global Game Schedule while strictly internal to Tick
+        if (!isTicking) {
             Game.Instance!.Schedule(Location.GetEncounter());
         }
     }
-    List<Crawler> TurnCrawlers() {
-        var first = crawlersByTurn.First();
-        long turn = first.Key;
-        crawlersByTurn.Remove(turn);
-        var crawlers = first.Value;
-        foreach (var crawler in crawlers) {
-            // TODO: Use a 0 sentinel instead of removing
-            turnForCrawler.Remove(crawler);
-        }
-        return crawlers;
-    }
+
     public void Tick(long time) {
-        //Log.LogInformation($"Ticking Encounter {this} at time {time}, last event {LastEncounterEvent}, next event {NextEncounterEvent}");
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         if (time < LastEncounterEvent) {
@@ -568,17 +588,32 @@ public class Encounter {
             LastEncounterEvent = time;
             return;
         }
-        using var activity = Scope($"Tick {nameof(Encounter)} {this} to {time}");
+        
+        isTicking = true; // Block global updates until we are done processing the batch
 
-        UpdateDynamicCrawlers(time);
+        try {
+            using var activity = Scope($"Tick {nameof(Encounter)} {this} to {time}");
 
-        while (crawlersByTurn.Count > 0) {
-            var turn = crawlersByTurn.Keys.First();
-            var turnCrawlers = TurnCrawlers();
-            foreach (var crawler in turnCrawlers) {
+            UpdateDynamicCrawlers(time);
+
+            while (eventQueue.Count > 0) {
+                if (!eventQueue.TryPeek(out var crawler, out var eventTime)) break;
+                
+                // Stop if we've reached the target time
+                if (eventTime > time) break;
+
+                eventQueue.Dequeue();
+
+                // Lazy Deletion: Check if this event is stale
+                if (!scheduledTimes.TryGetValue(crawler, out var validTime) || validTime != eventTime) {
+                    continue;
+                }
+                scheduledTimes.Remove(crawler);
+
+                // Process Crawler
                 var crawlerStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-                crawler.TickThink(turn);
+                crawler.TickThink(eventTime);
+                
                 if (crawler.Flags.HasFlag(EActorFlags.Player)) {
                     Game.Instance!.GameMenu();
                 }
@@ -589,19 +624,23 @@ public class Encounter {
                     new KeyValuePair<string, object?>("crawler.name", crawler.Name),
                     new KeyValuePair<string, object?>("crawler.faction", crawler.Faction)
                 );
-            }
-            LastEncounterEvent = turn;
-            foreach (var crawler in turnCrawlers) {
+
+                LastEncounterEvent = eventTime;
                 Schedule(crawler);
             }
-            if (LastEncounterEvent >= time) {
-                break;
-            }
-        }
+            
+            // Ensure we update our LastEvent to the tick time, even if no events processed
+            // (This prevents falling behind if we just waited for a batch window)
+            if (LastEncounterEvent < time) LastEncounterEvent = time;
 
+        } finally {
+            isTicking = false;
+            UpdateGlobalSchedule(); // Single global update at the end
+        }
 
         stopwatch.Stop();
         Log.LogInformation($"Finished ticking Encounter {this} at time {time}, last event {LastEncounterEvent}, next event {NextEncounterEvent}");
+
         EncounterTickCount.Add(1,
             new KeyValuePair<string, object?>("encounter.name", Name),
             new KeyValuePair<string, object?>("encounter.faction", Faction)
