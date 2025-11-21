@@ -26,7 +26,7 @@ public class EncounterActor {
     }
 }
 
-public class Encounter {
+public sealed class Encounter {
     public Encounter(ulong seed, Location location): this(seed, location,
         location.Type == EncounterType.Settlement ?
             location.Sector.ControllingFaction :
@@ -95,23 +95,6 @@ public class Encounter {
         return result;
     }
 
-    // Event invocation helpers
-    protected virtual void OnActorArrived(IActor actor, long time) {
-        ActorArrived?.Invoke(actor, time);
-    }
-
-    protected virtual void OnActorLeaving(IActor actor, long time) {
-        ActorLeaving?.Invoke(actor, time);
-    }
-
-    protected virtual void OnActorLeft(IActor actor, long time) {
-        ActorLeft?.Invoke(actor, time);
-    }
-
-    protected virtual void OnEncounterTick(long time) {
-        EncounterTick?.Invoke(time);
-    }
-
     // Dynamic crawler management
     float hourlyArrivals => Tuning.Encounter.HourlyArrivalsPerPop[Location.Type] * Location.Population * Tuning.Encounter.CrawlerDensity;
     long lastDynamicEvent = 0;
@@ -169,7 +152,7 @@ public class Encounter {
     public void AddActor(IActor actor, int? lifetime = null) {
         AddActorAt(actor, Game.SafeTime, lifetime);
     }
-    public virtual void AddActorAt(IActor actor, long arrivalTime, int? lifetime = null) {
+    public void AddActorAt(IActor actor, long arrivalTime, int? lifetime = null) {
         if (actors.ContainsKey(actor)) {
             throw new ArgumentException("Actor is already in encounter");
         }
@@ -191,7 +174,8 @@ public class Encounter {
         }
 
         // Raise ActorArrived event
-        OnActorArrived(actor, arrivalTime);
+        ActorArrived?.Invoke(actor, arrivalTime);
+
 
         if (actor is Crawler crawler) {
             crawler.LastEvent = arrivalTime;
@@ -202,12 +186,12 @@ public class Encounter {
     public EncounterActor this[IActor actor] => actors.GetOrAddNew(actor);
 
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
-    public virtual void RemoveActor(IActor actor) {
+    public void RemoveActor(IActor actor) {
         // Raise ActorLeaving event
-        OnActorLeaving(actor, LastEncounterEvent);
+        ActorLeaving?.Invoke(actor, LastEncounterEvent);
 
         // Raise ActorLeft event
-        OnActorLeft(actor, LastEncounterEvent);
+        ActorLeft?.Invoke(actor, LastEncounterEvent);
 
         // Unsubscribe all actor components from encounter events
         foreach (var component in actor.Components) {
@@ -540,7 +524,7 @@ public class Encounter {
     PriorityQueue<Crawler, long> eventQueue = new();
     Dictionary<Crawler, long> scheduledTimes = new();
 
-    public long LastEncounterEvent { get; protected set; }
+    public long LastEncounterEvent { get; set; }
 
     // Tracks if the player is present to toggle between High Precision and Batched modes
     bool _hasPlayer = false;
@@ -617,6 +601,7 @@ public class Encounter {
 
     public void Tick(long time) {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        EncounterTick?.Invoke(time);
 
         if (time < LastEncounterEvent) {
             Log.LogError($"Encounter {Name} ticked backwards from {LastEncounterEvent} to {time}");
