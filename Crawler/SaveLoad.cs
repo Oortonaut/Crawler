@@ -33,7 +33,6 @@ public class SavedCrawler {
     public Dictionary<string, SavedActorRelation> Relations { get; set; } = new();
     public Dictionary<string, SavedActorLocation> VisitedLocations { get; set; } = new();
     public int EvilPoints { get; set; } = 0;
-    public List<SavedProposal> StoredProposals { get; set; } = new();
     public EEndState? EndState { get; set; }
     public string EndMessage { get; set; } = "";
     // RNG state
@@ -118,32 +117,11 @@ public class SavedActorRelation {
     public int DamageCreated { get; set; }
     public int DamageInflicted { get; set; }
     public int DamageTaken { get; set; }
-    public List<SavedProposal> StoredProposals { get; set; } = new();
 }
 
 [YamlSerializable]
 public class SavedActorLocation {
     public bool Visited { get; set; } = false;
-}
-
-[YamlSerializable]
-public class SavedProposal {
-    public string Type { get; set; } = "";
-    public float DemandFraction { get; set; }
-    public float TaxRate { get; set; }
-    public SavedInventory? Contraband { get; set; }
-    public float PenaltyAmount { get; set; }
-    public string OptionCode { get; set; } = "";
-    public string Verb { get; set; } = "";
-    public long ExpirationTime { get; set; }
-    // For ProposeHarvestTake and ProposeLootPay (actor-dependent proposals)
-    public string? ResourceActorName { get; set; }
-    public SavedInventory? Amount { get; set; }
-    public SavedInventory? Risk { get; set; }
-    public float Chance { get; set; }
-    public string Description { get; set; } = "";
-    // RNG state for proposals that use XorShift
-    public ulong RngState { get; set; }
 }
 
 
@@ -239,7 +217,6 @@ public static class SaveLoadExtensions {
                 kvp => kvp.Value.ToSaveData()
             ),
             EvilPoints = crawler.EvilPoints,
-            StoredProposals = crawler.StoredProposals.Select(p => p.ToSaveData()).ToList(),
             EndState = crawler.EndState,
             EndMessage = crawler.EndMessage,
             RngState = crawler.GetRngState(),
@@ -332,89 +309,13 @@ public static class SaveLoadExtensions {
             Surrendered = toActor.Surrendered,
             DamageCreated = toActor.DamageCreated,
             DamageInflicted = toActor.DamageInflicted,
-            DamageTaken = toActor.DamageTaken,
-            StoredProposals = toActor.StoredProposals.Select(p => p.ToSaveData()).ToList()
+            DamageTaken = toActor.DamageTaken
         };
     }
 
     public static SavedActorLocation ToSaveData(this LocationActor locationActorLoc) {
         return new SavedActorLocation {
             Visited = locationActorLoc.Visited,
-        };
-    }
-
-    public static SavedProposal ToSaveData(this IProposal proposal) {
-        return proposal switch {
-            ProposeLootTake loot => new SavedProposal {
-                Type = "LootTake",
-                OptionCode = loot.OptionCode,
-                Verb = loot.verb,
-                ExpirationTime = loot.ExpirationTime,
-                RngState = loot.Rng.GetState()
-            },
-            ProposeHarvestTake harvest => new SavedProposal {
-                Type = "HarvestTake",
-                ResourceActorName = harvest.Resource.Name,
-                Amount = harvest.Amount.ToSaveData(),
-                OptionCode = harvest.OptionCode,
-                Verb = harvest.verb,
-                ExpirationTime = harvest.ExpirationTime
-            },
-            ProposeLootRisk lootPay => new SavedProposal {
-                Type = "LootPay",
-                ResourceActorName = lootPay.Resource.Name,
-                Risk = lootPay.Risk.ToSaveData(),
-                Chance = lootPay.RiskChance,
-                ExpirationTime = lootPay.ExpirationTime,
-                Description = lootPay.Description,
-                RngState = lootPay.Rng.GetState()
-            },
-            ProposeAttackDefend attack => new SavedProposal {
-                Type = "AttackDefend",
-                ExpirationTime = attack.ExpirationTime
-            },
-            ProposeAcceptSurrender surrender => new SavedProposal {
-                Type = "AcceptSurrender",
-                OptionCode = surrender.OptionCode,
-                ExpirationTime = surrender.ExpirationTime,
-                RngState = surrender.Rng.GetState()
-            },
-            ProposeAttackOrLoot extortion => new SavedProposal {
-                Type = "AttackOrLoot",
-                DemandFraction = extortion.DemandFraction,
-                OptionCode = extortion.OptionCode,
-                ExpirationTime = extortion.ExpirationTime,
-                RngState = extortion.Rng.GetState()
-            },
-            // ProposeTaxes taxes => new SavedProposal {
-            //     Type = "Taxes",
-            //     TaxRate = taxes.TaxRate,
-            //     OptionCode = taxes.OptionCode,
-            //     ExpirationTime = taxes.ExpirationTime
-            // },
-            ProposeSearchSeizeHostile seizure => new SavedProposal {
-                Type = "ContrabandSeizure",
-                //Contraband = seizure.Contraband.ToSaveData(),
-                //PenaltyAmount = seizure.PenaltyAmount,
-                OptionCode = seizure.OptionCode,
-                ExpirationTime = seizure.ExpirationTime
-            },
-            ProposePlayerDemand demand => new SavedProposal {
-                Type = "PlayerDemand",
-                DemandFraction = demand.DemandFraction,
-                OptionCode = demand.OptionCode,
-                ExpirationTime = demand.ExpirationTime,
-                RngState = demand.Rng.GetState()
-            },
-            ProposeRepairBuy repair => new SavedProposal {
-                Type = "RepairBuy",
-                OptionCode = repair.OptionCode,
-                ExpirationTime = repair.ExpirationTime
-            },
-            _ => new SavedProposal {
-                Type = "Unknown",
-                ExpirationTime = proposal.ExpirationTime
-            }
         };
     }
 
@@ -653,14 +554,6 @@ public static class SaveLoadExtensions {
         }
         crawler.SetVisitedLocations(visitedLocations);
 
-        // Restore StoredProposals
-        foreach (var savedProposal in savedCrawler.StoredProposals) {
-            var proposal = savedProposal.ToGameProposal();
-            if (proposal != null) {
-                crawler.StoredProposals.Add(proposal);
-            }
-        }
-
         // Relations are restored in a second pass after all actors are loaded (see ToGameMap)
 
         return crawler;
@@ -746,41 +639,6 @@ public static class SaveLoadExtensions {
         return segment;
     }
 
-    public static IProposal? ToGameProposal(this SavedProposal saved, Dictionary<string, IActor>? actorLookup = null) {
-        return saved.Type switch {
-            "LootTake" => new ProposeLootTake(new(saved.RngState), saved.Verb, saved.OptionCode),
-            "HarvestTake" when actorLookup?.TryGetValue(saved.ResourceActorName ?? "", out var harvestResource) == true =>
-                new ProposeHarvestTake(
-                    harvestResource,
-                    saved.Amount?.ToGameInventory() ?? new Inventory(),
-                    saved.OptionCode,
-                    saved.Verb),
-            "LootPay" when actorLookup?.TryGetValue(saved.ResourceActorName ?? "", out var lootResource) == true =>
-                new ProposeLootRisk(new(saved.RngState), lootResource,
-                    saved.Risk?.ToGameInventory() ?? new Inventory(),
-                    saved.Chance,
-                    saved.Description),
-            "AttackDefend" => new ProposeAttackDefend("Attack"),
-            "AcceptSurrender" => new ProposeAcceptSurrender(new(saved.RngState), saved.OptionCode),
-            "AttackOrLoot" => new ProposeAttackOrLoot(new(saved.RngState), saved.DemandFraction) {
-                ExpirationTime = saved.ExpirationTime
-            },
-            //"Taxes" => new ProposeTaxes(saved.TaxRate) {
-            //    ExpirationTime = saved.ExpirationTime
-            //},
-            // "ContrabandSeizure" => saved.Contraband != null
-            //     ? new ProposeSearchSeizeHostile(saved.Contraband.ToGameInventory(), saved.PenaltyAmount) {
-            //         ExpirationTime = saved.ExpirationTime
-            //     }
-            //     : null,
-            "PlayerDemand" => new ProposePlayerDemand(new(saved.RngState), saved.DemandFraction, saved.OptionCode) {
-                ExpirationTime = saved.ExpirationTime
-            },
-            "RepairBuy" => new ProposeRepairBuy(saved.OptionCode),
-            _ => null // Unknown or incomplete proposal types are skipped
-        };
-    }
-
     public static void RestoreRelationsTo(this SavedCrawler savedCrawler, Crawler crawler, Dictionary<string, IActor> actorLookup) {
         var relations = new Dictionary<IActor, ActorToActor>();
 
@@ -793,14 +651,6 @@ public static class SaveLoadExtensions {
                     DamageInflicted = savedRelation.DamageInflicted,
                     DamageTaken = savedRelation.DamageTaken
                 };
-
-                // Restore ActorToActor.StoredProposals
-                foreach (var savedProposal in savedRelation.StoredProposals) {
-                    var proposal = savedProposal.ToGameProposal(actorLookup);
-                    if (proposal != null) {
-                        relation.StoredProposals.Add(proposal);
-                    }
-                }
 
                 relations[otherActor] = relation;
             }

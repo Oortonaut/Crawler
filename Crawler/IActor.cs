@@ -122,12 +122,6 @@ public interface IActor {
     void RemoveComponent(IActorComponent component);
 
     // ===== Interactions =====
-    /// <summary>
-    /// Available proposals this actor can make.
-    /// See: docs/SYSTEMS.md#proposalinteraction-system
-    /// </summary>
-    IEnumerable<IProposal> Proposals();
-
     // ===== Simulation =====
     /// <summary>Update this actor (called every game second)</summary>
     /// <param name="time"></param>
@@ -169,10 +163,8 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";
     }
-    public List<IProposal> StoredProposals { get; } = new();
-    public IEnumerable<IProposal> Proposals() => StoredProposals;
 
-    // Component system (StaticActor doesn't use components)
+    // Component system
     List<IActorComponent> _components = new();
     public IEnumerable<IActorComponent> Components => _components;
     public void AddComponent(IActorComponent component) {

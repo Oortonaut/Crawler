@@ -3,6 +3,23 @@
 // Offers and Exchange Interactions
 //=========================================================================
 
+// Direction of trade from trader's perspective
+public enum TradeDirection {
+    Sell,  // Trader sells to player (player buys)
+    Buy    // Trader buys from player (player sells)
+}
+
+// Simple trade listing: commodity/segment, direction, price, quantity
+public record TradeOffer {
+    public Commodity? Commodity { get; init; }
+    public Segment? Segment { get; init; }
+    public TradeDirection Direction { get; init; }
+    public float PricePerUnit { get; init; }
+    public float Quantity { get; init; }
+    public bool IsCommodity => Commodity.HasValue;
+    public bool IsSegment => Segment != null;
+}
+
 // Trade policy defines how a faction treats a commodity category
 public enum TradePolicy {
     Subsidized, // 0.7x base price - government subsidy or local production
@@ -20,44 +37,13 @@ public record Policy(
     string Description
 );
 
-// Agent is seller
-public record ProposeSellBuy(IOffer Stuff, float cash, string OptionCode = "T"): IProposal {
-    public readonly float Cash = Commodity.Scrap.Round(cash);
-    public bool AgentCapable(IActor agent) => true;
-    public bool SubjectCapable(IActor subject) => true;
-    public bool PairCapable(IActor agent, IActor subject) =>
-        subject != agent &&
-        Stuff.EnabledFor(agent, subject) &&
-        !agent.Fighting(subject);
-    public IEnumerable<IInteraction> GetInteractions(IActor Seller, IActor Buyer) {
-        var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
-        yield return interaction;
-    }
-    // Description is from theI  subjects POV
-    public string Description => $"Buy {Stuff.Description} for {Cash}¢¢";
-    public long ExpirationTime => 0; // Trade proposals never expire
-    public override string ToString() => Description;
-}
-
-// Agent is buyer
-public record ProposeBuySell(float cash, IOffer Stuff, string OptionCode = "T"): IProposal {
-    public readonly float Cash = Commodity.Scrap.Round(cash);
-    public bool AgentCapable(IActor agent) => true;
-    public bool SubjectCapable(IActor subject) => true;
-    public bool PairCapable(IActor agent, IActor subject) =>
-        agent != subject && Stuff.DisabledFor(subject, agent) == null;
-    public IEnumerable<IInteraction> GetInteractions(IActor Buyer, IActor Seller) {
-        var interaction = new ExchangeInteraction(Buyer, new ScrapOffer(Cash), Seller, Stuff, OptionCode, Description);
-        yield return interaction;
-    }
-    // Description is from theI  subjects POV
-    public string Description => $"Sell {Stuff.Description} for {Cash}¢¢";
-    public long ExpirationTime => 0; // Trade proposals never expire
-    public override string ToString() => Description;
-}
 
 public static class TradeEx {
-    public static IEnumerable<IProposal> MakeTradeProposals(this IActor Seller, ulong seed, float wealthFraction) {
+    /// <summary>
+    /// Generate trade offer listings for a merchant
+    /// </summary>
+    public static List<TradeOffer> MakeTradeOffers(this IActor Seller, ulong seed, float wealthFraction) {
+        var offers = new List<TradeOffer>();
         var rng = new XorShift(seed);
         var faction = Seller.Faction;
         var Location = Seller.Location;
@@ -74,74 +60,75 @@ public static class TradeEx {
         float CFrac = wealth;
 
         foreach (var commodity in commodities) {
-            // Check faction policy for this commodity
             var policy = Tuning.FactionPolicies.GetPolicy(faction, commodity);
 
-            // TODO: Make prohibited availability dependent on bandit faction standing
             if (policy == TradePolicy.Prohibited && rng.NextSingle() > 0.5f) {
                 continue;
             }
 
-            // Calculate mid-price with location, scarcity, and policy markups
             var locationMarkup = Tuning.Economy.LocalMarkup(commodity, Location);
             var scarcityPremium = commodity.ScarcityPremium(Location);
             var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
 
             float midPrice = commodity.CostAt(Location) * scarcityPremium * policyMultiplier;
 
-            // Calculate bid-ask spread
             float bidAskSpread = Tuning.Trade.baseBidAskSpread;
             bidAskSpread *= seller?.Spread ?? 1.0f;
             float spreadAmount = midPrice * bidAskSpread;
 
-            // Ask price (player buys from NPC)
             float askPrice = midPrice + spreadAmount / 2;
-            // Bid price (player sells to NPC)
             float bidPrice = midPrice - spreadAmount / 2;
 
-            // Add commodity to seller's inventory
             var quantity = Inventory.QuantitySold(CFrac / locationMarkup, commodity, Location);
             Seller.Cargo[commodity] += quantity;
 
-            // Create proposals
             var saleQuantity = 1f;
-            var sellOffer = new CommodityOffer(commodity, (float)Math.Floor(saleQuantity));
-            var sellPrice = saleQuantity * askPrice;
 
-            yield return new ProposeSellBuy(sellOffer, sellPrice, "B");
+            // Trader sells (player buys)
+            offers.Add(new TradeOffer {
+                Commodity = commodity,
+                Direction = TradeDirection.Sell,
+                PricePerUnit = askPrice,
+                Quantity = (float)Math.Floor(saleQuantity)
+            });
 
-            var buyOffer = new CommodityOffer(commodity, (float)Math.Ceiling(saleQuantity));
-            var buyPrice = saleQuantity * bidPrice;
-
-            yield return new ProposeBuySell(buyPrice, buyOffer, "S");
+            // Trader buys (player sells)
+            offers.Add(new TradeOffer {
+                Commodity = commodity,
+                Direction = TradeDirection.Buy,
+                PricePerUnit = bidPrice,
+                Quantity = (float)Math.Ceiling(saleQuantity)
+            });
         }
 
-        // Offer segments from trade inventory if available
+        // Offer segments from trade inventory
         foreach (var segment in seller?.Cargo.Segments.ToList() ?? []) {
-            // Check faction policy for this segment kind
             var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
 
-            // Skip prohibited segments
             if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
                 continue;
             }
 
-            var localCost =  segment.CostAt(Location);
+            var localCost = segment.CostAt(Location);
             var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
             var price = localCost * merchantMarkup * policyMultiplier;
 
-            yield return new ProposeSellBuy(new SegmentOffer(segment), price);
+            offers.Add(new TradeOffer {
+                Segment = segment,
+                Direction = TradeDirection.Sell,
+                PricePerUnit = price,
+                Quantity = 1
+            });
         }
 
+        // Generate segments for sale
         int SaleSegments = CrawlerEx.PoissonQuantile((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1), ref rng);
-        while (SaleSegments --> 0) {
+        while (SaleSegments-- > 0) {
             var segmentDef = rng.ChooseRandom(SegmentEx.AllDefs)!;
             var segment = segmentDef.NewSegment(rng.Seed());
 
-            // Check faction policy for this segment kind
             var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
 
-            // Skip prohibited segments
             if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
                 continue;
             }
@@ -152,7 +139,14 @@ public static class TradeEx {
             Seller.Cargo.Segments.Add(segment);
             var price = segment.Cost * markup;
 
-            yield return new ProposeSellBuy(new SegmentOffer(segment), price);
+            offers.Add(new TradeOffer {
+                Segment = segment,
+                Direction = TradeDirection.Sell,
+                PricePerUnit = price,
+                Quantity = 1
+            });
         }
+
+        return offers;
     }
 }

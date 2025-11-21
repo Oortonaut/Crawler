@@ -59,19 +59,14 @@ public class ActorToActor {
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
 
-    public List<IProposal> StoredProposals { get; } = new();
-
-    /// <summary>Add a proposal to the persistent list</summary>
-    public void AddProposal(IProposal proposal) {
-        StoredProposals.Add(proposal);
-        DirtyInteractions = true;
+    // Ultimatum state for demands/threats with timeout
+    public class UltimatumState {
+        public long ExpirationTime { get; set; }
+        public string Type { get; set; } = "";
+        public object? Data { get; set; }
     }
 
-    /// <summary>Remove a specific proposal from the persistent list</summary>
-    public void RemoveProposal(IProposal proposal) {
-        StoredProposals.Remove(proposal);
-        DirtyInteractions = true;
-    }
+    public UltimatumState? Ultimatum { get; set; }
 
     public bool DirtyInteractions { get; set; } = true;
     public override string ToString() {
@@ -215,19 +210,6 @@ public class Crawler: IActor {
 
     public Faction Faction { get; set; }
     public int EvilPoints { get; set; } = 0;
-    public List<IProposal> StoredProposals { get; private set; } = new();
-    public virtual IEnumerable<IProposal> Proposals() {
-        // Yield from components (generated fresh each call)
-        foreach (var component in _components) {
-            foreach (var proposal in component.GenerateProposals(this)) {
-                yield return proposal;
-            }
-        }
-        // Also yield from stored proposals (for backwards compatibility and non-component proposals)
-        foreach (var proposal in StoredProposals) {
-            yield return proposal;
-        }
-    }
 
     // Component system
     List<IActorComponent> _components = new();
@@ -1037,55 +1019,6 @@ public class Crawler: IActor {
         var result = new LocationActor();
         return result;
     }
-
-    /// <summary>
-    /// Helper: Set up bandit extortion ultimatum if conditions are met
-    /// </summary>
-    void SetupBanditExtortion(IActor target) {
-        return;
-
-        if (Faction != Faction.Bandit || target.Faction != Faction.Player) return;
-
-        float cargoValue = target.Supplies.ValueAt(Location);
-        if (cargoValue >= Tuning.Bandit.minValueThreshold &&
-            Rng.NextSingle() < Tuning.Bandit.demandChance &&
-            !To(target).Hostile &&
-            !To(target).Surrendered &&
-            !IsDisarmed) {
-
-            var extortion = new ProposeAttackOrLoot(Rng / 2, Tuning.Bandit.demandFraction);
-            To(target).AddProposal(extortion);
-        }
-    }
-
-    /// <summary>
-    /// Helper: Scan for contraband and set up seizure/tax ultimatums if needed
-    /// </summary>
-    void SetupContrabandAndTaxes(IActor target) {
-        var toFaction = To(target.Faction);
-        if (!Flags.HasFlag(EActorFlags.Settlement))
-            return;
-
-        var seizure = new ProposeSearchSeizeHostile(this, target);
-        To(target).AddProposal(seizure);
-
-        // Taxes for settlements in own territory
-        // if ((Flags & EActorFlags.Settlement) != 0 &&
-        //     Faction.IsCivilian() &&
-        //     Location.Sector.ControllingFaction == Faction) {
-        //
-        //     var taxes = new ProposeTaxes(Tuning.Civilian.taxRate);
-        //     To(target).AddProposal(taxes);
-        // }
-    }
-
-    /// <summary>
-    /// Helper: Expire all persistent proposals when leaving encounter
-    /// </summary>
-    void ExpireProposals(IActor other) {
-        To(other).StoredProposals.Clear();
-    }
-
 
     // Accessor methods for save/load
     public Dictionary<IActor, ActorToActor> GetRelations() => _relations;

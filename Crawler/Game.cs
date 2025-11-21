@@ -1173,29 +1173,24 @@ public class Game {
                     // Instantiate the encounter
                     var encounter = location.GetEncounter();
 
-                    // Gather statistics from any crawler's trade proposals
+                    // Gather statistics from any crawler's trade offers
                     foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
                         crawlersProcessed++;
-                        var tradeProposals = crawler.MakeTradeProposals(Rng.Seed(), 1.0f);
+                        var tradeOffers = crawler.MakeTradeOffers(Rng.Seed(), 1.0f);
 
                         // Track which commodities this trader offers
                         var offeredCommodities = new HashSet<Commodity>();
 
-                        foreach (var proposal in tradeProposals.OfType<ProposeSellBuy>()) {
-                            // Crawler is selling to player (player buys)
-                            if (proposal.Stuff is CommodityOffer commodityOffer) {
-                                float pricePerUnit = proposal.Cash / commodityOffer.Amount;
-                                buyPrices[commodityOffer.commodity].Add(pricePerUnit);
-                                offeredCommodities.Add(commodityOffer.commodity);
-                            }
-                        }
-
-                        foreach (var proposal in tradeProposals.OfType<ProposeBuySell>()) {
-                            // Crawler is buying from player (player sells)
-                            if (proposal.Stuff is CommodityOffer commodityOffer) {
-                                float pricePerUnit = proposal.Cash / commodityOffer.Amount;
-                                sellPrices[commodityOffer.commodity].Add(pricePerUnit);
-                                offeredCommodities.Add(commodityOffer.commodity);
+                        foreach (var offer in tradeOffers.Where(o => o.IsCommodity)) {
+                            var commodity = offer.Commodity!.Value;
+                            if (offer.Direction == TradeDirection.Sell) {
+                                // Crawler is selling to player (player buys)
+                                buyPrices[commodity].Add(offer.PricePerUnit);
+                                offeredCommodities.Add(commodity);
+                            } else {
+                                // Crawler is buying from player (player sells)
+                                sellPrices[commodity].Add(offer.PricePerUnit);
+                                offeredCommodities.Add(commodity);
                             }
                         }
 

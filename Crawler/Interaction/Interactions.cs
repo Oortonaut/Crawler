@@ -3,9 +3,27 @@
 namespace Crawler;
 
 public enum Immediacy {
-    Disabled,
+    Failed,
     Menu,
     Immediate, // Perform now
+}
+
+public abstract record NewInteraction(IActor Agent, IActor Subject, string MenuOption) : IInteraction {
+    /// <summary>Can this interaction be performed right now?</summary>
+    public abstract Immediacy GetImmediacy(string args = "");
+
+    /// <summary>Execute the interaction. Returns AP cost (0 for instant).</summary>
+    public abstract int Perform(string args = "");
+
+    /// <summary>Display message for viewer. Primarily used for customs and extortion demands.</summary>
+    public virtual string? MessageFor(IActor viewer) => null;
+
+    /// <summary>Display description for menus</summary>
+    public abstract string Description { get; }
+
+    // IInteraction interface implementation
+    public string OptionCode => MenuOption;
+    Immediacy IInteraction.Immediacy(string args = "") => GetImmediacy(args);
 }
 
 /// <summary>
@@ -84,7 +102,7 @@ public record ExchangeInteraction: IInteraction {
             if (soe != null) failures.Add($"Subject: {soe}");
             activity?.SetTag("mode", "Disabled");
             activity?.SetTag("failures", string.Join(", ", failures));
-            return global::Crawler.Immediacy.Disabled;
+            return global::Crawler.Immediacy.Failed;
         }
     }
 

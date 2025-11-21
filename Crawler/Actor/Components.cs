@@ -22,7 +22,7 @@ public delegate void EncounterTickEventHandler(long time);
 
 /// <summary>
 /// Component-based behavior system for actors.
-/// Components can subscribe to encounter events and generate proposals dynamically.
+/// Components can subscribe to encounter events and enumerate interactions directly.
 /// </summary>
 public interface IActorComponent {
     /// <summary>The actor that owns this component</summary>
@@ -31,8 +31,8 @@ public interface IActorComponent {
     /// <summary>Initialize the component with its owner</summary>
     void Initialize(IActor owner);
 
-    /// <summary>Generate proposals this component provides</summary>
-    IEnumerable<IProposal> GenerateProposals(IActor owner);
+    /// <summary>Enumerate interactions this component provides between owner and subject</summary>
+    IEnumerable<NewInteraction> EnumerateInteractions(IActor subject);
 
     /// <summary>Called when this component is added to an actor</summary>
     void OnComponentAdded();
@@ -57,7 +57,9 @@ public abstract class ActorComponentBase : IActorComponent {
         Owner = owner;
     }
 
-    public abstract IEnumerable<IProposal> GenerateProposals(IActor owner);
+    public virtual IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+        yield break;
+    }
 
     public virtual void OnComponentAdded() { }
 

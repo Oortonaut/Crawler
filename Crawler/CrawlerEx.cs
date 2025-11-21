@@ -257,29 +257,25 @@ public static partial class CrawlerEx {
         }
         return string.IsNullOrWhiteSpace(line) ? dflt : line;
     }
-    public static IEnumerable<IInteraction> InteractionsWith(this IActor agent, IActor subject) {
+    /// <summary>
+    /// Get all interactions between agent and subject using component-based system
+    /// </summary>
+    public static IEnumerable<NewInteraction> InteractionsWith(this IActor agent, IActor subject) {
         using var activity = LogCat.Interaction.StartActivity($"{nameof(InteractionsWith)} {agent.Name} {subject.Name})")?
             .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("SubjectFaction", subject.Faction)
             .SetTag("AgentToSubject", agent.To(subject).ToString())
             .SetTag("SubjectToAgent", subject.To(agent).ToString());
 
-        foreach (var proposal in agent.Proposals()) {
-            foreach (var interaction in proposal.TestGetInteractions(agent, subject)) {
+        // Get interactions from agent's components
+        foreach (var component in agent.Components) {
+            foreach (var interaction in component.EnumerateInteractions(subject)) {
                 yield return interaction;
             }
         }
-        foreach (var proposal in subject.Proposals()) {
-            foreach (var interaction in proposal.TestGetInteractions(subject, agent)) {
-                yield return interaction;
-            }
-        }
-        foreach (var proposal in agent.To(subject).StoredProposals) {
-            foreach (var interaction in proposal.TestGetInteractions(agent, subject)) {
-                yield return interaction;
-            }
-        }
-        foreach (var proposal in subject.To(agent).StoredProposals) {
-            foreach (var interaction in proposal.TestGetInteractions(subject, agent)) {
+
+        // Get interactions from subject's components
+        foreach (var component in subject.Components) {
+            foreach (var interaction in component.EnumerateInteractions(agent)) {
                 yield return interaction;
             }
         }
@@ -410,7 +406,7 @@ public static partial class CrawlerEx {
             }
             var immediacy = interaction.Immediacy();
             string description = interaction.Description;
-            if (immediacy == Immediacy.Disabled && interaction is ExchangeInteraction exchange) {
+            if (immediacy == Immediacy.Failed && interaction is ExchangeInteraction exchange) {
                 var reason = exchange.FailureReason();
                 if (reason != null) {
                     description = $"{description} ({reason})";

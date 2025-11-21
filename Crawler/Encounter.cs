@@ -87,7 +87,7 @@ public sealed class Encounter {
             string prefix = "C" + (char)('A' + index);
             using var activityOther = Scope($"Menu {prefix}")?
                 .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("Subject.Faction", subject.Faction);
-            var interactions = agent.InteractionsWith(subject).ToList();
+            var interactions = agent.InteractionsWith(subject).Cast<IInteraction>().ToList();
             ap += interactions.TickInteractions(agent, prefix);
             var agentActorMenus = agent.InteractionMenuItems(interactions, subject.Brief(agent), prefix);
             result.AddRange(agentActorMenus);
@@ -234,6 +234,13 @@ public sealed class Encounter {
         var player = Crawler.NewRandom(seed, Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         player.Flags |= EActorFlags.Player;
         player.Faction = Faction.Player;
+
+        // Add player-specific components
+        var actorRng = new XorShift(seed);
+        player.AddComponent(new AttackComponent("A"));
+        player.AddComponent(new SurrenderComponent(actorRng.Seed(), "S"));
+        player.AddComponent(new PlayerDemandComponent(actorRng.Seed(), 0.5f, "X"));
+
         return player;
     }
     public Crawler GenerateBanditActor(ulong seed) {
@@ -292,6 +299,8 @@ public sealed class Encounter {
         settlement.Flags &= ~EActorFlags.Mobile;
         // Use components instead of StoredProposals
         settlement.AddComponent(new TradeOfferComponent(settlementRng.Seed(), 1f));
+        settlement.AddComponent(new RepairComponent("R", 1.2f));
+        settlement.AddComponent(new LicenseComponent("I"));
         settlement.AddComponent(new SettlementContrabandComponent());
         settlement.AddComponent(new EncounterMessengerComponent());
         settlement.UpdateSegmentCache();
@@ -374,7 +383,7 @@ public sealed class Encounter {
         Inv.Add(resource, amt);
 
         var resourceActor = new StaticActor(name, giftDesc, Faction.Independent, Inv, Location);
-        resourceActor.StoredProposals.Add(new ProposeLootTake(Rng / 'H', verb, "H"));
+        resourceActor.AddComponent(new HarvestComponent(Inv, verb, "H"));
         AddActor(resourceActor);
     }
     public void GenerateHazard(ulong seed) {
@@ -456,10 +465,12 @@ public sealed class Encounter {
         Risked.Add(penaltyType, penaltyAmt);
 
         var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent, Promised, Location);
-        hazardActor.StoredProposals.Add(new ProposeLootRisk(Rng / 1, hazardActor,
+        hazardActor.AddComponent(new HazardComponent(
+            Rng.Seed(),
             Risked,
             Tuning.Game.hazardNegativePayoffChance,
-            description));
+            description,
+            "H"));
         AddActor(hazardActor);
     }
     public Encounter Generate() {
