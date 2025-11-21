@@ -130,18 +130,6 @@ public static partial class CollectionEx {
         return value;
     }
 
-    public static TValue GetOrNullAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key) where TValue: new() {
-        return dict.GetOrNullAddNew(key, () => new TValue());
-    }
-
-    public static TValue GetOrNullAddNew<TKey, TValue>(this IDictionary<TKey, TValue> dict, TKey key, Func<TValue> gen) {
-        if (!dict.TryGetValue(key, out var value) || value == null) {
-            value = gen();
-            dict[key] = value;
-        }
-        return value;
-    }
-
     // Sequence transformations
     public static IEnumerable<T?> PadTo<T>(this IEnumerable<T> source, int width) {
         foreach (var i in source) {

@@ -112,9 +112,16 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     public int Count => _count;
     public bool IsReadOnly => false;
 
-    public T this[int index] {
+    T IList<T>.this[int index] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _values[index];
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set => _values[index] = value;
+    }
+
+    T IReadOnlyList<T>.this[int index] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _values[index];
     }
 
     public int IndexOf(T item) {
@@ -225,6 +232,258 @@ public struct EArray<ENUM, T>: IEnumerable<T>, IList<T>, ICollection<T>, IDictio
     static int _addIndex;
 }
 
+/// <summary>
+/// A variation of EArray where default values (null, 0, false) indicate a missing key.
+/// </summary>
+public struct EArraySparse<ENUM, T> : IEnumerable<T>, IList<T>, ICollection<T>, IDictionary<ENUM, T>, IReadOnlyList<T>, IReadOnlyDictionary<ENUM, T> where ENUM : struct, Enum, IConvertible {
+    public EArraySparse() {
+        _values = new T[_count];
+        _addIndex = 0;
+    }
+    public EArraySparse(params T[] items) : this() {
+        _values = items;
+        if (items.Length != _count) {
+            throw new ArgumentException("Invalid number of items");
+        }
+    }
+    public EArraySparse(IEnumerable<T> items) {
+        _values = items.PadTo(_count).Cast<T>().ToArray();
+        if (_values.Count() != _count) {
+            throw new ArgumentException("Invalid number of items");
+        }
+    }
+    // Initialize from pairs, leaving unmentioned keys as null
+    public EArraySparse(IEnumerable<(ENUM, T)> items) : this() {
+        foreach (var (key, value) in items) {
+            this[key] = value;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static int ToIndex(ENUM key) {
+        if (Unsafe.SizeOf<ENUM>() == sizeof(int)) return Unsafe.As<ENUM, int>(ref key);
+        if (Unsafe.SizeOf<ENUM>() == sizeof(byte)) return Unsafe.As<ENUM, byte>(ref key);
+        if (Unsafe.SizeOf<ENUM>() == sizeof(short)) return Unsafe.As<ENUM, short>(ref key);
+        return (int)(object)key;
+    }
+        static int _count;
+
+        static EArraySparse() {
+            _keys = Enum.GetValues<ENUM>();
+            _count = Enum.GetValuesAsUnderlyingType<ENUM>().Length;
+            // Removed the runtime check for nullable types
+        }
+
+        // Helper to check for "missing" (default) values generically
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static bool IsPresent(T value) {
+            // This works for both reference types (!= null) and value types (!= 0)
+            return !EqualityComparer<T>.Default.Equals(value, default);
+        }
+
+        T IDictionary<ENUM, T>.this[ENUM key] {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get {
+                var val = _values[ToIndex(key)];
+                if (!IsPresent(val)) throw new KeyNotFoundException($"Key {key} is missing (value is default)");
+                return val;
+            }
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set {
+                _values[ToIndex(key)] = value;
+            }
+        }
+
+        T IReadOnlyDictionary<ENUM, T>.this[ENUM key] {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get {
+                var val = _values[ToIndex(key)];
+                if (!IsPresent(val)) throw new KeyNotFoundException($"Key {key} is missing (value is default)");
+                return val;
+            }
+        }
+
+    // Direct ref access (Advanced): Returns the slot directly.
+    // Caller sees null if missing. Useful for "Get or Add" patterns via ref.
+    public ref T this[ENUM key] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get {
+            return ref _values[ToIndex(key)];
+        }
+    }
+
+    public void Initialize() => _values.Initialize();
+    // Caution: Initialize(value) might fill "missing" slots if value is not null
+    public void Initialize(T value) => Array.Fill(_values, value);
+
+    public int Length => _values.Length;
+    public T[] Items => _values; // Raw array access (includes nulls)
+
+    public void Add(T value) {
+        if (_addIndex >= _values.Length) throw new InvalidOperationException("Cannot add more items: array is full");
+        _values[_addIndex++] = value;
+    }
+
+    // Custom Enumerator that skips nulls
+    public Enumerator GetEnumerator() => new Enumerator(_values);
+    IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    // Pairs iterator only returns present items
+    public IEnumerable<(ENUM Key, T Value)> Pairs() {
+        for (int i = 0; i < _keys.Length; i++) {
+            var val = _values[i];
+            if (IsPresent(val)) {
+                yield return (_keys[i], val);
+            }
+        }
+    }
+
+    // Count is O(N) because we must scan for non-nulls
+    public int Count {
+        get {
+            int c = 0;
+            foreach (var v in _values) if (IsPresent(v)) c++;
+            return c;
+        }
+    }
+
+    public bool IsReadOnly => false;
+
+    T IList<T>.this[int index] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _values[index];
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        set => _values[index] = value;
+    }
+
+    T IReadOnlyList<T>.this[int index] {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _values[index];
+    }
+
+    public int IndexOf(T item) => Array.IndexOf(_values, item);
+    public bool Contains(T item) => IsPresent(item) && IndexOf(item) >= 0;
+    public void CopyTo(T[] array, int arrayIndex) {
+        // Copy only present items? Or copy raw array?
+        // ICollection.CopyTo usually copies elements. Since this looks like a collection of "present" items:
+        int c = 0;
+        foreach(var item in this) {
+            array[arrayIndex + c++] = item;
+        }
+    }
+
+    public void Insert(int index, T item) => throw new NotSupportedException("Fixed-size enum array");
+    public void RemoveAt(int index) => throw new NotSupportedException("Fixed-size enum array");
+
+    public bool Remove(T item) {
+        int idx = IndexOf(item);
+        if (idx >= 0) {
+            _values[idx] = default!; // Reset to 0/null
+            return true;
+        }
+        return false;
+    }
+
+    public void Clear() {
+        _addIndex = 0;
+        Array.Clear(_values, 0, _values.Length);
+    }
+
+    // IDictionary<ENUM, T> implementation
+    // Keys/Values computed dynamically to skip nulls
+    public ICollection<ENUM> Keys {
+        get {
+            var the = this;
+            return _keys.Where(k => the.ContainsKey(k)).ToList();
+        }
+    }
+    public ICollection<T> Values => _values.Where(v => IsPresent(v)).ToList();
+
+    IEnumerable<ENUM> IReadOnlyDictionary<ENUM, T>.Keys => Keys;
+    IEnumerable<T> IReadOnlyDictionary<ENUM, T>.Values => Values;
+
+    public void Add(ENUM key, T value) => this[key] = value;
+
+    public bool ContainsKey(ENUM key) {
+        int idx = ToIndex(key);
+        return idx < _count && IsPresent(_values[idx]);
+    }
+
+    public bool Remove(ENUM key) {
+        int idx = ToIndex(key);
+        if (idx < _count && IsPresent(_values[idx])) {
+            _values[idx] = default!;
+            return true;
+        }
+        return false;
+    }
+
+    public bool TryGetValue(ENUM key, out T value) {
+        int idx = ToIndex(key);
+        if (idx < _count) {
+            var v = _values[idx];
+            if (IsPresent(v)) {
+                value = v;
+                return true;
+            }
+        }
+        value = default!;
+        return false;
+    }
+
+    public void Add(KeyValuePair<ENUM, T> item) => this[item.Key] = item.Value;
+
+    public bool Contains(KeyValuePair<ENUM, T> item) {
+        return ContainsKey(item.Key) && EqualityComparer<T>.Default.Equals(this[item.Key], item.Value);
+    }
+
+    public void CopyTo(KeyValuePair<ENUM, T>[] array, int arrayIndex) {
+        var pairs = Pairs().ToArray();
+        Array.Copy(pairs.Select(p => new KeyValuePair<ENUM, T>(p.Key, p.Value)).ToArray(), 0, array, arrayIndex, pairs.Length);
+    }
+
+    public bool Remove(KeyValuePair<ENUM, T> item) {
+        if (Contains(item)) {
+            return Remove(item.Key);
+        }
+        return false;
+    }
+
+    IEnumerator<KeyValuePair<ENUM, T>> IEnumerable<KeyValuePair<ENUM, T>>.GetEnumerator() {
+        return Pairs().Select(p => new KeyValuePair<ENUM, T>(p.Key, p.Value)).GetEnumerator();
+    }
+
+    // Enumerator skips nulls
+    public struct Enumerator : IEnumerator<T> {
+        readonly T[] _items;
+        int _index;
+
+        internal Enumerator(T[] items) {
+            _items = items;
+            _index = -1;
+        }
+
+        public T Current => _items[_index];
+        object IEnumerator.Current => Current!;
+
+        public bool MoveNext() {
+            while (++_index < _items.Length) {
+                // Check against default using the default equality comparer
+                if (!EqualityComparer<T>.Default.Equals(_items[_index], default)) return true;
+            }
+            return false;
+        }
+        public void Reset() => _index = -1;
+        public void Dispose() { }
+    }
+
+    T[] _values;
+    static ENUM[] _keys;
+
+    [ThreadStatic]
+    static int _addIndex;
+}
 public static partial class EArrayEx {
     public static EArray<ENUM, T> ToEArray<ENUM, T>(this IEnumerable<T> items) where ENUM : struct, Enum, IConvertible => new(items);
     public static EArray<ENUM, T> ToEArray<ENUM, T>(this T[] items) where ENUM : struct, Enum, IConvertible => new(items);

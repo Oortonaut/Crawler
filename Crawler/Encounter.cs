@@ -46,7 +46,7 @@ public class Encounter {
     GaussianSampler Gaussian;
 
     // Event subscription system
-    EArray<EncounterEventType, List<IEncounterEventHandler>> _eventHandlers = new();
+    EArraySparse<EncounterEventType, List<IEncounterEventHandler>> _eventHandlers = new();
 
     public string Name { get; set; } = "Encounter";
     public string Description { get; set; } = "";

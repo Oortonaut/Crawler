@@ -1014,8 +1014,8 @@ public class Crawler: IActor {
         return (remaining, $" killing {CrewInv} crew and {moraleLoss} morale");
     }
 
-    public EArray<Faction, ActorFaction> FactionRelations { get; } = new();
-    public ActorFaction To(Faction faction) => FactionRelations.GetOrNullAddNew(faction, () => new ActorFaction(this, faction));
+    public EArraySparse<Faction, ActorFaction> FactionRelations { get; } = new();
+    public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
 
     Dictionary<IActor, ActorToActor> _relations = new();
     public bool Knows(IActor other) => _relations.ContainsKey(other);
