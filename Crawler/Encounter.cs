@@ -45,8 +45,11 @@ public class Encounter {
     XorShift Rng;
     GaussianSampler Gaussian;
 
-    // Event subscription system
-    EArraySparse<EncounterEventType, List<IEncounterEventHandler>> _eventHandlers = new();
+    // C# event delegates for encounter events
+    public event EventHandler<ActorArrivedEventArgs>? ActorArrived;
+    public event EventHandler<ActorLeavingEventArgs>? ActorLeaving;
+    public event EventHandler<ActorLeftEventArgs>? ActorLeft;
+    public event EventHandler<EncounterTickEventArgs>? EncounterTick;
 
     public string Name { get; set; } = "Encounter";
     public string Description { get; set; } = "";
@@ -92,33 +95,40 @@ public class Encounter {
         return result;
     }
 
-    // Event subscription system
-    public void Subscribe(EncounterEventType eventType, IEncounterEventHandler handler) {
-        if (!_eventHandlers.ContainsKey(eventType)) {
-            _eventHandlers[eventType] = new List<IEncounterEventHandler>();
-        }
-        if (!_eventHandlers[eventType].Contains(handler)) {
-            _eventHandlers[eventType].Add(handler);
-        }
-    }
-
-    public void Unsubscribe(EncounterEventType eventType, IEncounterEventHandler handler) {
-        if (_eventHandlers.TryGetValue(eventType, out var handlers)) {
-            handlers.Remove(handler);
+    // Event invocation helpers
+    protected virtual void OnActorArrived(ActorArrivedEventArgs e) {
+        try {
+            ActorArrived?.Invoke(this, e);
+        } catch (Exception ex) {
+            // Don't let a component error break the encounter
+            Log.LogError(ex, $"Error in ActorArrived event handler: {ex.Message}");
         }
     }
 
-    void PublishEvent(EncounterEvent evt) {
-        if (_eventHandlers.TryGetValue(evt.Type, out var handlers)) {
-            // Create a copy to avoid modification during iteration
-            foreach (var handler in handlers.ToList()) {
-                try {
-                    handler.HandleEvent(evt);
-                } catch (Exception ex) {
-                    // Don't let a component error break the encounter
-                    Log.LogError(ex, $"Error in event handler for {evt.Type}: {ex.Message}");
-                }
-            }
+    protected virtual void OnActorLeaving(ActorLeavingEventArgs e) {
+        try {
+            ActorLeaving?.Invoke(this, e);
+        } catch (Exception ex) {
+            // Don't let a component error break the encounter
+            Log.LogError(ex, $"Error in ActorLeaving event handler: {ex.Message}");
+        }
+    }
+
+    protected virtual void OnActorLeft(ActorLeftEventArgs e) {
+        try {
+            ActorLeft?.Invoke(this, e);
+        } catch (Exception ex) {
+            // Don't let a component error break the encounter
+            Log.LogError(ex, $"Error in ActorLeft event handler: {ex.Message}");
+        }
+    }
+
+    protected virtual void OnEncounterTick(EncounterTickEventArgs e) {
+        try {
+            EncounterTick?.Invoke(this, e);
+        } catch (Exception ex) {
+            // Don't let a component error break the encounter
+            Log.LogError(ex, $"Error in EncounterTick event handler: {ex.Message}");
         }
     }
 
@@ -197,9 +207,7 @@ public class Encounter {
 
         // Subscribe all actor components to encounter events
         foreach (var component in actor.Components) {
-            foreach (var eventType in component.SubscribedEvents) {
-                Subscribe(eventType, component);
-            }
+            component.SubscribeToEncounter(this);
         }
 
         var existingActors = ActorsExcept(actor).ToList();
@@ -212,8 +220,8 @@ public class Encounter {
             other.Greet(actor);
         }
 
-        // Publish ActorArrived event (new component-based system)
-        PublishEvent(new EncounterEvent(EncounterEventType.ActorArrived, actor, arrivalTime, this));
+        // Raise ActorArrived event
+        OnActorArrived(new ActorArrivedEventArgs(actor, arrivalTime, this));
 
         if (actor is Crawler crawler) {
             crawler.LastEvent = arrivalTime;
@@ -227,8 +235,8 @@ public class Encounter {
     public virtual void RemoveActor(IActor actor) {
         var remainingActors = ActorsExcept(actor).ToList();
 
-        // Publish ActorLeaving event (new component-based system)
-        PublishEvent(new EncounterEvent(EncounterEventType.ActorLeaving, actor, LastEncounterEvent, this));
+        // Raise ActorLeaving event
+        OnActorLeaving(new ActorLeavingEventArgs(actor, LastEncounterEvent, this));
 
         // Notify all remaining actors about the leaving actor (old method - will be deprecated)
         foreach (var other in remainingActors) {
@@ -237,14 +245,12 @@ public class Encounter {
 
         actor.Leave(remainingActors);
 
-        // Publish ActorLeft event (new component-based system)
-        PublishEvent(new EncounterEvent(EncounterEventType.ActorLeft, actor, LastEncounterEvent, this));
+        // Raise ActorLeft event
+        OnActorLeft(new ActorLeftEventArgs(actor, LastEncounterEvent, this));
 
         // Unsubscribe all actor components from encounter events
         foreach (var component in actor.Components) {
-            foreach (var eventType in component.SubscribedEvents) {
-                Unsubscribe(eventType, component);
-            }
+            component.UnsubscribeFromEncounter(this);
         }
 
         actors.Remove(actor);

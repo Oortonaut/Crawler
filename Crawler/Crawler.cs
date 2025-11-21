@@ -240,9 +240,7 @@ public class Crawler: IActor {
         // Subscribe component to encounter events if we're in an encounter
         if (Location?.HasEncounter == true) {
             var encounter = Location.GetEncounter();
-            foreach (var eventType in component.SubscribedEvents) {
-                encounter.Subscribe(eventType, component);
-            }
+            component.SubscribeToEncounter(encounter);
         }
     }
     public void RemoveComponent(IActorComponent component) {
@@ -250,9 +248,7 @@ public class Crawler: IActor {
             // Unsubscribe component from encounter events
             if (Location?.HasEncounter == true) {
                 var encounter = Location.GetEncounter();
-                foreach (var eventType in component.SubscribedEvents) {
-                    encounter.Unsubscribe(eventType, component);
-                }
+                component.UnsubscribeFromEncounter(encounter);
             }
             component.OnComponentRemoved();
         }

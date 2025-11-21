@@ -11,28 +11,31 @@ public class BanditExtortionComponent : ActorComponentBase {
         _rng = new XorShift(seed);
     }
 
-    public override IEnumerable<EncounterEventType> SubscribedEvents => new[] {
-        EncounterEventType.ActorArrived,
-        EncounterEventType.ActorLeft
-    };
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.ActorArrived += OnActorArrived;
+        encounter.ActorLeft += OnActorLeft;
+    }
 
-    public override void HandleEvent(EncounterEvent evt) {
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeft -= OnActorLeft;
+    }
+
+    void OnActorArrived(object? sender, ActorArrivedEventArgs e) {
         if (Owner is not Crawler bandit) return;
 
-        switch (evt.Type) {
-            case EncounterEventType.ActorArrived:
-                // When a new actor arrives, check if we should extort them
-                if (evt.Actor != null && evt.Actor != Owner) {
-                    SetupExtortion(bandit, evt.Actor);
-                }
-                break;
+        // When a new actor arrives, check if we should extort them
+        if (e.Actor != Owner) {
+            SetupExtortion(bandit, e.Actor);
+        }
+    }
 
-            case EncounterEventType.ActorLeft:
-                // When an actor leaves, clean up any ultimatums
-                if (evt.Actor != null && evt.Actor != Owner) {
-                    ExpireProposals(bandit, evt.Actor);
-                }
-                break;
+    void OnActorLeft(object? sender, ActorLeftEventArgs e) {
+        if (Owner is not Crawler bandit) return;
+
+        // When an actor leaves, clean up any ultimatums
+        if (e.Actor != Owner) {
+            ExpireProposals(bandit, e.Actor);
         }
     }
 
@@ -70,29 +73,33 @@ public class BanditExtortionComponent : ActorComponentBase {
 /// Settlements scan for prohibited goods and create ultimatums to seize them or turn hostile.
 /// </summary>
 public class SettlementContrabandComponent : ActorComponentBase {
-    public override IEnumerable<EncounterEventType> SubscribedEvents => new[] {
-        EncounterEventType.ActorArrived,
-        EncounterEventType.ActorLeft
-    };
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.ActorArrived += OnActorArrived;
+        encounter.ActorLeft += OnActorLeft;
+    }
 
-    public override void HandleEvent(EncounterEvent evt) {
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeft -= OnActorLeft;
+    }
+
+    void OnActorArrived(object? sender, ActorArrivedEventArgs e) {
         if (Owner is not Crawler settlement) return;
         if (!settlement.Flags.HasFlag(EActorFlags.Settlement)) return;
 
-        switch (evt.Type) {
-            case EncounterEventType.ActorArrived:
-                // When a new actor arrives, scan for contraband
-                if (evt.Actor != null && evt.Actor != Owner) {
-                    SetupContrabandScan(settlement, evt.Actor);
-                }
-                break;
+        // When a new actor arrives, scan for contraband
+        if (e.Actor != Owner) {
+            SetupContrabandScan(settlement, e.Actor);
+        }
+    }
 
-            case EncounterEventType.ActorLeft:
-                // When an actor leaves, clean up any ultimatums
-                if (evt.Actor != null && evt.Actor != Owner) {
-                    ExpireProposals(settlement, evt.Actor);
-                }
-                break;
+    void OnActorLeft(object? sender, ActorLeftEventArgs e) {
+        if (Owner is not Crawler settlement) return;
+        if (!settlement.Flags.HasFlag(EActorFlags.Settlement)) return;
+
+        // When an actor leaves, clean up any ultimatums
+        if (e.Actor != Owner) {
+            ExpireProposals(settlement, e.Actor);
         }
     }
 
@@ -131,11 +138,7 @@ public class TradeOfferComponent : ActorComponentBase {
         _wealthFraction = wealthFraction;
     }
 
-    public override IEnumerable<EncounterEventType> SubscribedEvents => Array.Empty<EncounterEventType>();
-
-    public override void HandleEvent(EncounterEvent evt) {
-        // Trade offers don't need to respond to encounter events
-    }
+    // Trade offers don't need to subscribe to encounter events
 
     public override IEnumerable<IProposal> GenerateProposals(IActor owner) {
         // Generate trade proposals fresh each time
@@ -147,22 +150,25 @@ public class TradeOfferComponent : ActorComponentBase {
 /// Component that displays arrival/departure messages.
 /// </summary>
 public class EncounterMessengerComponent : ActorComponentBase {
-    public override IEnumerable<EncounterEventType> SubscribedEvents => new[] {
-        EncounterEventType.ActorArrived,
-        EncounterEventType.ActorLeft
-    };
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.ActorArrived += OnActorArrived;
+        encounter.ActorLeft += OnActorLeft;
+    }
 
-    public override void HandleEvent(EncounterEvent evt) {
-        if (evt.Actor == null || evt.Actor == Owner) return;
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeft -= OnActorLeft;
+    }
 
-        switch (evt.Type) {
-            case EncounterEventType.ActorArrived:
-                Owner.Message($"{evt.Actor.Name} enters");
-                break;
+    void OnActorArrived(object? sender, ActorArrivedEventArgs e) {
+        if (e.Actor != Owner) {
+            Owner.Message($"{e.Actor.Name} enters");
+        }
+    }
 
-            case EncounterEventType.ActorLeft:
-                Owner.Message($"{evt.Actor.Name} leaves");
-                break;
+    void OnActorLeft(object? sender, ActorLeftEventArgs e) {
+        if (e.Actor != Owner) {
+            Owner.Message($"{e.Actor.Name} leaves");
         }
     }
 
@@ -176,12 +182,16 @@ public class EncounterMessengerComponent : ActorComponentBase {
 /// Keeps only hostile relationships and relationships with settlements.
 /// </summary>
 public class RelationPrunerComponent : ActorComponentBase {
-    public override IEnumerable<EncounterEventType> SubscribedEvents => new[] {
-        EncounterEventType.ActorLeaving
-    };
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.ActorLeaving += OnActorLeaving;
+    }
 
-    public override void HandleEvent(EncounterEvent evt) {
-        if (evt.Actor != Owner) return;
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.ActorLeaving -= OnActorLeaving;
+    }
+
+    void OnActorLeaving(object? sender, ActorLeavingEventArgs e) {
+        if (e.Actor != Owner) return;
         if (Owner is not Crawler crawler) return;
 
         // Prune relations when this actor is leaving
