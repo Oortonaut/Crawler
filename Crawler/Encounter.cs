@@ -45,6 +45,8 @@ public class Encounter {
     XorShift Rng;
     GaussianSampler Gaussian;
 
+    // Event subscription system
+    EArray<EncounterEventType, List<IEncounterEventHandler>> _eventHandlers = new();
 
     public string Name { get; set; } = "Encounter";
     public string Description { get; set; } = "";
@@ -88,6 +90,36 @@ public class Encounter {
             result.AddRange(agentActorMenus);
         }
         return result;
+    }
+
+    // Event subscription system
+    public void Subscribe(EncounterEventType eventType, IEncounterEventHandler handler) {
+        if (!_eventHandlers.ContainsKey(eventType)) {
+            _eventHandlers[eventType] = new List<IEncounterEventHandler>();
+        }
+        if (!_eventHandlers[eventType].Contains(handler)) {
+            _eventHandlers[eventType].Add(handler);
+        }
+    }
+
+    public void Unsubscribe(EncounterEventType eventType, IEncounterEventHandler handler) {
+        if (_eventHandlers.TryGetValue(eventType, out var handlers)) {
+            handlers.Remove(handler);
+        }
+    }
+
+    void PublishEvent(EncounterEvent evt) {
+        if (_eventHandlers.TryGetValue(evt.Type, out var handlers)) {
+            // Create a copy to avoid modification during iteration
+            foreach (var handler in handlers.ToList()) {
+                try {
+                    handler.HandleEvent(evt);
+                } catch (Exception ex) {
+                    // Don't let a component error break the encounter
+                    Log.LogError(ex, $"Error in event handler for {evt.Type}: {ex.Message}");
+                }
+            }
+        }
     }
 
     // Dynamic crawler management
@@ -163,15 +195,26 @@ public class Encounter {
         actors[actor] = metadata;
         actor.To(Location).Visited = true;
 
+        // Subscribe all actor components to encounter events
+        foreach (var component in actor.Components) {
+            foreach (var eventType in component.SubscribedEvents) {
+                Subscribe(eventType, component);
+            }
+        }
+
         var existingActors = ActorsExcept(actor).ToList();
 
-        // Notify new actor about all existing actors
+        // Notify new actor about all existing actors (old method - will be deprecated)
         actor.Meet(this, LastEncounterEvent, existingActors);
 
-        // Notify all existing actors about the new actor
+        // Notify all existing actors about the new actor (old method - will be deprecated)
         foreach (var other in existingActors) {
             other.Greet(actor);
         }
+
+        // Publish ActorArrived event (new component-based system)
+        PublishEvent(new EncounterEvent(EncounterEventType.ActorArrived, actor, arrivalTime, this));
+
         if (actor is Crawler crawler) {
             crawler.LastEvent = arrivalTime;
             Schedule(crawler);
@@ -184,12 +227,26 @@ public class Encounter {
     public virtual void RemoveActor(IActor actor) {
         var remainingActors = ActorsExcept(actor).ToList();
 
-        // Notify all remaining actors about the leaving actor
+        // Publish ActorLeaving event (new component-based system)
+        PublishEvent(new EncounterEvent(EncounterEventType.ActorLeaving, actor, LastEncounterEvent, this));
+
+        // Notify all remaining actors about the leaving actor (old method - will be deprecated)
         foreach (var other in remainingActors) {
             other.Part(actor);
         }
 
         actor.Leave(remainingActors);
+
+        // Publish ActorLeft event (new component-based system)
+        PublishEvent(new EncounterEvent(EncounterEventType.ActorLeft, actor, LastEncounterEvent, this));
+
+        // Unsubscribe all actor components from encounter events
+        foreach (var component in actor.Components) {
+            foreach (var eventType in component.SubscribedEvents) {
+                Unsubscribe(eventType, component);
+            }
+        }
+
         actors.Remove(actor);
 
         // Update caching when actors leave
@@ -212,7 +269,8 @@ public class Encounter {
         float segmentWealth = wealth * (1.0f - 0.75f);
         var trader = Crawler.NewRandom(actorRng.Seed(), Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
         trader.Faction = Faction.Independent;
-        trader.StoredProposals.AddRange(trader.MakeTradeProposals(actorRng.Seed(), 0.25f));
+        // Use component instead of StoredProposals
+        trader.AddComponent(new TradeOfferComponent(actorRng.Seed(), 0.25f));
         trader.UpdateSegmentCache();
         return trader;
     }
@@ -229,26 +287,34 @@ public class Encounter {
     }
     public Crawler GenerateBanditActor(ulong seed) {
         using var activity = Scope($"GenerateBandit {nameof(Encounter)}");
+        var actorRng = new XorShift(seed);
         float wealth = Location.Wealth * 0.8f;
         int crew = (int)Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.6f;
         float segmentWealth = wealth * 0.5f;
-        var enemy = Crawler.NewRandom(Rng.Seed(), Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
+        var enemy = Crawler.NewRandom(actorRng.Seed(), Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
         enemy.Faction = Faction.Bandit;
-
+        // Add bandit-specific components
+        enemy.AddComponent(new BanditExtortionComponent(actorRng.Seed()));
+        enemy.AddComponent(new EncounterMessengerComponent());
+        enemy.AddComponent(new RelationPrunerComponent());
         return enemy;
     }
 
     public Crawler GenerateCivilianActor(ulong seed, Faction civilianFaction) {
         using var activity = Scope($"GenerateCivilian {nameof(Encounter)}");
+        var actorRng = new XorShift(seed);
         // Similar to Trade but with faction-specific policies
         float wealth = Location.Wealth * 0.75f;
         int crew = Math.Max(1, (int)(wealth / 40));
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var civilian = Crawler.NewRandom(seed, civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
+        var civilian = Crawler.NewRandom(actorRng.Seed(), civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
         civilian.Faction = civilianFaction;
-        civilian.StoredProposals.AddRange(civilian.MakeTradeProposals(Rng.Seed(), 0.25f));
+        // Use component instead of StoredProposals
+        civilian.AddComponent(new TradeOfferComponent(actorRng.Seed(), 0.25f));
+        civilian.AddComponent(new EncounterMessengerComponent());
+        civilian.AddComponent(new RelationPrunerComponent());
         civilian.UpdateSegmentCache();
         return civilian;
     }
@@ -273,8 +339,10 @@ public class Encounter {
         settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
-        var proposals = settlement.MakeTradeProposals(settlementRng.Seed(), 1);
-        settlement.StoredProposals.AddRange(proposals);
+        // Use components instead of StoredProposals
+        settlement.AddComponent(new TradeOfferComponent(settlementRng.Seed(), 1f));
+        settlement.AddComponent(new SettlementContrabandComponent());
+        settlement.AddComponent(new EncounterMessengerComponent());
         settlement.UpdateSegmentCache();
 
         IEnumerable<string> EncounterNames = [];

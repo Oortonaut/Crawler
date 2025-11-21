@@ -1,14 +1,200 @@
 # Extending Crawler
 
-**Last Updated:** 2025-01-19
+**Last Updated:** 2025-11-21
 **Parent:** [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Quick Navigation
+- [Creating Actor Components](#creating-actor-components) ⭐ NEW
 - [Adding Proposals/Interactions](#adding-proposalsinteractions)
 - [Adding Segments](#adding-segments)
 - [Adding Commodities](#adding-commodities)
 - [Adding Factions](#adding-factions)
 - [Tuning Parameters](#tuning-parameters)
+
+---
+
+## Creating Actor Components
+
+**Difficulty:** Easy-Medium
+**Files:** Add new component class to `ActorComponents.cs`
+**Documentation:** Update [SYSTEMS.md](SYSTEMS.md) and [DATA-MODEL.md](DATA-MODEL.md)
+
+**When to use components:**
+- Adding behavior that responds to encounter events
+- Creating reusable behaviors that can be mixed and matched
+- Generating proposals dynamically instead of caching them
+- Avoiding modification of core IActor/Crawler classes
+
+### Pattern
+
+```csharp
+/// <summary>
+/// Example component that does something when actors arrive
+/// </summary>
+public class MyCustomComponent : ActorComponentBase {
+    // Component state (if needed)
+    ulong _seed;
+
+    public MyCustomComponent(ulong seed) {
+        _seed = seed;
+    }
+
+    // Which events to subscribe to
+    public override IEnumerable<EncounterEventType> SubscribedEvents => new[] {
+        EncounterEventType.ActorArrived,
+        EncounterEventType.ActorLeft
+    };
+
+    // Handle events
+    public override void HandleEvent(EncounterEvent evt) {
+        if (Owner is not Crawler crawler) return;
+
+        switch (evt.Type) {
+            case EncounterEventType.ActorArrived:
+                // React to new actor arriving
+                if (evt.Actor != null && evt.Actor != Owner) {
+                    DoSomethingWithNewActor(crawler, evt.Actor);
+                }
+                break;
+
+            case EncounterEventType.ActorLeft:
+                // React to actor leaving
+                if (evt.Actor != null && evt.Actor != Owner) {
+                    CleanupAfterActor(crawler, evt.Actor);
+                }
+                break;
+        }
+    }
+
+    // Generate proposals (if this component provides any)
+    public override IEnumerable<IProposal> GenerateProposals(IActor owner) {
+        // Option 1: No proposals (just event handling)
+        yield break;
+
+        // Option 2: Generate proposals dynamically
+        // yield return new ProposeMyAction(owner);
+
+        // Option 3: Use existing proposal generators
+        // return owner.MakeTradeProposals(_seed, 0.5f);
+    }
+
+    void DoSomethingWithNewActor(Crawler owner, IActor newActor) {
+        // Your logic here
+        owner.Message($"Detected {newActor.Name}!");
+    }
+
+    void CleanupAfterActor(Crawler owner, IActor leavingActor) {
+        // Your cleanup logic here
+    }
+}
+```
+
+### Adding Component to Actor
+
+```csharp
+// In Encounter generation method (e.g., GenerateSettlement, GenerateBanditActor)
+var actor = Crawler.NewRandom(seed, faction, location, ...);
+actor.AddComponent(new MyCustomComponent(rng.Seed()));
+
+// Components automatically subscribe when actor joins encounter
+encounter.AddActor(actor);
+```
+
+### Component Lifecycle Hooks
+
+```csharp
+public class MyComponent : ActorComponentBase {
+    public override void OnComponentAdded() {
+        // Called when component is first added to actor
+        // Good place for initialization
+        base.OnComponentAdded();
+    }
+
+    public override void OnComponentRemoved() {
+        // Called when component is removed from actor
+        // Good place for cleanup
+        base.OnComponentRemoved();
+    }
+}
+```
+
+### Examples from Codebase
+
+**TradeOfferComponent** - Generates proposals on-demand:
+```csharp
+public class TradeOfferComponent : ActorComponentBase {
+    float _wealthFraction;
+    ulong _seed;
+
+    public TradeOfferComponent(ulong seed, float wealthFraction = 0.25f) {
+        _seed = seed;
+        _wealthFraction = wealthFraction;
+    }
+
+    // No event subscriptions (proposals only)
+    public override IEnumerable<EncounterEventType> SubscribedEvents =>
+        Array.Empty<EncounterEventType>();
+
+    public override void HandleEvent(EncounterEvent evt) { }
+
+    // Generate trade proposals fresh each time
+    public override IEnumerable<IProposal> GenerateProposals(IActor owner) {
+        return owner.MakeTradeProposals(_seed, _wealthFraction);
+    }
+}
+```
+
+**EncounterMessengerComponent** - Displays messages:
+```csharp
+public class EncounterMessengerComponent : ActorComponentBase {
+    public override IEnumerable<EncounterEventType> SubscribedEvents => new[] {
+        EncounterEventType.ActorArrived,
+        EncounterEventType.ActorLeft
+    };
+
+    public override void HandleEvent(EncounterEvent evt) {
+        if (evt.Actor == null || evt.Actor == Owner) return;
+
+        switch (evt.Type) {
+            case EncounterEventType.ActorArrived:
+                Owner.Message($"{evt.Actor.Name} enters");
+                break;
+            case EncounterEventType.ActorLeft:
+                Owner.Message($"{evt.Actor.Name} leaves");
+                break;
+        }
+    }
+
+    public override IEnumerable<IProposal> GenerateProposals(IActor owner) {
+        yield break; // No proposals
+    }
+}
+```
+
+### Component Best Practices
+
+1. **Single Responsibility**: Each component should handle one specific behavior
+2. **Event Selection**: Only subscribe to events you actually need
+3. **Owner Type Checking**: Check `Owner is Crawler` before casting if needed
+4. **Null Checks**: Always check `evt.Actor != null` and `evt.Actor != Owner`
+5. **Error Handling**: Components are called with try-catch, but avoid exceptions
+6. **State Management**: Store component-specific state in fields, not in Owner
+7. **Performance**: Keep HandleEvent() fast; proposals are lazily evaluated
+8. **Seed Management**: Pass seeds to components for deterministic RNG
+
+### When to Use Components vs Proposals
+
+**Use Components when:**
+- You need to react to encounter events
+- You want to generate proposals dynamically
+- You want reusable, pluggable behaviors
+- You're creating actor-specific logic
+
+**Use Proposals when:**
+- You have a standalone interaction type
+- No event handling needed
+- Logic is shared across all actor types
+- Simple capability checks suffice
 
 ---
 

@@ -79,6 +79,124 @@ interface IActor {
 
 ---
 
+## Actor Component System
+
+**Files:** `Components.cs`, `ActorComponents.cs`
+**Purpose:** Pluggable, event-driven behaviors for actors
+
+### IActorComponent Interface
+
+```csharp
+public interface IActorComponent : IEncounterEventHandler {
+    IActor Owner { get; }
+    void Initialize(IActor owner);
+    IEnumerable<IProposal> GenerateProposals(IActor owner);
+    void OnComponentAdded();
+    void OnComponentRemoved();
+    IEnumerable<EncounterEventType> SubscribedEvents { get; }
+}
+```
+
+**Properties:**
+- `Owner` - The actor this component is attached to
+- `SubscribedEvents` - Which encounter events this component wants to receive
+
+**Methods:**
+- `Initialize(owner)` - Called when component is attached to an actor
+- `GenerateProposals(owner)` - Generate proposals dynamically (replaces cached StoredProposals)
+- `OnComponentAdded()` - Lifecycle hook when component is added
+- `OnComponentRemoved()` - Lifecycle hook when component is removed
+- `HandleEvent(EncounterEvent)` - From IEncounterEventHandler, responds to encounter events
+
+### IEncounterEventHandler Interface
+
+```csharp
+public interface IEncounterEventHandler {
+    void HandleEvent(EncounterEvent evt);
+}
+```
+
+Simple interface for anything that can handle encounter events.
+
+### ActorComponentBase
+
+```csharp
+public abstract class ActorComponentBase : IActorComponent {
+    public IActor Owner { get; private set; }
+    public virtual void Initialize(IActor owner);
+    public abstract IEnumerable<IProposal> GenerateProposals(IActor owner);
+    public virtual void OnComponentAdded();
+    public virtual void OnComponentRemoved();
+    public abstract void HandleEvent(EncounterEvent evt);
+    public abstract IEnumerable<EncounterEventType> SubscribedEvents { get; }
+}
+```
+
+Base class providing common component functionality.
+
+### EncounterEvent & EncounterEventType
+
+```csharp
+public enum EncounterEventType {
+    ActorArrived,    // New actor joined encounter
+    ActorLeaving,    // Actor about to leave (cleanup phase)
+    ActorLeft,       // Actor has left encounter
+    EncounterTick,   // Time advancement (reserved)
+}
+
+public record EncounterEvent(
+    EncounterEventType Type,
+    IActor? Actor,
+    long Time,
+    Encounter Encounter
+);
+```
+
+### Built-in Component Types
+
+**BanditExtortionComponent** (`ActorComponents.cs`)
+- Purpose: Handles bandit threats and extortion
+- Subscribes: ActorArrived, ActorLeft
+- Generates: No proposals (uses ActorToActor.StoredProposals for ultimatums)
+
+**SettlementContrabandComponent** (`ActorComponents.cs`)
+- Purpose: Scans for contraband and creates seizure ultimatums
+- Subscribes: ActorArrived, ActorLeft
+- Generates: No proposals (uses ActorToActor.StoredProposals for ultimatums)
+
+**TradeOfferComponent** (`ActorComponents.cs`)
+- Purpose: Generates trade proposals on-demand
+- Subscribes: None
+- Generates: Trade proposals via MakeTradeProposals()
+- Replaces: Cached StoredProposals for trade offers
+
+**EncounterMessengerComponent** (`ActorComponents.cs`)
+- Purpose: Displays arrival/departure messages
+- Subscribes: ActorArrived, ActorLeft
+- Generates: No proposals
+
+**RelationPrunerComponent** (`ActorComponents.cs`)
+- Purpose: Cleans up transient relationships when leaving
+- Subscribes: ActorLeaving
+- Generates: No proposals
+
+### Usage Example
+
+```csharp
+// Creating an actor with components
+var trader = Crawler.NewRandom(seed, faction, location, ...);
+trader.AddComponent(new TradeOfferComponent(seed, 0.25f));
+trader.AddComponent(new EncounterMessengerComponent());
+
+// Components automatically subscribe when actor joins encounter
+encounter.AddActor(trader);
+
+// Proposals generated dynamically
+var proposals = trader.Proposals(); // Yields from all components
+```
+
+---
+
 ## ActorToActor (Relationship State)
 
 **File:** `Crawler.cs:8-43`

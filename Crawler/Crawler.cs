@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Crawler.Logging;
@@ -215,7 +216,47 @@ public class Crawler: IActor {
     public Faction Faction { get; set; }
     public int EvilPoints { get; set; } = 0;
     public List<IProposal> StoredProposals { get; private set; } = new();
-    public virtual IEnumerable<IProposal> Proposals() => StoredProposals;
+    public virtual IEnumerable<IProposal> Proposals() {
+        // Yield from components (generated fresh each call)
+        foreach (var component in _components) {
+            foreach (var proposal in component.GenerateProposals(this)) {
+                yield return proposal;
+            }
+        }
+        // Also yield from stored proposals (for backwards compatibility and non-component proposals)
+        foreach (var proposal in StoredProposals) {
+            yield return proposal;
+        }
+    }
+
+    // Component system
+    List<IActorComponent> _components = new();
+    public IEnumerable<IActorComponent> Components => _components;
+    public void AddComponent(IActorComponent component) {
+        component.Initialize(this);
+        _components.Add(component);
+        component.OnComponentAdded();
+
+        // Subscribe component to encounter events if we're in an encounter
+        if (Location?.HasEncounter == true) {
+            var encounter = Location.GetEncounter();
+            foreach (var eventType in component.SubscribedEvents) {
+                encounter.Subscribe(eventType, component);
+            }
+        }
+    }
+    public void RemoveComponent(IActorComponent component) {
+        if (_components.Remove(component)) {
+            // Unsubscribe component from encounter events
+            if (Location?.HasEncounter == true) {
+                var encounter = Location.GetEncounter();
+                foreach (var eventType in component.SubscribedEvents) {
+                    encounter.Unsubscribe(eventType, component);
+                }
+            }
+            component.OnComponentRemoved();
+        }
+    }
 
     // Scan actor's inventory for contraband based on this faction's policies
     public bool HasContraband(IActor target) {
@@ -269,6 +310,18 @@ public class Crawler: IActor {
     internal long LastEvent = 0;
     public void TickThink(long time) {
         int elapsed = (int)(time - LastEvent);
+        // Run any scheduled per-crawler action when its time is reached
+        if (_nextEventAction != null && NextEvent != 0 && time >= NextEvent) {
+            var action = _nextEventAction;
+            _nextEventAction = null;
+            NextEvent = 0;
+            try {
+                action(this);
+            } catch (Exception ex) {
+                // Don't let a user action break the scheduler
+                Message($"Action error: {ex.Message}");
+            }
+        }
         Tick(time);
         Think(elapsed, Location.GetEncounter().ActorsExcept(this));
     }
@@ -338,6 +391,19 @@ public class Crawler: IActor {
         }
     }
     public long NextEvent { get; set; } = 0;
+
+    Action<Crawler>? _nextEventAction;
+
+    public void SetNextEvent(long time, Action<Crawler> action) {
+        if (time < 0) throw new ArgumentOutOfRangeException(nameof(time));
+        if (action == null) throw new ArgumentNullException(nameof(action));
+
+        NextEvent = time;
+        _nextEventAction = action;
+
+        // Ensure the encounter reschedules this crawler for the new time
+        Location?.GetEncounter()?.Schedule(this);
+    }
     public int? WeaponDelay() {
         int minDelay = Tuning.MaxDelay;
         int N = 0;

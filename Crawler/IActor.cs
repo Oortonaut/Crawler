@@ -105,8 +105,26 @@ public interface IActor {
     /// </summary>
     LocationActor NewRelation(Location other);
 
+    // ===== Component System =====
+    /// <summary>
+    /// Get all components attached to this actor
+    /// </summary>
+    IEnumerable<IActorComponent> Components { get; }
+
+    /// <summary>
+    /// Add a component to this actor
+    /// </summary>
+    void AddComponent(IActorComponent component);
+
+    /// <summary>
+    /// Remove a component from this actor
+    /// </summary>
+    void RemoveComponent(IActorComponent component);
+
+    // ===== Encounter Events (DEPRECATED - use components) =====
     /// <summary>
     /// Called when this actor enters an encounter with existing actors.
+    /// DEPRECATED: Use components with EncounterEvent subscription instead.
     /// </summary>
     void Meet(Encounter encounter, long time, IEnumerable<IActor> encounterActors);
 
@@ -175,6 +193,20 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
     public List<IProposal> StoredProposals { get; } = new();
     public IEnumerable<IProposal> Proposals() => StoredProposals;
+
+    // Component system (StaticActor doesn't use components)
+    List<IActorComponent> _components = new();
+    public IEnumerable<IActorComponent> Components => _components;
+    public void AddComponent(IActorComponent component) {
+        component.Initialize(this);
+        _components.Add(component);
+        component.OnComponentAdded();
+    }
+    public void RemoveComponent(IActorComponent component) {
+        if (_components.Remove(component)) {
+            component.OnComponentRemoved();
+        }
+    }
     public void Tick(long time) {
     }
     public void Think(int elapsed, IEnumerable<IActor> other) { }

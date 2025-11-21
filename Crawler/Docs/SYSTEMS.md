@@ -336,6 +336,176 @@ public bool InteractionCapable(IActor Agent, IActor Subject) =>
 
 ---
 
+## Component and Event System
+
+**Files:** `Components.cs`, `ActorComponents.cs`, `Encounter.cs`, `IActor.cs`, `Crawler.cs`
+**Purpose:** Event-driven, pluggable behaviors for actors
+
+### Overview
+
+The component system enables actors to have modular, pluggable behaviors without modifying core actor classes. Components subscribe to encounter events and can generate proposals dynamically.
+
+**Key Innovation:** Replaces fixed Meet/Greet/Leave/Part methods with flexible, event-driven components.
+
+### Architecture
+
+```
+┌─────────────┐
+│  Encounter  │ Publishes events
+└──────┬──────┘
+       │ ActorArrived, ActorLeaving, ActorLeft, EncounterTick
+       ↓
+┌──────────────────┐
+│ Event Handlers   │ (Components that implement IEncounterEventHandler)
+│ - Components     │ Subscribe to specific event types
+└──────────────────┘
+       ↓
+┌──────────────────┐
+│ Handle Event     │ Component responds to event
+│ - Setup state    │
+│ - Add ultimatums │
+│ - Generate data  │
+└──────────────────┘
+```
+
+### Event Types
+
+**EncounterEventType enum:**
+- `ActorArrived` - A new actor has joined the encounter
+- `ActorLeaving` - An actor is about to leave (cleanup phase)
+- `ActorLeft` - An actor has left the encounter
+- `EncounterTick` - Time advancement (reserved for future use)
+
+**EncounterEvent record:**
+```csharp
+public record EncounterEvent(
+    EncounterEventType Type,
+    IActor? Actor,        // The actor involved (null for EncounterTick)
+    long Time,            // When event occurred
+    Encounter Encounter   // The encounter where event occurred
+);
+```
+
+### IActorComponent Interface
+
+```csharp
+public interface IActorComponent : IEncounterEventHandler {
+    IActor Owner { get; }
+    void Initialize(IActor owner);
+    IEnumerable<IProposal> GenerateProposals(IActor owner);
+    void OnComponentAdded();
+    void OnComponentRemoved();
+    IEnumerable<EncounterEventType> SubscribedEvents { get; }
+}
+```
+
+**Key methods:**
+- `SubscribedEvents` - Which events this component cares about
+- `HandleEvent()` - Respond to subscribed events
+- `GenerateProposals()` - Create proposals on-demand (replaces StoredProposals caching)
+- Lifecycle hooks for component add/remove
+
+### Built-in Components
+
+**BanditExtortionComponent:**
+- Subscribes to: ActorArrived, ActorLeft
+- Behavior: Threatens valuable targets, creates extortion ultimatums
+- Note: Currently disabled with early return (remove to enable)
+
+**SettlementContrabandComponent:**
+- Subscribes to: ActorArrived, ActorLeft
+- Behavior: Scans for contraband, creates seizure ultimatums
+
+**TradeOfferComponent:**
+- Subscribes to: (none)
+- Behavior: Generates trade proposals on-demand
+- Replaces: Cached StoredProposals for trade offers
+
+**EncounterMessengerComponent:**
+- Subscribes to: ActorArrived, ActorLeft
+- Behavior: Displays "{Name} enters" and "{Name} leaves" messages
+
+**RelationPrunerComponent:**
+- Subscribes to: ActorLeaving
+- Behavior: Cleans up transient actor relationships when leaving
+- Keeps: Settlements and hostile relationships
+
+### Component Lifecycle
+
+**1. Component Creation:**
+```csharp
+var trader = new Crawler(...);
+trader.AddComponent(new TradeOfferComponent(seed, 0.25f));
+```
+
+**2. Automatic Subscription (when added to actor in encounter):**
+```csharp
+public void AddComponent(IActorComponent component) {
+    component.Initialize(this);
+    _components.Add(component);
+    component.OnComponentAdded();
+
+    // Auto-subscribe if actor is in encounter
+    if (Location?.HasEncounter == true) {
+        var encounter = Location.GetEncounter();
+        foreach (var eventType in component.SubscribedEvents) {
+            encounter.Subscribe(eventType, component);
+        }
+    }
+}
+```
+
+**3. Event Handling:**
+```csharp
+// Encounter publishes events
+PublishEvent(new EncounterEvent(EncounterEventType.ActorArrived, actor, time, this));
+
+// Components receive and handle
+foreach (var handler in _eventHandlers[eventType]) {
+    handler.HandleEvent(evt);
+}
+```
+
+**4. Proposal Generation:**
+```csharp
+// Crawler.Proposals() yields from all components
+public virtual IEnumerable<IProposal> Proposals() {
+    foreach (var component in _components) {
+        foreach (var proposal in component.GenerateProposals(this)) {
+            yield return proposal;
+        }
+    }
+    // Also yield from stored proposals
+    foreach (var proposal in StoredProposals) {
+        yield return proposal;
+    }
+}
+```
+
+### Benefits
+
+**Extensibility:**
+- Add new behaviors without modifying IActor or Crawler
+- Mix and match components freely
+- Easy to enable/disable behaviors
+
+**Performance:**
+- Proposals generated fresh (no stale cache)
+- Components only respond to events they care about
+- Lazy evaluation via yield return
+
+**Maintainability:**
+- Clear separation of concerns
+- Each behavior in its own class
+- Easy to test components independently
+
+**Liveness:**
+- No cached proposals that become stale
+- Dynamic proposal generation based on current state
+- ActorToActor.StoredProposals used for time-sensitive ultimatums
+
+---
+
 ## Mandatory Interaction System (Ultimatums)
 
 **Files:** `Crawler.cs:116-162`, `Encounter.cs:183-224, 534-563`, `Proposals.cs:174-250`

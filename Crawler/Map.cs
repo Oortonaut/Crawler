@@ -253,9 +253,10 @@ public class Map {
             tLat = Math.Clamp(tLat, 0.0f, 1.0f);
             float wealth = 300 * ( float ) Math.Pow(50, tLat);
 
+            var newEncounter = (Location loc) => new Encounter(Rng.Seed(), loc).Generate();
             var locationSeed = ( ulong ) loc.Z;
             var encounterLocation = new Location(locationSeed,
-                sector, new(loc.X, loc.Y), encounterType, wealth, loc => new Encounter(Rng.Seed(), loc).Generate());
+                sector, new(loc.X, loc.Y), encounterType, wealth, newEncounter);
             sector.Locations.Add(encounterLocation);
         }
     }

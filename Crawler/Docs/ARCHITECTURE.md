@@ -1,6 +1,6 @@
 # Crawler Architecture
 
-**Last Updated:** 2025-10-19
+**Last Updated:** 2025-11-21
 
 ## Quick Navigation
 - **Looking for system details?** → [SYSTEMS.md](SYSTEMS.md)
@@ -8,13 +8,13 @@
 - **Want to add new content?** → [EXTENDING.md](EXTENDING.md)
 
 ## Recent Changes
+- **2025-11-21**: **Major refactor**: Implemented event-driven encounter system with component-based actor behaviors. Added `IActorComponent` interface and concrete components (BanditExtortionComponent, SettlementContrabandComponent, TradeOfferComponent, etc.). Encounters now publish events (ActorArrived, ActorLeaving, ActorLeft, EncounterTick) that components subscribe to. Proposals generated on-demand via components. This enables better extensibility, improved liveness, and cleaner separation of concerns.
 - **2025-11-08**: Replaced `Random.Shared` with custom XorShift RNG for deterministic, seed-based randomness; all Crawlers and child objects now use seeded RNG; added `GaussianSampler` class for Box-Muller transform; updated extension methods (`ChooseRandom`, `StochasticInt`, `SamplePoisson`) to accept RNG parameter
 - **2025-10-25**: Renamed `ActivitySources` to `LogCat` for OpenTelemetry logging categories
 - **2025-10-25**: Renamed `InteractionMode` enum to `Immediacy` and `PerformMode()` method to `Immediacy()`
 - **2025-10-24**: Added mutual hostility checks to InteractionCapable methods to prevent trading/repairing/taxing with hostile actors
 - **2025-10-24**: Added comprehensive OpenTelemetry activity tracing to interaction system (InteractionsWith, TickInteractions, MenuItems)
-- **2025-10-20**: Refactored demand system with ProposeDemand base class: Created abstract `ProposeDemand` base class for ultimatum-style demands ("comply or face consequence"). All taxes, extortions, and contraband seizures now inherit from this class. Added `AttackOffer` and `HostilityOffer` to encapsulate combat and diplomatic consequences as offers. Removed specialized interaction classes (`CooperateInteraction`, `RefuseDemandInteraction`, `ContrabandInteraction`) - all demands now use `ExchangeInteraction` with appropriate offers.
-- **2025-10-20**: Refactored Meet/Part methods into role-based API: Meet(IEnumerable<IActor>) calls Greet(IActor) for each; Leave(IEnumerable<IActor>) calls Part(IActor) for each. Extracted shared threat-generation logic (bandit extortion, contraband scanning) into helper functions (SetupBanditExtortion, SetupContrabandAndTaxes, ExpireProposals).
+- **2025-10-20**: Refactored demand system with ProposeDemand base class: Created abstract `ProposeDemand` base class for ultimatum-style demands ("comply or face consequence"). All taxes, extortions, and contraband seizures now inherit from this class. Added `AttackOffer` and `HostilityOffer` to encapsulate combat and diplomatic consequences as offers.
 - **2025-10-19**: Added EFlags enum to ActorToActor; replaced boolean fields with flag-based properties (Hostile, Surrendered, Spared, Betrayed) using SetFlag/HasFlag pattern
 - **2025-10-19**: Replaced InteractionCapability enum with bool across proposals - simplified from three-state (Disabled, Possible, Mandatory) to two-state (enabled/disabled); moved urgency control to IInteraction.Immediacy()
 - **2025-10-19**: Refactored interaction system into separate files: Interactions.cs (IInteraction types), Offers.cs (IOffer types), Proposals.cs (IProposal types), Trade.cs (trading proposals)
@@ -43,14 +43,21 @@ Game (Singleton)
 ├── Map (World Generation)
 │   ├── Sectors (Grid-based, wrap horizontally)
 │   │   ├─* Locations (Vector positions, terrain types)
-│   │   │   └── Encounters (Events/interactions)
+│   │   │   └── Encounters (Events/interactions + event publishing)
+│   │   │       ├─< Event Handlers (Components subscribe to encounter events)
 │   │   │       └─< Actors (Crawlers, Static entities)
-│   │   │           └─2 Inventory: Supplies + Cargo (Commodities/Segments)
-│   │   │               └─< Segments (Crawler Functionality)
+│   │   │           ├─< Components (Pluggable behaviors)
+│   │   │           │   ├── BanditExtortionComponent
+│   │   │           │   ├── SettlementContrabandComponent
+│   │   │           │   ├── TradeOfferComponent
+│   │   │           │   ├── EncounterMessengerComponent
+│   │   │           │   └── RelationPrunerComponent
+│   │   │           ├─2 Inventory: Supplies + Cargo (Commodities/Segments)
+│   │   │           │   └─< Segments (Crawler Functionality)
 │   │   │           └─< Relations (Actor-to-Actor state)
 │   │   └── Faction Control (Regional powers)
 │   └── Time System (Tick-based, hourly updates)
-├── Player (Crawler instance)~~~~
+├── Player (Crawler instance)
 ├── Menu System (Console UI)
 └── Save/Load (YAML serialization)
 ```
@@ -170,7 +177,45 @@ IProposal (capability check) → IInteraction (action) → IOffer (exchange)
 - Dynamic menu generation based on context
 - Clear separation of capability checks vs execution
 
-### 2. Component-Based Segments
+### 2. Component-Based Actor Behaviors
+**Event-driven, pluggable behaviors for actors**
+
+See [EXTENDING.md#creating-components](EXTENDING.md#creating-components) for details.
+
+**Architecture:**
+```
+IActor
+├── Components (List<IActorComponent>)
+│   ├── Subscribe to EncounterEvents
+│   ├── Generate Proposals on-demand
+│   └── Handle lifecycle (OnComponentAdded/Removed)
+└── Proposals() yields from all components
+```
+
+**Event System:**
+```
+Encounter publishes events:
+  - ActorArrived: When new actor joins encounter
+  - ActorLeaving: Before actor leaves encounter
+  - ActorLeft: After actor leaves encounter
+  - EncounterTick: Time advancement (future)
+
+Components subscribe to events they care about:
+  - BanditExtortionComponent → ActorArrived, ActorLeft
+  - SettlementContrabandComponent → ActorArrived, ActorLeft
+  - TradeOfferComponent → (none, generates on-demand)
+  - EncounterMessengerComponent → ActorArrived, ActorLeft
+  - RelationPrunerComponent → ActorLeaving
+```
+
+**Benefits:**
+- Behaviors can be mixed and matched without code changes
+- Proposals generated fresh each time (no stale cache issues)
+- Easy to add new behaviors without modifying IActor or Crawler
+- Event-driven: components only respond to events they care about
+- Parallel to segment component system
+
+### 3. Component-Based Segments
 **Crawlers built from modular parts**
 
 See [DATA-MODEL.md#segments](DATA-MODEL.md#segments) for details.
@@ -180,14 +225,14 @@ See [DATA-MODEL.md#segments](DATA-MODEL.md#segments) for details.
 Active → Deactivated → Disabled (damaged) → Destroyed → Packaged (for trade)
 ```
 
-### 3. Singleton Pattern
+### 4. Singleton Pattern
 **Global access to game state**
 
 ```csharp
 Game.Instance  // Central coordinator
 ```
 
-### 4. Factory Pattern
+### 5. Factory Pattern
 **Lazy instantiation for performance**
 
 - Encounters created on-demand when player arrives
