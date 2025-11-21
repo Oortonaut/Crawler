@@ -41,7 +41,6 @@ public class BanditExtortionComponent : ActorComponentBase {
     void SetupExtortion(Crawler bandit, IActor target, long time) {
         // Note: Early return because current code has this disabled
         // Remove this return to enable bandit extortion
-        return;
 
         if (bandit.Faction != Faction.Bandit || target.Faction != Faction.Player) return;
 
@@ -63,7 +62,7 @@ public class BanditExtortionComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         var relation = Owner.To(subject);
         if (relation.Ultimatum?.Type != "BanditExtortion") yield break;
 
@@ -88,7 +87,7 @@ public class BanditExtortionComponent : ActorComponentBase {
         XorShift Rng,
         float DemandFraction,
         string MenuOption
-    ) : NewInteraction(Bandit, Target, MenuOption) {
+    ) : Interaction(Bandit, Target, MenuOption) {
 
         public override string Description => $"Accept extortion: hand over cargo";
 
@@ -119,7 +118,7 @@ public class BanditExtortionComponent : ActorComponentBase {
         IActor Bandit,
         IActor Target,
         string MenuOption
-    ) : NewInteraction(Bandit, Target, MenuOption) {
+    ) : Interaction(Bandit, Target, MenuOption) {
 
         public override string Description => $"Refuse extortion from {Bandit.Name}";
 
@@ -143,7 +142,7 @@ public class BanditExtortionComponent : ActorComponentBase {
         IActor Bandit,
         IActor Target,
         string MenuOption
-    ) : NewInteraction(Bandit, Target, MenuOption) {
+    ) : Interaction(Bandit, Target, MenuOption) {
 
         public override string Description => $"Extortion expired - {Bandit.Name} attacks!";
 
@@ -205,7 +204,7 @@ public class SettlementContrabandComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         if (Owner is not Crawler settlement) yield break;
 
         var relation = settlement.To(subject);
@@ -231,7 +230,7 @@ public class SettlementContrabandComponent : ActorComponentBase {
         IActor Target,
         Inventory Contraband,
         string MenuOption
-    ) : NewInteraction(Settlement, Target, MenuOption) {
+    ) : Interaction(Settlement, Target, MenuOption) {
 
         public override string Description => $"Allow search: surrender {Contraband}";
 
@@ -262,7 +261,7 @@ public class SettlementContrabandComponent : ActorComponentBase {
         IActor Settlement,
         IActor Target,
         string MenuOption
-    ) : NewInteraction(Settlement, Target, MenuOption) {
+    ) : Interaction(Settlement, Target, MenuOption) {
 
         public override string Description => $"Refuse search from {Settlement.Name}";
 
@@ -287,7 +286,7 @@ public class SettlementContrabandComponent : ActorComponentBase {
         IActor Settlement,
         IActor Target,
         string MenuOption
-    ) : NewInteraction(Settlement, Target, MenuOption) {
+    ) : Interaction(Settlement, Target, MenuOption) {
 
         public override string Description => $"Search refused - {Settlement.Name} turns hostile!";
 
@@ -327,7 +326,7 @@ public class TradeOfferComponent : ActorComponentBase {
 
     // Trade offers don't need to subscribe to encounter events
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility check
         if (Owner.Fighting(subject)) yield break;
 
@@ -390,7 +389,7 @@ public class TradeOfferComponent : ActorComponentBase {
         IOffer SubjectOffer,
         string MenuOption,
         string Desc
-    ) : NewInteraction(Agent, Subject, MenuOption) {
+    ) : Interaction(Agent, Subject, MenuOption) {
         public override string Description => Desc;
 
         public override int Perform(string args = "") {
@@ -435,7 +434,7 @@ public class AttackComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: only player can attack, target must be alive crawler
         if (Owner != Game.Instance?.Player) yield break;
         if (subject is not Crawler) yield break;
@@ -448,7 +447,7 @@ public class AttackComponent : ActorComponentBase {
     /// Attack interaction - initiates combat
     /// </summary>
     public record AttackInteraction(IActor Agent, IActor Subject, string MenuOption)
-        : NewInteraction(Agent, Subject, MenuOption) {
+        : Interaction(Agent, Subject, MenuOption) {
 
         public override string Description => $"Attack {Subject.Name}";
 
@@ -483,7 +482,7 @@ public class RepairComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: owner must be settlement, subject must be damaged crawler, not hostile
         if (!Owner.Flags.HasFlag(EActorFlags.Settlement)) yield break;
         if (subject is not Crawler damaged) yield break;
@@ -503,7 +502,7 @@ public class RepairComponent : ActorComponentBase {
     /// Repair interaction - fixes a damaged segment for scrap
     /// </summary>
     public record RepairInteraction(IActor Agent, IActor Subject, Segment SegmentToRepair, float Price, string MenuOption)
-        : NewInteraction(Agent, Subject, MenuOption) {
+        : Interaction(Agent, Subject, MenuOption) {
 
         public override string Description => $"Repair {SegmentToRepair.Name} for {Price}¢¢";
 
@@ -542,7 +541,7 @@ public class LicenseComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: owner must be settlement, subject must be crawler, not hostile
         if (!Owner.Flags.HasFlag(EActorFlags.Settlement)) yield break;
         if (subject is not Crawler buyer) yield break;
@@ -599,7 +598,7 @@ public class LicenseComponent : ActorComponentBase {
         GameTier Tier,
         float Price,
         string MenuOption
-    ) : NewInteraction(Agent, Subject, MenuOption) {
+    ) : Interaction(Agent, Subject, MenuOption) {
 
         public override string Description {
             get {
@@ -641,7 +640,7 @@ public class SurrenderComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: subject must be vulnerable crawler, hostile to owner, not already surrendered
         if (subject is not Crawler loser) yield break;
         if (!loser.IsVulnerable || !loser.Lives()) yield break;
@@ -656,7 +655,7 @@ public class SurrenderComponent : ActorComponentBase {
     /// Accept surrender interaction - loser gives up cargo/supplies based on damage
     /// </summary>
     public record SurrenderInteraction(IActor Winner, IActor Loser, XorShift Rng, string MenuOption)
-        : NewInteraction(Winner, Loser, MenuOption) {
+        : Interaction(Winner, Loser, MenuOption) {
 
         public override string Description => $"Accept {Loser.Name}'s surrender";
 
@@ -716,7 +715,7 @@ public class PlayerDemandComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: player only, subject is vulnerable non-player, not hostile, not surrendered
         if (Owner.Faction != Faction.Player) yield break;
         if (Owner is not Crawler { IsDisarmed: false }) yield break;
@@ -737,7 +736,7 @@ public class PlayerDemandComponent : ActorComponentBase {
         XorShift Rng,
         float DemandFraction,
         string MenuOption
-    ) : NewInteraction(Agent, Subject, MenuOption) {
+    ) : Interaction(Agent, Subject, MenuOption) {
 
         public override string Description => $"Threaten {Subject.Name} for cargo";
 
@@ -787,7 +786,7 @@ public class LootComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Can loot if owner is ended but not yet looted
         if (!Owner.Ended()) yield break;
         if (Owner.EndState == EEndState.Looted) yield break;
@@ -802,7 +801,7 @@ public class LootComponent : ActorComponentBase {
         string Verb,
         string MenuOption,
         float LootFraction
-    ) : NewInteraction(Source, Taker, MenuOption) {
+    ) : Interaction(Source, Taker, MenuOption) {
 
         public override string Description => $"{Verb} {Source.Name}";
 
@@ -841,7 +840,7 @@ public class HarvestComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Can harvest if not already looted
         if (Owner.EndState == EEndState.Looted) yield break;
 
@@ -854,7 +853,7 @@ public class HarvestComponent : ActorComponentBase {
         Inventory Amount,
         string Verb,
         string MenuOption
-    ) : NewInteraction(Resource, Harvester, MenuOption) {
+    ) : Interaction(Resource, Harvester, MenuOption) {
 
         public override string Description => Verb;
 
@@ -898,7 +897,7 @@ public class HazardComponent : ActorComponentBase {
     }
 
 
-    public override IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Can explore if not already looted and subject has enough inventory to risk
         if (Owner.EndState == EEndState.Looted) yield break;
         if (subject == Owner) yield break;
@@ -915,7 +914,7 @@ public class HazardComponent : ActorComponentBase {
         float RiskChance,
         string Desc,
         string MenuOption
-    ) : NewInteraction(Hazard, Explorer, MenuOption) {
+    ) : Interaction(Hazard, Explorer, MenuOption) {
 
         public override string Description => Desc;
 

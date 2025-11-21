@@ -32,7 +32,7 @@ public interface IActorComponent {
     void Initialize(IActor owner);
 
     /// <summary>Enumerate interactions this component provides between owner and subject</summary>
-    IEnumerable<NewInteraction> EnumerateInteractions(IActor subject);
+    IEnumerable<Interaction> EnumerateInteractions(IActor subject);
 
     /// <summary>Called when this component is added to an actor</summary>
     void OnComponentAdded();
@@ -57,7 +57,7 @@ public abstract class ActorComponentBase : IActorComponent {
         Owner = owner;
     }
 
-    public virtual IEnumerable<NewInteraction> EnumerateInteractions(IActor subject) {
+    public virtual IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         yield break;
     }
 

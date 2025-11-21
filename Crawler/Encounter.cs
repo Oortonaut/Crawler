@@ -87,7 +87,7 @@ public sealed class Encounter {
             string prefix = "C" + (char)('A' + index);
             using var activityOther = Scope($"Menu {prefix}")?
                 .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("Subject.Faction", subject.Faction);
-            var interactions = agent.InteractionsWith(subject).Cast<IInteraction>().ToList();
+            var interactions = agent.InteractionsWith(subject).Cast<Interaction>().ToList();
             ap += interactions.TickInteractions(agent, prefix);
             var agentActorMenus = agent.InteractionMenuItems(interactions, subject.Brief(agent), prefix);
             result.AddRange(agentActorMenus);

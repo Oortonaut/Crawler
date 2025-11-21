@@ -237,9 +237,9 @@ IProposal (capability check)
   ├── SubjectCapable(IActor) - Can subject receive it?
   ├── InteractionCapable(Agent, Subject) → bool
   │     Returns true if interaction is available
-  └── GetInteractions() → IInteraction[]
+  └── GetInteractions() → Interaction[]
 
-IInteraction (concrete action)
+Interaction (concrete action)
   ├── Immediacy(string args) → Immediacy enum
   │   ├── Disabled - Not available (conditions not met)
   │   ├── Menu - Available in menu (user choice)
@@ -553,7 +553,7 @@ If UltimatumTime reached without response:
 ```csharp
 ProposeDemand(
   Demand: IOffer,                              // What they want
-  ConsequenceFn: Func<IActor, IActor, IInteraction>,  // What happens if refused
+  ConsequenceFn: Func<IActor, IActor, Interaction>,  // What happens if refused
   Ultimatum: string,                           // Description
   Condition: Func<IActor, IActor, bool>?       // Optional condition check
 )

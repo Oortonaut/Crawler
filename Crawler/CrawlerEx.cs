@@ -260,7 +260,7 @@ public static partial class CrawlerEx {
     /// <summary>
     /// Get all interactions between agent and subject using component-based system
     /// </summary>
-    public static IEnumerable<NewInteraction> InteractionsWith(this IActor agent, IActor subject) {
+    public static IEnumerable<Interaction> InteractionsWith(this IActor agent, IActor subject) {
         using var activity = LogCat.Interaction.StartActivity($"{nameof(InteractionsWith)} {agent.Name} {subject.Name})")?
             .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("SubjectFaction", subject.Faction)
             .SetTag("AgentToSubject", agent.To(subject).ToString())
@@ -359,7 +359,7 @@ public static partial class CrawlerEx {
         return result;
     }
 
-    public static int TickInteractions(this List<IInteraction> interactions, IActor agent, string prefix) {
+    public static int TickInteractions(this List<Interaction> interactions, IActor agent, string prefix) {
         using var activity = LogCat.Interaction.StartActivity($"{nameof(TickInteractions)} {agent.Name} '{prefix}'")?
             .SetTag("Agent", agent.Name).SetTag("#Interactions", interactions.Count);
 
@@ -369,13 +369,13 @@ public static partial class CrawlerEx {
             if (!string.IsNullOrEmpty(msg)) {
                 agent.Message(msg);
             }
-            if (interaction.Immediacy() == Immediacy.Immediate) {
+            if (interaction.GetImmediacy() == Immediacy.Immediate) {
                 result += interaction.Perform();
             }
         }
         return result;
     }
-    public static List<MenuItem> InteractionMenuItems(this IActor agent, List<IInteraction> interactions, string title, string prefix) {
+    public static List<MenuItem> InteractionMenuItems(this IActor agent, List<Interaction> interactions, string title, string prefix) {
         List<MenuItem> result = new();
         if (interactions.Count == 0) {
             result.Add(new MenuItem(prefix, $"{title}\n"));
@@ -385,7 +385,7 @@ public static partial class CrawlerEx {
             result.Add(MenuItem.Sep);
 
 
-            bool anyEnabled = interactions.Any(i => i.Immediacy() == Immediacy.Menu);
+            bool anyEnabled = interactions.Any(i => i.GetImmediacy() == Immediacy.Menu);
             result.Add(new ActionMenuItem(prefix,
                 title,
                 args => interactions.InteractionMenu(title, prefix, args).turns,
@@ -394,7 +394,7 @@ public static partial class CrawlerEx {
         }
         return result;
     }
-    public static IEnumerable<MenuItem> DetailMenuItems(this List<IInteraction> interactions, string prefix, ShowArg show, string args = "") {
+    public static IEnumerable<MenuItem> DetailMenuItems(this List<Interaction> interactions, string prefix, ShowArg show, string args = "") {
         var counters = new Dictionary<string, int>();
         foreach (var interaction in interactions) {
             int counter;
@@ -404,7 +404,7 @@ public static partial class CrawlerEx {
             } else {
                 counter = counters[shortcut] = 1;
             }
-            var immediacy = interaction.Immediacy();
+            var immediacy = interaction.GetImmediacy();
             string description = interaction.Description;
             if (immediacy == Immediacy.Failed && interaction is ExchangeInteraction exchange) {
                 var reason = exchange.FailureReason();
@@ -419,7 +419,7 @@ public static partial class CrawlerEx {
                 show);
         }
     }
-    public static (MenuItem item, int turns) InteractionMenu(this List<IInteraction> interactions, string Name, string prefix, string args) {
+    public static (MenuItem item, int turns) InteractionMenu(this List<Interaction> interactions, string Name, string prefix, string args) {
         List<MenuItem> interactionsMenu = [
             MenuItem.Cancel,
             .. interactions.DetailMenuItems(prefix, ShowArg.Show, args),
