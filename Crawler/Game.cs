@@ -350,11 +350,6 @@ public class Game {
         return (int) count;
     }
 
-    public bool IsMinute() => TimeSeconds % 60 == 0;
-    public bool IsHour() => TimeSeconds % 3600 == 0;
-    public bool IsDay() => TimeSeconds % 86400 == 0;
-
-
     public void RegisterEncounter(Encounter encounter) {
         allEncounters.Add(encounter);
         Schedule(encounter);
