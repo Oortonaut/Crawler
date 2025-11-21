@@ -21,22 +21,18 @@ public class BanditExtortionComponent : ActorComponentBase {
         encounter.ActorLeft -= OnActorLeft;
     }
 
-    void OnActorArrived(object? sender, ActorArrivedEventArgs e) {
+    void OnActorArrived(IActor actor, long time) {
         if (Owner is not Crawler bandit) return;
+        if (actor == Owner) return;
 
-        // When a new actor arrives, check if we should extort them
-        if (e.Actor != Owner) {
-            SetupExtortion(bandit, e.Actor);
-        }
+        SetupExtortion(bandit, actor);
     }
 
-    void OnActorLeft(object? sender, ActorLeftEventArgs e) {
+    void OnActorLeft(IActor actor, long time) {
         if (Owner is not Crawler bandit) return;
+        if (actor == Owner) return;
 
-        // When an actor leaves, clean up any ultimatums
-        if (e.Actor != Owner) {
-            ExpireProposals(bandit, e.Actor);
-        }
+        ExpireProposals(bandit, actor);
     }
 
     void SetupExtortion(Crawler bandit, IActor target) {
@@ -83,24 +79,18 @@ public class SettlementContrabandComponent : ActorComponentBase {
         encounter.ActorLeft -= OnActorLeft;
     }
 
-    void OnActorArrived(object? sender, ActorArrivedEventArgs e) {
+    void OnActorArrived(IActor actor, long time) {
         if (Owner is not Crawler settlement) return;
-        if (!settlement.Flags.HasFlag(EActorFlags.Settlement)) return;
+        if (actor == Owner) return;
 
-        // When a new actor arrives, scan for contraband
-        if (e.Actor != Owner) {
-            SetupContrabandScan(settlement, e.Actor);
-        }
+        SetupContrabandScan(settlement, actor);
     }
 
-    void OnActorLeft(object? sender, ActorLeftEventArgs e) {
+    void OnActorLeft(IActor actor, long time) {
         if (Owner is not Crawler settlement) return;
-        if (!settlement.Flags.HasFlag(EActorFlags.Settlement)) return;
+        if (actor == Owner) return;
 
-        // When an actor leaves, clean up any ultimatums
-        if (e.Actor != Owner) {
-            ExpireProposals(settlement, e.Actor);
-        }
+        ExpireProposals(settlement, actor);
     }
 
     void SetupContrabandScan(Crawler settlement, IActor target) {
@@ -160,15 +150,15 @@ public class EncounterMessengerComponent : ActorComponentBase {
         encounter.ActorLeft -= OnActorLeft;
     }
 
-    void OnActorArrived(object? sender, ActorArrivedEventArgs e) {
-        if (e.Actor != Owner) {
-            Owner.Message($"{e.Actor.Name} enters");
+    void OnActorArrived(IActor actor, long time) {
+        if (actor != Owner) {
+            Owner.Message($"{actor.Name} enters");
         }
     }
 
-    void OnActorLeft(object? sender, ActorLeftEventArgs e) {
-        if (e.Actor != Owner) {
-            Owner.Message($"{e.Actor.Name} leaves");
+    void OnActorLeft(IActor actor, long time) {
+        if (actor != Owner) {
+            Owner.Message($"{actor.Name} leaves");
         }
     }
 
@@ -190,11 +180,10 @@ public class RelationPrunerComponent : ActorComponentBase {
         encounter.ActorLeaving -= OnActorLeaving;
     }
 
-    void OnActorLeaving(object? sender, ActorLeavingEventArgs e) {
-        if (e.Actor != Owner) return;
+    void OnActorLeaving(IActor actor, long time) {
+        if (actor != Owner) return;
         if (Owner is not Crawler crawler) return;
 
-        // Prune relations when this actor is leaving
         PruneRelations(crawler);
     }
 

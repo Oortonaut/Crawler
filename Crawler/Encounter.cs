@@ -46,10 +46,10 @@ public class Encounter {
     GaussianSampler Gaussian;
 
     // C# event delegates for encounter events
-    public event EventHandler<ActorArrivedEventArgs>? ActorArrived;
-    public event EventHandler<ActorLeavingEventArgs>? ActorLeaving;
-    public event EventHandler<ActorLeftEventArgs>? ActorLeft;
-    public event EventHandler<EncounterTickEventArgs>? EncounterTick;
+    public event ActorArrivedEventHandler? ActorArrived;
+    public event ActorLeavingEventHandler? ActorLeaving;
+    public event ActorLeftEventHandler? ActorLeft;
+    public event EncounterTickEventHandler? EncounterTick;
 
     public string Name { get; set; } = "Encounter";
     public string Description { get; set; } = "";
@@ -96,40 +96,20 @@ public class Encounter {
     }
 
     // Event invocation helpers
-    protected virtual void OnActorArrived(ActorArrivedEventArgs e) {
-        try {
-            ActorArrived?.Invoke(this, e);
-        } catch (Exception ex) {
-            // Don't let a component error break the encounter
-            Log.LogError(ex, $"Error in ActorArrived event handler: {ex.Message}");
-        }
+    protected virtual void OnActorArrived(IActor actor, long time) {
+        ActorArrived?.Invoke(actor, time);
     }
 
-    protected virtual void OnActorLeaving(ActorLeavingEventArgs e) {
-        try {
-            ActorLeaving?.Invoke(this, e);
-        } catch (Exception ex) {
-            // Don't let a component error break the encounter
-            Log.LogError(ex, $"Error in ActorLeaving event handler: {ex.Message}");
-        }
+    protected virtual void OnActorLeaving(IActor actor, long time) {
+        ActorLeaving?.Invoke(actor, time);
     }
 
-    protected virtual void OnActorLeft(ActorLeftEventArgs e) {
-        try {
-            ActorLeft?.Invoke(this, e);
-        } catch (Exception ex) {
-            // Don't let a component error break the encounter
-            Log.LogError(ex, $"Error in ActorLeft event handler: {ex.Message}");
-        }
+    protected virtual void OnActorLeft(IActor actor, long time) {
+        ActorLeft?.Invoke(actor, time);
     }
 
-    protected virtual void OnEncounterTick(EncounterTickEventArgs e) {
-        try {
-            EncounterTick?.Invoke(this, e);
-        } catch (Exception ex) {
-            // Don't let a component error break the encounter
-            Log.LogError(ex, $"Error in EncounterTick event handler: {ex.Message}");
-        }
+    protected virtual void OnEncounterTick(long time) {
+        EncounterTick?.Invoke(time);
     }
 
     // Dynamic crawler management
@@ -210,18 +190,8 @@ public class Encounter {
             component.SubscribeToEncounter(this);
         }
 
-        var existingActors = ActorsExcept(actor).ToList();
-
-        // Notify new actor about all existing actors (old method - will be deprecated)
-        actor.Meet(this, LastEncounterEvent, existingActors);
-
-        // Notify all existing actors about the new actor (old method - will be deprecated)
-        foreach (var other in existingActors) {
-            other.Greet(actor);
-        }
-
         // Raise ActorArrived event
-        OnActorArrived(new ActorArrivedEventArgs(actor, arrivalTime, this));
+        OnActorArrived(actor, arrivalTime);
 
         if (actor is Crawler crawler) {
             crawler.LastEvent = arrivalTime;
@@ -233,20 +203,11 @@ public class Encounter {
 
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
     public virtual void RemoveActor(IActor actor) {
-        var remainingActors = ActorsExcept(actor).ToList();
-
         // Raise ActorLeaving event
-        OnActorLeaving(new ActorLeavingEventArgs(actor, LastEncounterEvent, this));
-
-        // Notify all remaining actors about the leaving actor (old method - will be deprecated)
-        foreach (var other in remainingActors) {
-            other.Part(actor);
-        }
-
-        actor.Leave(remainingActors);
+        OnActorLeaving(actor, LastEncounterEvent);
 
         // Raise ActorLeft event
-        OnActorLeft(new ActorLeftEventArgs(actor, LastEncounterEvent, this));
+        OnActorLeft(actor, LastEncounterEvent);
 
         // Unsubscribe all actor components from encounter events
         foreach (var component in actor.Components) {

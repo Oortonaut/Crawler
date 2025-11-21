@@ -121,28 +121,6 @@ public interface IActor {
     /// </summary>
     void RemoveComponent(IActorComponent component);
 
-    // ===== Encounter Events (DEPRECATED - use components) =====
-    /// <summary>
-    /// Called when this actor enters an encounter with existing actors.
-    /// DEPRECATED: Use components with EncounterEvent subscription instead.
-    /// </summary>
-    void Meet(Encounter encounter, long time, IEnumerable<IActor> encounterActors);
-
-    /// <summary>
-    /// Called when a new actor joins the encounter.
-    /// </summary>
-    void Greet(IActor newActor);
-
-    /// <summary>
-    /// Called when this actor leaves an encounter with remaining actors.
-    /// </summary>
-    void Leave(IEnumerable<IActor> encounterActors);
-
-    /// <summary>
-    /// Called when another actor leaves the encounter.
-    /// </summary>
-    void Part(IActor leavingActor);
-
     // ===== Interactions =====
     /// <summary>
     /// Available proposals this actor can make.
@@ -232,8 +210,4 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public ActorToActor To(IActor other) => new();
     public ActorToActor NewRelation(IActor other) => new();
     public LocationActor NewRelation(Location other) => new();
-    public void Meet(Encounter encounter, long time, IEnumerable<IActor> encounterActors) { }
-    public void Greet(IActor newActor) { }
-    public void Leave(IEnumerable<IActor> encounterActors) { }
-    public void Part(IActor leavingActor) { }
 }

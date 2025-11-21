@@ -1,62 +1,24 @@
 namespace Crawler;
 
 /// <summary>
-/// Event arguments for when an actor arrives at an encounter
+/// Event handler for when an actor arrives at an encounter
 /// </summary>
-public class ActorArrivedEventArgs : EventArgs {
-    public IActor Actor { get; }
-    public long Time { get; }
-    public Encounter Encounter { get; }
-
-    public ActorArrivedEventArgs(IActor actor, long time, Encounter encounter) {
-        Actor = actor;
-        Time = time;
-        Encounter = encounter;
-    }
-}
+public delegate void ActorArrivedEventHandler(IActor actor, long time);
 
 /// <summary>
-/// Event arguments for when an actor is about to leave an encounter
+/// Event handler for when an actor is about to leave an encounter
 /// </summary>
-public class ActorLeavingEventArgs : EventArgs {
-    public IActor Actor { get; }
-    public long Time { get; }
-    public Encounter Encounter { get; }
-
-    public ActorLeavingEventArgs(IActor actor, long time, Encounter encounter) {
-        Actor = actor;
-        Time = time;
-        Encounter = encounter;
-    }
-}
+public delegate void ActorLeavingEventHandler(IActor actor, long time);
 
 /// <summary>
-/// Event arguments for when an actor has left an encounter
+/// Event handler for when an actor has left an encounter
 /// </summary>
-public class ActorLeftEventArgs : EventArgs {
-    public IActor Actor { get; }
-    public long Time { get; }
-    public Encounter Encounter { get; }
-
-    public ActorLeftEventArgs(IActor actor, long time, Encounter encounter) {
-        Actor = actor;
-        Time = time;
-        Encounter = encounter;
-    }
-}
+public delegate void ActorLeftEventHandler(IActor actor, long time);
 
 /// <summary>
-/// Event arguments for when time advances in an encounter
+/// Event handler for when time advances in an encounter
 /// </summary>
-public class EncounterTickEventArgs : EventArgs {
-    public long Time { get; }
-    public Encounter Encounter { get; }
-
-    public EncounterTickEventArgs(long time, Encounter encounter) {
-        Time = time;
-        Encounter = encounter;
-    }
-}
+public delegate void EncounterTickEventHandler(long time);
 
 /// <summary>
 /// Component-based behavior system for actors.

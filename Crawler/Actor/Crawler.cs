@@ -1086,53 +1086,6 @@ public class Crawler: IActor {
         To(other).StoredProposals.Clear();
     }
 
-    /// <summary>
-    /// Called when this actor enters an encounter with existing actors
-    /// </summary>
-    public void Meet(Encounter encounter, long time, IEnumerable<IActor> encounterActors) {
-        foreach (var actor in encounterActors.OfType<Crawler>()) {
-            actor.SetupBanditExtortion(this);
-            actor.SetupContrabandAndTaxes(this);
-        }
-    }
-
-    void PruneRelations() {
-        Dictionary<IActor, ActorToActor> relations = new();
-        foreach (var (actor, relation) in _relations) {
-            if (actor is Crawler { IsSettlement: true, IsDestroyed: false } || relation.Hostile) {
-                relations.Add(actor, relation);
-            }
-        }
-        // TODO: Use a static and dynamic relations list
-        _relations = relations;
-    }
-
-    /// <summary>
-    /// Called when a new actor joins the encounter
-    /// </summary>
-    public void Greet(IActor newActor) {
-        Message($"{newActor.Name} enters");
-        SetupBanditExtortion(newActor);
-        SetupContrabandAndTaxes(newActor);
-    }
-
-    /// <summary>
-    /// Called when this actor leaves an encounter with remaining actors
-    /// </summary>
-    public void Leave(IEnumerable<IActor> encounterActors) {
-        foreach (var actor in encounterActors.OfType<Crawler>()) {
-            actor.ExpireProposals(this);
-        }
-        PruneRelations();
-    }
-
-    /// <summary>
-    /// Called when another actor leaves the encounter
-    /// </summary>
-    public void Part(IActor leavingActor) {
-        ExpireProposals(leavingActor);
-        Message($"{leavingActor.Name} leaves");
-    }
 
     // Accessor methods for save/load
     public Dictionary<IActor, ActorToActor> GetRelations() => _relations;
