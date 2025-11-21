@@ -64,7 +64,7 @@ public record Location {
     public EncounterType Type { get; init; }
     public float wealth { get; init; }
     public ulong Seed { get; init; }
-    public Func<Location, Encounter> NewEncounter { get; init; }
+    public Func<Location, Encounter> NewEncounter { get; set; }
 
     public Faction ChooseRandomFaction() {
         // Get base weights for this terrain type
@@ -287,7 +287,10 @@ public class Map {
         }
 
         // Sort by population descending
-        settlementLocations = settlementLocations.OrderByDescending(loc => loc.Population).ToList();
+        settlementLocations = settlementLocations
+            .Where(loc => !loc.HasEncounter)
+            .OrderByDescending(loc => loc.Population)
+            .ToList();
 
         NumFactions = Math.Min(Height * 3 / 4, 20);
         NumFactions = Math.Min(NumFactions, settlementLocations.Count);
@@ -307,6 +310,7 @@ public class Map {
             var sector = setLocation.Sector;
             sector.ControllingFaction = faction;
             var encounter = new Encounter(Rng.Seed(), setLocation, faction);
+            setLocation.SetEncounter(encounter);
             var crawler = encounter.GenerateCapital(Rng.Seed());
             var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
             float influence = 5 + crawler.Domes;
