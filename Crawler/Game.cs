@@ -386,7 +386,9 @@ public class Game {
         Look();
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
-        Player.NextEvent = Player.LastEvent + ap;
+        if (ap > 0) {
+            Player.ConsumeTime(Player.LastEvent + ap, null);
+        }
         return selected;
     }
     int SectorMap() {

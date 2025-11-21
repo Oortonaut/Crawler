@@ -128,7 +128,7 @@ public interface IActor {
     void Tick(long time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
-    void Think(int elapsed, IEnumerable<IActor> other);
+    void Think(int elapsed);
 
     /// <summary>Receive combat damage from another actor</summary>
     void ReceiveFire(IActor from, List<HitRecord> fire);
@@ -179,7 +179,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
     public void Tick(long time) {
     }
-    public void Think(int elapsed, IEnumerable<IActor> other) { }
+    public void Think(int elapsed) { }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         Message($"{from.Name} fired uselessly at you");
         from.Message($"You fired uselessly at {Name}");

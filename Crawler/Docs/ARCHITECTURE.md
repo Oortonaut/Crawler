@@ -8,6 +8,7 @@
 - **Want to add new content?** → [EXTENDING.md](EXTENDING.md)
 
 ## Recent Changes
+- **2025-11-21**: **Action scheduling system**: Added `ConsumeTime(delay, action)` method to `Crawler` for action point consumption with optional callbacks. Components now implement `ThinkAction()` for proactive NPC behaviors. Multi-actor interactions (repairs, trades) use bidirectional `UltimatumState` on `ActorToActor` relationships instead of static state, enabling automatic cleanup and natural blocking of duplicate interactions.
 - **2025-11-21**: **Major refactor**: Implemented event-driven encounter system with component-based actor behaviors. Added `IActorComponent` interface and concrete components (BanditExtortionComponent, SettlementContrabandComponent, TradeOfferComponent, etc.). Encounters now publish events (ActorArrived, ActorLeaving, ActorLeft, EncounterTick) that components subscribe to. Proposals generated on-demand via components. This enables better extensibility, improved liveness, and cleaner separation of concerns.
 - **2025-11-08**: Replaced `Random.Shared` with custom XorShift RNG for deterministic, seed-based randomness; all Crawlers and child objects now use seeded RNG; added `GaussianSampler` class for Box-Muller transform; updated extension methods (`ChooseRandom`, `StochasticInt`, `SamplePoisson`) to accept RNG parameter
 - **2025-10-25**: Renamed `ActivitySources` to `LogCat` for OpenTelemetry logging categories

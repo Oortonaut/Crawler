@@ -301,7 +301,7 @@ public class Crawler: IActor {
             }
         }
         Tick(time);
-        Think(elapsed, Location.GetEncounter().ActorsExcept(this));
+        Think(elapsed);
     }
     public void Tick(long time) {
         int elapsed = (int)(time - LastEvent);
@@ -336,14 +336,27 @@ public class Crawler: IActor {
         FuelInv -= fuel;
         Location = loc;
         loc.GetEncounter().AddActorAt(this, arrivalTime);
-        NextEvent = arrivalTime;
+        int delay = (int)(time * 3600);
+        ConsumeTime(delay, null);
     }
-    public void Think(int elapsed, IEnumerable<IActor> Actors) {
+    public void Think(int elapsed) {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
         if (Flags.HasFlag(EActorFlags.Player)) {
             return;
         }
 
+        var actors = Location.GetEncounter().ActorsExcept(this);
+
+        // Let components provide proactive behaviors
+        foreach (var component in Components) {
+            int? ap = component.ThinkAction(actors);
+            if (ap.HasValue && ap.Value > 0) {
+                // Component scheduled an action, we're done
+                return;
+            }
+        }
+
+        // Fallback: default NPC behavior
         if (IsDepowered) {
             Message($"{Name} has no power.");
             return;
@@ -356,9 +369,12 @@ public class Crawler: IActor {
             return;
         }
 
-        var hostile = Rng.ChooseRandom(Actors.Where(a => To(a).Hostile));
+        var hostile = Rng.ChooseRandom(actors.Where(a => To(a).Hostile));
         if (hostile != null) {
-            int AP = this.Attack(hostile);
+            int ap = this.Attack(hostile);
+            if (ap > 0) {
+                ConsumeTime(ap, null);
+            }
         }
     }
 
@@ -372,11 +388,10 @@ public class Crawler: IActor {
 
     Action<Crawler>? _nextEventAction;
 
-    public void SetNextEvent(long time, Action<Crawler> action) {
-        if (time < 0) throw new ArgumentOutOfRangeException(nameof(time));
-        if (action == null) throw new ArgumentNullException(nameof(action));
+    public void ConsumeTime(long delay, Action<Crawler>? action) {
+        if (delay < 0) throw new ArgumentOutOfRangeException(nameof(delay));
 
-        NextEvent = time;
+        NextEvent = LastEvent + delay;
         _nextEventAction = action;
 
         // Ensure the encounter reschedules this crawler for the new time

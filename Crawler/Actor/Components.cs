@@ -45,6 +45,12 @@ public interface IActorComponent {
 
     /// <summary>Unsubscribe this component's event handlers from an encounter</summary>
     void UnsubscribeFromEncounter(Encounter encounter);
+
+    /// <summary>
+    /// Called during Think() to allow proactive component behaviors.
+    /// Returns AP cost if action was scheduled, null otherwise.
+    /// </summary>
+    int? ThinkAction(IEnumerable<IActor> actors);
 }
 
 /// <summary>
@@ -68,4 +74,6 @@ public abstract class ActorComponentBase : IActorComponent {
     public virtual void SubscribeToEncounter(Encounter encounter) { }
 
     public virtual void UnsubscribeFromEncounter(Encounter encounter) { }
+
+    public virtual int? ThinkAction(IEnumerable<IActor> actors) => null;
 }

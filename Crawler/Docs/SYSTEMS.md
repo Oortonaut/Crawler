@@ -14,6 +14,7 @@
 - [Tick System](#tick-system)
 
 ## Recent Changes
+- **2025-11-21**: Added action scheduling system with `ConsumeTime(delay, action)` for AP-based time commitment and optional callbacks. Components implement `ThinkAction()` for proactive behaviors. Multi-actor interactions use `UltimatumState` on `ActorToActor` relationships for state management.
 - **2025-11-08**: Replaced `Random.Shared` with custom XorShift RNG; all random operations now use seeded RNG for determinism; combat uses local RNG instances spawned from Crawler RNG
 - **2025-10-29**: Trade proposals now use actor's faction instead of passing it as parameter; improved faction policy generation with multiple archetype selection; settlements now display civilian population
 - **2025-10-29**: Commodity availability calculation changed to use unavailability decay model; silicate prices rounded to 85¢¢
@@ -508,8 +509,54 @@ public virtual IEnumerable<IProposal> Proposals() {
 
 ## Mandatory Interaction System (Ultimatums)
 
-**Files:** `Crawler.cs:116-162`, `Encounter.cs:183-224, 534-563`, `Proposals.cs:174-250`
-**Purpose:** Time-limited demands with automatic consequences
+**Files:** `Crawler.cs:62-69`, `ActorComponents.cs`, `Encounter.cs`
+**Purpose:** Time-limited demands and multi-actor interaction state tracking
+
+### UltimatumState Structure
+
+**Location:** `ActorToActor.UltimatumState` in `Crawler.cs:63-69`
+
+```csharp
+public class UltimatumState {
+    public long ExpirationTime { get; set; }  // When this ultimatum expires
+    public string Type { get; set; } = "";    // Interaction type identifier
+    public object? Data { get; set; }         // Arbitrary context data
+}
+```
+
+**Lives on:** `ActorToActor` relationship (directional: A → B)
+
+### Use Cases
+
+**1. Time-Limited Demands** (BanditExtortion, ContrabandSeizure)
+- Bandit/Settlement sets Ultimatum with Type and expiration
+- Component enumerates accept/refuse interactions based on Ultimatum presence
+- Cleared when resolved or actor leaves encounter
+
+**2. Multi-Actor Interaction State** (Repairs, Extended Trading)
+- Both actors set bidirectional Ultimatums with same ExpirationTime
+- Type distinguishes role: "RepairCustomer" / "RepairMechanic"
+- Data stores interaction context (segment being repaired, etc.)
+- Prevents duplicate interactions while in progress
+- Automatically cleaned up when either actor leaves encounter
+- Cleared by `ConsumeTime()` callbacks when interaction completes
+
+**Example - Repair Interaction:**
+```csharp
+// Customer → Mechanic
+customer.To(mechanic).Ultimatum = new ActorToActor.UltimatumState {
+    ExpirationTime = endTime,
+    Type = "RepairCustomer",
+    Data = segmentBeingRepaired
+};
+
+// Mechanic → Customer
+mechanic.To(customer).Ultimatum = new ActorToActor.UltimatumState {
+    ExpirationTime = endTime,
+    Type = "RepairMechanic",
+    Data = segmentBeingRepaired
+};
+```
 
 ### Architecture
 
@@ -998,6 +1045,39 @@ MovementFuelPerKm = FuelPerKm × MovementDrain / FuelEfficiency
 **Files:** `Game.cs`, `Crawler.cs:180-239`, `Encounter.cs:488-532`
 **Frequency:** Every game second
 
+### Action Scheduling System
+
+**Purpose:** Control when actors can take actions by consuming action points (AP) and scheduling callbacks.
+
+**Core Method:** `Crawler.ConsumeTime(long delay, Action<Crawler>? action)`
+
+**Behavior:**
+- Sets `NextEvent = LastEvent + delay` to commit the crawler to a time period
+- Stores optional callback action to execute when time expires
+- Reschedules the crawler in the encounter priority queue
+- Blocks `Think()` from running until NextEvent is reached
+
+**Usage Pattern:**
+```csharp
+// Player selects action that costs 10 AP
+Player.ConsumeTime(10, null);
+
+// Multi-actor interaction (repair taking 1 hour)
+customer.ConsumeTime(3600, c => {
+    segment.Hits = 0;
+    c.Message("Repair completed");
+    // Clear relationship state
+});
+mechanic.ConsumeTime(3600, m => {
+    m.Message("Finished repairs");
+});
+```
+
+**Component Integration:**
+- Components implement `ThinkAction(IEnumerable<IActor> actors)` for proactive NPC behaviors
+- `Think()` queries components before falling back to default AI
+- If a component returns an AP cost, it should call `ConsumeTime()` and `Think()` exits early
+
 ### Tick Hierarchy
 
 ```
@@ -1006,8 +1086,11 @@ Game.Tick() (every second)
 ├── if Moving: Player.Tick()
 └── CurrentEncounter.Tick()
     ├── UpdateDynamicCrawlers() (check exits/arrivals)
-    ├── foreach actor: actor.Tick()
-    └── foreach actor: actor.Tick(otherActors)
+    ├── foreach actor: actor.TickThink()
+    │   ├── Execute callback if NextEvent reached
+    │   ├── Tick(time) - resource updates
+    │   └── Think(elapsed) - AI decision making
+    └── Schedule(actor) for next event
 ```
 
 ### Player Tick (Crawler.cs:180-239)

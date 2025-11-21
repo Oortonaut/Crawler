@@ -488,6 +488,14 @@ public class RepairComponent : ActorComponentBase {
         if (subject is not Crawler damaged) yield break;
         if (Owner.To(subject).Hostile || subject.To(Owner).Hostile) yield break;
 
+        // Check if there's already an active repair relationship
+        var ownerToSubject = Owner.To(subject).Ultimatum;
+        var subjectToOwner = subject.To(Owner).Ultimatum;
+        bool hasActiveRepair = (ownerToSubject?.Type == "RepairMechanic") ||
+                               (subjectToOwner?.Type == "RepairCustomer");
+
+        if (hasActiveRepair) yield break;
+
         // Enumerate repair interactions for each damaged segment
         foreach (var segment in damaged.Segments.Where(IsRepairable)) {
             float value = segment.Cost / 8;
@@ -507,20 +515,57 @@ public class RepairComponent : ActorComponentBase {
         public override string Description => $"Repair {SegmentToRepair.Name} for {Price}¢¢";
 
         public override int Perform(string args = "") {
-            float value = SegmentToRepair.Cost / 8;
-            var repairOffer = new RepairOffer(Agent, SegmentToRepair, value);
+            long duration = 3600; // 1 hour to repair
+            long endTime = Game.SafeTime + duration;
+
+            // Create bidirectional Ultimatums to track the repair relationship
+            Subject.To(Agent).Ultimatum = new ActorToActor.UltimatumState {
+                ExpirationTime = endTime,
+                Type = "RepairCustomer",
+                Data = SegmentToRepair
+            };
+
+            Agent.To(Subject).Ultimatum = new ActorToActor.UltimatumState {
+                ExpirationTime = endTime,
+                Type = "RepairMechanic",
+                Data = SegmentToRepair
+            };
+
+            // Lock both actors for the duration
+            (Subject as Crawler)?.ConsumeTime(duration, customer => {
+                // Complete the repair
+                SegmentToRepair.Hits = 0;
+                customer.Message($"Repair of {SegmentToRepair.Name} completed");
+                // Clear the Ultimatums
+                customer.To(Agent).Ultimatum = null;
+                Agent.To(customer).Ultimatum = null;
+            });
+
+            (Agent as Crawler)?.ConsumeTime(duration, mechanic => {
+                mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
+            });
+
+            // Pay for the repair upfront
             var scrapOffer = new ScrapOffer(Price);
-
-            Agent.Message($"You repaired {Subject.Name}'s {SegmentToRepair.Name} for {Price}¢¢");
-            Subject.Message($"{Agent.Name} repaired your {SegmentToRepair.Name} for {Price}¢¢");
-
-            repairOffer.PerformOn(Agent, Subject);
             scrapOffer.PerformOn(Subject, Agent);
 
-            return 1;
+            Agent.Message($"Starting repair of {Subject.Name}'s {SegmentToRepair.Name}...");
+            Subject.Message($"{Agent.Name} begins repairing your {SegmentToRepair.Name}");
+
+            return (int)duration;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
+            // Check if there's already an active repair relationship
+            var subjectToAgent = Subject.To(Agent).Ultimatum;
+            var agentToSubject = Agent.To(Subject).Ultimatum;
+
+            // Check if this specific segment is being repaired
+            bool segmentBeingRepaired =
+                (subjectToAgent?.Type == "RepairCustomer" && subjectToAgent.Data == SegmentToRepair) ||
+                (agentToSubject?.Type == "RepairMechanic" && agentToSubject.Data == SegmentToRepair);
+
+            if (segmentBeingRepaired) return Immediacy.Failed;
             if (!IsRepairable(SegmentToRepair)) return Immediacy.Failed;
             if (Subject.Supplies[Commodity.Scrap] < Price) return Immediacy.Failed;
             return Immediacy.Menu;
