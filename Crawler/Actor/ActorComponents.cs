@@ -39,7 +39,6 @@ public class SettlementContrabandComponent : ActorComponentBase {
                 Type = "ContrabandSeizure",
                 Data = contraband
             };
-            settlement.To(target).DirtyInteractions = true;
         }
     }
 
@@ -1198,7 +1197,6 @@ public class BanditComponent : ActorComponentBase {
                 Type = "BanditExtortion",
                 Data = _demandFraction
             };
-            bandit.To(target).DirtyInteractions = true;
         }
     }
 

@@ -39,7 +39,6 @@ public class ActorToActor {
     public bool SetFlag(EFlags flag, bool value = true) {
         if (HasFlag(flag) != value) {
             Flags.SetFlag(flag, value);
-            DirtyInteractions = true;
         }
         return value;
     }
@@ -68,7 +67,6 @@ public class ActorToActor {
 
     public UltimatumState? Ultimatum { get; set; }
 
-    public bool DirtyInteractions { get; set; } = true;
     public override string ToString() {
         var Adjs = new List<string>();
         if (Hostile) {
