@@ -611,13 +611,10 @@ public sealed class Encounter {
     public void Schedule(Crawler crawler) {
         long eventTime = crawler.NextEvent;
         if (eventTime == 0) {
-            int delay = crawler.WeaponDelay() ?? Tuning.MaxDelay;
-            eventTime = LastEncounterEvent + delay;
-        } else {
-            if (eventTime < LastEncounterEvent)
-                throw new InvalidOperationException($"Encounter {Name} has a crawler with a negative NextEvent: {crawler.Name} {crawler.NextEvent}");
+            eventTime = LastEncounterEvent + Tuning.MaxDelay;
+        } else if (eventTime < LastEncounterEvent) {
+            throw new InvalidOperationException($"Encounter {Name} has a crawler with a negative NextEvent: {crawler.Name} {crawler.NextEvent}");
         }
-        
         Schedule(crawler, eventTime);
     }
 

@@ -461,7 +461,7 @@ public class Crawler: IActor {
             CrawlerEx.Message(Game.Instance!.TimeString() + ": " + message);
         }
     }
-    public long NextEvent { get; set; } = 0;
+    public long NextEvent { get; private set; } = 0;
 
     Action<Crawler>? _nextEventAction;
 
@@ -474,7 +474,7 @@ public class Crawler: IActor {
         // Ensure the encounter reschedules this crawler for the new time
         Location?.GetEncounter()?.Schedule(this);
     }
-    public int? WeaponDelay() {
+    int? WeaponDelay() {
         int minDelay = Tuning.MaxDelay;
         int N = 0;
         foreach (var segment in CyclingSegments) {
@@ -797,6 +797,13 @@ public class Crawler: IActor {
         foreach (WeaponSegment segment in selectedWeapons.OfType<WeaponSegment>()) {
             fire.AddRange(segment.GenerateFire(rng.Seed(), 0));
         }
+
+        // Schedule weapon cooldown delay
+        var delay = WeaponDelay();
+        if (delay.HasValue) {
+            ConsumeTime(delay.Value, null);
+        }
+
         return fire;
     }
     void Recharge(int elapsed) {
