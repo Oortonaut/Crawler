@@ -12,7 +12,14 @@
 * [ ] Market views
 * [ ] Better WeakReference - struct Weak<T>, forward object identity for utility
 * [ ] Precalculate and cache more of the filtered segments lists (like ReactorSegments etc.)
-                                  
+* Documentation improvements
+  * [ ] Add a players guide
+  * [ ] Reduce amount of code in documentation - we assume that the reader will have access to source, so refer to particular methods for example usages, etc. The docs should have conceptual information and info that's hard to localize to a specific class or method. 
+  * [ ] Organize code and methods inside classes into regions
+  * [ ] XML documentation comments
+  * [ ] Prettify comments 
+
+
 ## Finished
 
 * [x] Use deterministic seeding like I should have from the start (2025-11-08)
