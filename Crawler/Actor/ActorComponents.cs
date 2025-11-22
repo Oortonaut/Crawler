@@ -42,7 +42,7 @@ public class BanditExtortionComponent : ActorComponentBase {
         // Note: Early return because current code has this disabled
         // Remove this return to enable bandit extortion
 
-        if (bandit.Faction != Faction.Bandit || target.Faction != Faction.Player) return;
+        if (bandit.Role != CrawlerRole.Bandit || target.Faction != Faction.Player) return;
 
         float cargoValue = target.Supplies.ValueAt(bandit.Location);
         if (cargoValue >= Tuning.Bandit.minValueThreshold &&
@@ -746,6 +746,109 @@ public class SurrenderComponent : ActorComponentBase {
 }
 
 /// <summary>
+/// Shared extortion interaction records used by both player demands and bandit extortion.
+/// </summary>
+public static class ExtortionInteractions {
+    /// <summary>
+    /// Interaction where extortioner demands cargo from target.
+    /// Target complies and hands over the demanded items.
+    /// </summary>
+    public record AcceptExtortionInteraction(
+        IActor Extortioner,
+        IActor Target,
+        Func<IOffer> MakeDemand,
+        string DescriptionText,
+        string MenuOption
+    ) : Interaction(Extortioner, Target, MenuOption) {
+
+        public override string Description => DescriptionText;
+
+        public override int Perform(string args = "") {
+            var demand = MakeDemand();
+
+            Extortioner.Message($"{Target.Name} hands over {demand.Description}");
+            Target.Message($"You hand over {demand.Description} to {Extortioner.Name}");
+
+            demand.PerformOn(Target, Extortioner);
+
+            // Clear ultimatum if it exists
+            if (Extortioner.To(Target).Ultimatum != null) {
+                Extortioner.To(Target).Ultimatum = null;
+            }
+
+            // Mark as surrendered
+            Target.To(Extortioner).Surrendered = true;
+
+            return 1;
+        }
+
+        public override Immediacy GetImmediacy(string args = "") {
+            var demand = MakeDemand();
+            if (demand.DisabledFor(Target, Extortioner) != null) return Immediacy.Failed;
+            if (Target.To(Extortioner).Surrendered) return Immediacy.Failed;
+            return Immediacy.Menu;
+        }
+    }
+
+    /// <summary>
+    /// Interaction where target refuses extortion demand.
+    /// Results in hostility between both parties.
+    /// </summary>
+    public record RefuseExtortionInteraction(
+        IActor Extortioner,
+        IActor Target,
+        string MenuOption
+    ) : Interaction(Extortioner, Target, MenuOption) {
+
+        public override string Description => $"Refuse extortion from {Extortioner.Name}";
+
+        public override int Perform(string args = "") {
+            Extortioner.To(Target).Hostile = true;
+            Target.To(Extortioner).Hostile = true;
+
+            Extortioner.Message($"{Target.Name} refuses your demand!");
+            Target.Message($"You refuse {Extortioner.Name}'s demand - now hostile!");
+
+            // Clear ultimatum if it exists
+            if (Extortioner.To(Target).Ultimatum != null) {
+                Extortioner.To(Target).Ultimatum = null;
+            }
+
+            return 1;
+        }
+
+        public override Immediacy GetImmediacy(string args = "") => Immediacy.Menu;
+    }
+
+    /// <summary>
+    /// Automatic interaction when extortion ultimatum expires.
+    /// Extortioner attacks the target.
+    /// </summary>
+    public record ExtortionExpiredInteraction(
+        IActor Extortioner,
+        IActor Target,
+        string MenuOption
+    ) : Interaction(Extortioner, Target, MenuOption) {
+
+        public override string Description => $"Extortion expired - {Extortioner.Name} attacks!";
+
+        public override int Perform(string args = "") {
+            if (Extortioner is Crawler extortioner) {
+                extortioner.Attack(Target);
+            }
+
+            if (Extortioner.To(Target).Ultimatum != null) {
+                Extortioner.To(Target).Ultimatum = null;
+            }
+
+            return 0;
+        }
+
+        public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
+    }
+}
+
+/// <summary>
 /// Component that allows player to threaten vulnerable NPCs for cargo
 /// </summary>
 public class PlayerDemandComponent : ActorComponentBase {
@@ -769,48 +872,19 @@ public class PlayerDemandComponent : ActorComponentBase {
         if (Owner.To(subject).Hostile) yield break;
         if (subject.To(Owner).Surrendered) yield break;
 
-        yield return new PlayerDemandInteraction(Owner, subject, _rng, _demandFraction, _optionCode);
-    }
-
-    /// <summary>
-    /// Player threatens vulnerable NPC for cargo
-    /// </summary>
-    public record PlayerDemandInteraction(
-        IActor Agent,
-        IActor Subject,
-        XorShift Rng,
-        float DemandFraction,
-        string MenuOption
-    ) : Interaction(Agent, Subject, MenuOption) {
-
-        public override string Description => $"Threaten {Subject.Name} for cargo";
-
+        // Use shared extortion interaction
         IOffer MakeDemand() => new CompoundOffer(
-            Subject.SupplyOffer(Rng/1, DemandFraction),
-            Subject.CargoOffer(Rng/2, (DemandFraction + 1) / 2)
+            subject.SupplyOffer(_rng/1, _demandFraction),
+            subject.CargoOffer(_rng/2, (_demandFraction + 1) / 2)
         );
 
-        public override int Perform(string args = "") {
-            var demand = MakeDemand();
-
-            Agent.Message($"You threaten {Subject.Name} and demand {demand.Description}");
-            Subject.Message($"{Agent.Name} threatens you and demands {demand.Description}");
-
-            // They give up the cargo
-            demand.PerformOn(Subject, Agent);
-
-            // Mark as surrendered
-            Subject.To(Agent).Surrendered = true;
-
-            return 1;
-        }
-
-        public override Immediacy GetImmediacy(string args = "") {
-            if (Subject is not Crawler { IsVulnerable: true }) return Immediacy.Failed;
-            if (Subject.To(Agent).Surrendered) return Immediacy.Failed;
-            if (Agent is Crawler { IsDisarmed: true }) return Immediacy.Failed;
-            return Immediacy.Menu;
-        }
+        yield return new ExtortionInteractions.AcceptExtortionInteraction(
+            Owner,
+            subject,
+            MakeDemand,
+            $"Threaten {subject.Name} for cargo",
+            _optionCode
+        );
     }
 }
 
@@ -1050,4 +1124,385 @@ public class RelationPrunerComponent : ActorComponentBase {
         crawler.SetRelations(pruned);
     }
 
+}
+
+/// <summary>
+/// Component that handles life support resource consumption and crew survival.
+/// Manages fuel, rations, water, and air consumption, as well as crew death from deprivation.
+/// </summary>
+public class LifeSupportComponent : ActorComponentBase {
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.EncounterTick += OnEncounterTick;
+    }
+
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.EncounterTick -= OnEncounterTick;
+    }
+
+    void OnEncounterTick(long time) {
+        if (Owner is not Crawler crawler) return;
+
+        // This runs during Tick, which already calculates elapsed
+        // We'll handle this in a direct call from Crawler.Tick instead
+    }
+
+    /// <summary>
+    /// Consume life support resources based on elapsed time
+    /// </summary>
+    public void ConsumeResources(Crawler crawler, int elapsed) {
+        float hours = elapsed / 3600f;
+
+        crawler.ScrapInv -= crawler.WagesPerHr * hours;
+        crawler.RationsInv -= crawler.RationsPerHr * hours;
+        crawler.WaterInv -= crawler.WaterRecyclingLossPerHr * hours;
+        crawler.AirInv -= crawler.AirLeakagePerHr * hours;
+        crawler.FuelInv -= crawler.FuelPerHr * hours;
+    }
+
+    /// <summary>
+    /// Handle crew death from resource deprivation
+    /// </summary>
+    public void ProcessSurvival(Crawler crawler, int elapsed) {
+        // Check rations
+        if (crawler.RationsInv <= 0) {
+            crawler.Message("You are out of rations and your crew is starving.");
+            float liveRate = 0.99f;
+            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
+            crawler.CrewInv *= liveRate;
+            crawler.RationsInv = 0;
+        }
+
+        // Check water
+        if (crawler.WaterInv <= 0) {
+            crawler.Message("You are out of water. People are dying of dehydration.");
+            float keepRate = 0.98f;
+            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
+            crawler.CrewInv *= keepRate;
+            crawler.WaterInv = 0;
+        }
+
+        // Check air
+        float maxPopulation = (int)(crawler.AirInv / Tuning.Crawler.AirPerPerson);
+        if (maxPopulation < crawler.TotalPeople) {
+            crawler.Message("You are out of air. People are suffocating.");
+            var died = crawler.TotalPeople - maxPopulation;
+            if (died >= crawler.CrewInv) {
+                died -= crawler.CrewInv;
+                crawler.CrewInv = 0;
+            } else {
+                crawler.CrewInv -= died;
+                died = 0;
+            }
+        }
+
+        if (crawler.IsDepowered) {
+            crawler.Message("Your life support systems are offline.");
+            crawler.MoraleInv -= 1.0f;
+        }
+    }
+}
+
+/// <summary>
+/// Component that automatically repairs damaged segments using excess power, crew, and scrap.
+/// </summary>
+public class AutoRepairComponent : ActorComponentBase {
+    float _repairProgress = 0;
+    RepairMode _repairMode;
+
+    public AutoRepairComponent(RepairMode repairMode = RepairMode.Off) {
+        _repairMode = repairMode;
+    }
+
+    public RepairMode RepairMode {
+        get => _repairMode;
+        set => _repairMode = value;
+    }
+
+    /// <summary>
+    /// Attempt to repair damaged segments using excess power
+    /// </summary>
+    public float PerformRepair(Crawler crawler, float power, int elapsed) {
+        // TODO: We should consume the energy if we have undestroyed segments and are adding repair progress
+        // At the moment the energy is only consumed when we do the repair
+        // Not a problem because nothing follows this to use it.
+
+        float maxRepairsCrew = crawler.CrewInv / Tuning.Crawler.RepairCrewPerHp;
+        float maxRepairsPower = power / Tuning.Crawler.RepairPowerPerHp;
+        float maxRepairsScrap = crawler.ScrapInv / Tuning.Crawler.RepairScrapPerHp;
+        float maxRepairs = Math.Min(Math.Min(maxRepairsCrew, maxRepairsPower), maxRepairsScrap);
+        float maxRepairsHr = maxRepairs * elapsed / Tuning.Crawler.RepairTime;
+        float repairHitsFloat = maxRepairsHr + _repairProgress;
+        int repairHits = (int)repairHitsFloat;
+        _repairProgress = repairHitsFloat - repairHits;
+        var candidates = crawler.UndestroyedSegments.Where(s => s.Hits > 0);
+        if (_repairMode is RepairMode.Off || !candidates.Any()) {
+            _repairProgress = 0;
+            return power;
+        } else if (_repairMode is RepairMode.RepairHighest) {
+            var damagedSegments = candidates.OrderByDescending(s => s.Hits).ToStack();
+            while (repairHits > 0 && damagedSegments.Count > 0) {
+                var segment = damagedSegments.Pop();
+                --repairHits;
+                --segment.Hits;
+            }
+        } else if (_repairMode is RepairMode.RepairLowest) {
+            var damagedSegments = candidates.OrderBy(s => s.Health).ToList();
+            while (repairHits > 0 && damagedSegments.Count > 0) {
+                int health = damagedSegments[0].Health;
+                foreach (var segment in damagedSegments.TakeWhile(s => s.Health <= health).Where(s => s.Hits > 0)) {
+                    if (repairHits <= 0) {
+                        break;
+                    }
+                    --repairHits;
+                    --segment.Hits;
+                }
+            }
+        }
+        int repaired = (int)repairHitsFloat - repairHits;
+
+        if (repaired > 0) {
+            float repairScrap = Tuning.Crawler.RepairScrapPerHp * repaired;
+            float repairPower = Tuning.Crawler.RepairPowerPerHp * repaired;
+            crawler.Message($"Repaired {repaired} Hits for {repairScrap:F1}¢¢.");
+
+            power -= repairPower;
+            crawler.ScrapInv -= repairScrap;
+        }
+
+        return power;
+    }
+}
+
+/// <summary>
+/// Component that provides contraband scanning capability.
+/// Can be added to settlements, police, or other enforcement actors.
+/// </summary>
+public class ContrabandScannerComponent : ActorComponentBase {
+    /// <summary>
+    /// Scan actor's inventory for contraband based on this faction's policies
+    /// </summary>
+    public bool HasContraband(IActor target) {
+        if (target is not Crawler crawler) {
+            return false;
+        }
+        return !ScanForContraband(crawler).IsEmpty;
+    }
+
+    /// <summary>
+    /// Scan and return all contraband items found
+    /// </summary>
+    public Inventory ScanForContraband(Crawler target) {
+        var contraband = new Inventory();
+
+        // Random chance to detect (currently disabled)
+        //if (Rng.NextSingle() > Tuning.Civilian.contrabandScanChance) {
+        //    return contraband; // Scan failed
+        //}
+
+        var targetToFaction = target.To(Owner.Faction);
+        // Check each commodity
+        foreach (var commodityAmount in target.Supplies.Pairs) {
+            var (commodity, amount) = commodityAmount;
+            amount += target.Cargo[commodity];
+            var policy = Tuning.FactionPolicies.GetPolicy(Owner.Faction, commodity);
+            var licensed = targetToFaction.CanTrade(commodity);
+            if (!licensed && amount > 0) {
+                contraband.Add(commodity, amount);
+            }
+        }
+        foreach (var segment in target.Cargo.Segments) {
+            var policy = Tuning.FactionPolicies.GetPolicy(Owner.Faction, segment.SegmentKind);
+            var licensed = targetToFaction.CanTrade(segment.SegmentDef);
+            if (!licensed) {
+                contraband.Add(segment);
+            }
+        }
+        foreach (var segment in target.Supplies.Segments.Where(s => s.IsPackaged)) {
+            var policy = Tuning.FactionPolicies.GetPolicy(Owner.Faction, segment.SegmentKind);
+            var licensed = targetToFaction.CanTrade(segment.SegmentDef);
+            if (!licensed) {
+                contraband.Add(segment);
+            }
+        }
+        return contraband;
+    }
+}
+
+/// <summary>
+/// High-priority survival component that makes crawlers flee when vulnerable.
+/// Overrides other AI behaviors to prioritize survival.
+/// </summary>
+public class RetreatComponent : ActorComponentBase {
+    public override int Priority => 1000; // Highest priority - survival first
+
+    public override int? ThinkAction(IEnumerable<IActor> actors) {
+        if (Owner is not Crawler crawler) return null;
+
+        // Check if depowered first
+        if (crawler.IsDepowered) {
+            crawler.Message($"{crawler.Name} has no power.");
+            return null; // Can't act, but don't let other components try either
+        }
+
+        // Flee if vulnerable and not pinned
+        if (crawler.IsVulnerable && !crawler.Pinned()) {
+            crawler.Message($"{crawler.Name} flees the encounter.");
+            crawler.Location.GetEncounter().RemoveActor(crawler);
+            return 1; // Consumed time to flee
+        }
+
+        return null; // Not vulnerable, let lower priority components handle it
+    }
+}
+
+/// <summary>
+/// Bandit AI component that handles extortion, targeting, and combat.
+/// Consolidates all bandit-specific behaviors.
+/// </summary>
+public class BanditComponent : ActorComponentBase {
+    XorShift _rng;
+    float _demandFraction;
+
+    public BanditComponent(ulong seed, float demandFraction = 0.5f) {
+        _rng = new XorShift(seed);
+        _demandFraction = demandFraction;
+    }
+
+    public override int Priority => 600; // Faction-specific behavior
+
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.ActorArrived += OnActorArrived;
+        encounter.ActorLeft += OnActorLeft;
+    }
+
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeft -= OnActorLeft;
+    }
+
+    void OnActorArrived(IActor actor, long time) {
+        if (Owner is not Crawler bandit) return;
+        if (actor == Owner) return;
+
+        SetupExtortion(bandit, actor, time);
+    }
+
+    void OnActorLeft(IActor actor, long time) {
+        if (Owner is not Crawler bandit) return;
+        if (actor == Owner) return;
+
+        // Clear ultimatum when target leaves
+        bandit.To(actor).Ultimatum = null;
+    }
+
+    void SetupExtortion(Crawler bandit, IActor target, long time) {
+        // Note: Early return because current code has this disabled
+        // Remove this return to enable bandit extortion
+
+        if (bandit.Role != CrawlerRole.Bandit || target.Faction != Faction.Player) return;
+
+        float cargoValue = target.Supplies.ValueAt(bandit.Location);
+        if (cargoValue >= Tuning.Bandit.minValueThreshold &&
+            _rng.NextSingle() < Tuning.Bandit.demandChance &&
+            !bandit.To(target).Hostile &&
+            !bandit.To(target).Surrendered &&
+            !bandit.IsDisarmed) {
+
+            // Set ultimatum with timeout
+            bandit.To(target).Ultimatum = new ActorToActor.UltimatumState {
+                ExpirationTime = time + 300,
+                Type = "BanditExtortion",
+                Data = _demandFraction
+            };
+            bandit.To(target).DirtyInteractions = true;
+        }
+    }
+
+    public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
+        var relation = Owner.To(subject);
+        if (relation.Ultimatum?.Type != "BanditExtortion") yield break;
+
+        long expirationTime = relation.Ultimatum.ExpirationTime;
+        float demandFraction = relation.Ultimatum.Data as float? ?? _demandFraction;
+        bool expired = expirationTime > 0 && Game.SafeTime > expirationTime;
+
+        if (!expired) {
+            // Use shared extortion interactions
+            IOffer MakeDemand() => subject.SupplyOffer(_rng/1, demandFraction);
+
+            yield return new ExtortionInteractions.AcceptExtortionInteraction(
+                Owner,
+                subject,
+                MakeDemand,
+                "Accept extortion: hand over cargo",
+                "DY"
+            );
+            yield return new ExtortionInteractions.RefuseExtortionInteraction(Owner, subject, "");
+        } else {
+            // Time expired - attack automatically
+            yield return new ExtortionInteractions.ExtortionExpiredInteraction(Owner, subject, "");
+        }
+    }
+
+    public override int? ThinkAction(IEnumerable<IActor> actors) {
+        if (Owner is not Crawler bandit) return null;
+        if (bandit.IsDisarmed) return null;
+
+        var actorList = actors.ToList();
+
+        // Priority 1: Attack vulnerable hostiles first (easy targets)
+        var vulnerableHostile = _rng.ChooseRandom(actorList
+            .OfType<Crawler>()
+            .Where(a => bandit.To(a).Hostile && a.IsVulnerable && a.Lives()));
+
+        if (vulnerableHostile != null) {
+            int ap = bandit.Attack(vulnerableHostile);
+            if (ap > 0) {
+                bandit.ConsumeTime(ap, null);
+                return ap;
+            }
+        }
+
+        // Priority 2: Attack any hostile
+        var hostile = _rng.ChooseRandom(actorList.Where(a => bandit.To(a).Hostile));
+        if (hostile != null) {
+            int ap = bandit.Attack(hostile);
+            if (ap > 0) {
+                bandit.ConsumeTime(ap, null);
+                return ap;
+            }
+        }
+
+        return null; // No action taken
+    }
+}
+
+/// <summary>
+/// Generic hostile AI component that attacks enemies.
+/// Used as fallback behavior for NPCs that should fight but have no specialized AI.
+/// </summary>
+public class HostileAIComponent : ActorComponentBase {
+    XorShift _rng;
+
+    public HostileAIComponent(ulong seed) {
+        _rng = new XorShift(seed);
+    }
+
+    public override int Priority => 400; // Generic combat behavior
+
+    public override int? ThinkAction(IEnumerable<IActor> actors) {
+        if (Owner is not Crawler crawler) return null;
+        if (crawler.IsDisarmed) return null;
+
+        var hostile = _rng.ChooseRandom(actors.Where(a => crawler.To(a).Hostile));
+        if (hostile != null) {
+            int ap = crawler.Attack(hostile);
+            if (ap > 0) {
+                crawler.ConsumeTime(ap, null);
+                return ap;
+            }
+        }
+
+        return null;
+    }
 }

@@ -28,6 +28,16 @@ public interface IActorComponent {
     /// <summary>The actor that owns this component</summary>
     IActor Owner { get; }
 
+    /// <summary>
+    /// Priority for ThinkAction evaluation. Higher priority = evaluated first.
+    /// Priority ranges:
+    /// - 1000+: Critical survival (retreat, emergency)
+    /// - 500-999: Faction-specific AI (bandit, civilian, police)
+    /// - 100-499: Opportunistic behaviors (scavenge, patrol)
+    /// - 0-99: Default/fallback behaviors
+    /// </summary>
+    int Priority { get; }
+
     /// <summary>Initialize the component with its owner</summary>
     void Initialize(IActor owner);
 
@@ -48,6 +58,7 @@ public interface IActorComponent {
 
     /// <summary>
     /// Called during Think() to allow proactive component behaviors.
+    /// Components are evaluated in priority order (highest first).
     /// Returns AP cost if action was scheduled, null otherwise.
     /// </summary>
     int? ThinkAction(IEnumerable<IActor> actors);
@@ -58,6 +69,9 @@ public interface IActorComponent {
 /// </summary>
 public abstract class ActorComponentBase : IActorComponent {
     public IActor Owner { get; private set; } = null!;
+
+    /// <summary>Default priority for components. Override to set specific priority.</summary>
+    public virtual int Priority => 500;
 
     public virtual void Initialize(IActor owner) {
         Owner = owner;

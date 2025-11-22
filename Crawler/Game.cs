@@ -1193,17 +1193,17 @@ public class Game {
 
                         // Increment trader count per commodity
                         foreach (var commodity in offeredCommodities.Distinct()) {
-                            if (crawler.Faction == Faction.Independent) {
+                            if (crawler.Role == CrawlerRole.Trader) {
                                 tradeTraders[commodity]++;
-                            } else if (crawler.Faction == Faction.Bandit) {
+                            } else if (crawler.Role == CrawlerRole.Bandit) {
                                 banditTraders[commodity]++;
                             }
                         }
 
                         if (offeredCommodities.Count > 0) {
-                            if (crawler.Faction == Faction.Independent) {
+                            if (crawler.Role == CrawlerRole.Trader) {
                                 totalTradeTraders++;
-                            } else if (crawler.Faction == Faction.Bandit) {
+                            } else if (crawler.Role == CrawlerRole.Bandit) {
                                 totalBanditTraders++;
                             }
                         }

@@ -220,8 +220,17 @@ public sealed class Encounter {
         float segmentWealth = wealth * (1.0f - 0.75f);
         var trader = Crawler.NewRandom(actorRng.Seed(), Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
         trader.Faction = Faction.Independent;
-        // Use component instead of StoredProposals
-        trader.AddComponent(new TradeOfferComponent(actorRng.Seed(), 0.25f));
+        trader.Role = CrawlerRole.Trader;
+
+        // Add base components
+        trader.AddComponent(new LifeSupportComponent());
+        trader.AddComponent(new AutoRepairComponent(RepairMode.Off)); // Traders don't auto-repair
+        trader.AddComponent(new EncounterMessengerComponent());
+        trader.AddComponent(new RelationPrunerComponent());
+
+        // Initialize role-specific components
+        trader.InitializeRoleComponents(actorRng.Seed());
+
         trader.UpdateSegmentCache();
         return trader;
     }
@@ -237,9 +246,13 @@ public sealed class Encounter {
 
         // Add player-specific components
         var actorRng = new XorShift(seed);
+        player.AddComponent(new LifeSupportComponent());
+        player.AddComponent(new AutoRepairComponent(RepairMode.Off));
         player.AddComponent(new AttackComponent("A"));
         player.AddComponent(new SurrenderComponent(actorRng.Seed(), "S"));
         player.AddComponent(new PlayerDemandComponent(actorRng.Seed(), 0.5f, "X"));
+        player.AddComponent(new RetreatComponent()); // High priority survival
+        player.AddComponent(new EncounterMessengerComponent());
 
         return player;
     }
@@ -252,10 +265,17 @@ public sealed class Encounter {
         float segmentWealth = wealth * 0.5f;
         var enemy = Crawler.NewRandom(actorRng.Seed(), Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
         enemy.Faction = Faction.Bandit;
-        // Add bandit-specific components
-        enemy.AddComponent(new BanditExtortionComponent(actorRng.Seed()));
+        enemy.Role = CrawlerRole.Bandit;
+
+        // Add base components
+        enemy.AddComponent(new LifeSupportComponent());
+        enemy.AddComponent(new AutoRepairComponent(RepairMode.RepairLowest)); // Bandits auto-repair
         enemy.AddComponent(new EncounterMessengerComponent());
         enemy.AddComponent(new RelationPrunerComponent());
+
+        // Initialize role-specific components
+        enemy.InitializeRoleComponents(actorRng.Seed());
+
         return enemy;
     }
 
@@ -269,10 +289,24 @@ public sealed class Encounter {
         float segmentWealth = wealth * (1.0f - 0.75f);
         var civilian = Crawler.NewRandom(actorRng.Seed(), civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
         civilian.Faction = civilianFaction;
-        // Use component instead of StoredProposals
-        civilian.AddComponent(new TradeOfferComponent(actorRng.Seed(), 0.25f));
+
+        // Randomly assign a civilian role
+        var roleRoll = actorRng.NextSingle();
+        civilian.Role = roleRoll switch {
+            < 0.6f => CrawlerRole.Trader,    // 60% traders
+            < 0.8f => CrawlerRole.Traveler,  // 20% travelers
+            _ => CrawlerRole.Customs         // 20% customs officers
+        };
+
+        // Add base components
+        civilian.AddComponent(new LifeSupportComponent());
+        civilian.AddComponent(new AutoRepairComponent(RepairMode.Off)); // Civilians don't auto-repair
         civilian.AddComponent(new EncounterMessengerComponent());
         civilian.AddComponent(new RelationPrunerComponent());
+
+        // Initialize role-specific components
+        civilian.InitializeRoleComponents(actorRng.Seed());
+
         civilian.UpdateSegmentCache();
         return civilian;
     }
@@ -297,12 +331,16 @@ public sealed class Encounter {
         settlement.Domes = domes;
         settlement.Flags |= EActorFlags.Settlement;
         settlement.Flags &= ~EActorFlags.Mobile;
-        // Use components instead of StoredProposals
-        settlement.AddComponent(new TradeOfferComponent(settlementRng.Seed(), 1f));
-        settlement.AddComponent(new RepairComponent("R", 1.2f));
-        settlement.AddComponent(new LicenseComponent("I"));
-        settlement.AddComponent(new SettlementContrabandComponent());
+        settlement.Role = CrawlerRole.Settlement;
+
+        // Add base components
+        settlement.AddComponent(new LifeSupportComponent());
+        settlement.AddComponent(new AutoRepairComponent(RepairMode.RepairLowest)); // Settlements auto-repair
         settlement.AddComponent(new EncounterMessengerComponent());
+
+        // Initialize role-specific components (adds trade, repair, license, contraband scanning)
+        settlement.InitializeRoleComponents(settlementRng.Seed());
+
         settlement.UpdateSegmentCache();
 
         IEnumerable<string> EncounterNames = [];

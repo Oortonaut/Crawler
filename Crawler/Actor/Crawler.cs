@@ -95,7 +95,8 @@ public class ActorToActor {
 public class ActorFaction {
     public ActorFaction(IActor actor, Faction faction) {
         if (actor.Faction == faction) {
-            if (actor.Faction is Faction.Bandit) {
+            // Bandits trust their own faction less
+            if (actor is Crawler { Role: CrawlerRole.Bandit }) {
                 ActorStanding = 25;
             } else {
                 ActorStanding = 100;
@@ -103,7 +104,8 @@ public class ActorFaction {
             FactionStanding = ActorStanding;
         } else {
             ActorStanding = FactionStanding = 10;
-            if (actor.Faction is Faction.Bandit || faction is Faction.Bandit) {
+            // Bandits are hostile to everyone not in their faction
+            if (actor is Crawler { Role: CrawlerRole.Bandit } || faction is Faction.Bandit) {
                 ActorStanding = -100;
                 FactionStanding = -100;
             }
@@ -140,13 +142,9 @@ public class Crawler: IActor {
         Supplies.Overdraft = Cargo;
         Location = location;
         Name = Names.HumanName(Rng.Seed());
-        if (faction == Faction.Bandit) {
-            Markup = Tuning.Trade.BanditMarkup(Gaussian);
-            Spread = Tuning.Trade.BanditSpread(Gaussian);
-        } else {
-            Markup = Tuning.Trade.TradeMarkup(Gaussian);
-            Spread = Tuning.Trade.TradeSpread(Gaussian);
-        }
+        // Default markup/spread - will be updated based on Role if needed
+        Markup = Tuning.Trade.TradeMarkup(Gaussian);
+        Spread = Tuning.Trade.TradeSpread(Gaussian);
         UpdateSegmentCache();
     }
     public string Name { get; set; }
@@ -209,14 +207,30 @@ public class Crawler: IActor {
     }
 
     public Faction Faction { get; set; }
+    public CrawlerRole Role { get; set; } = CrawlerRole.None;
     public int EvilPoints { get; set; } = 0;
 
     // Component system
     List<IActorComponent> _components = new();
+    bool _componentsDirty = false;
+
     public IEnumerable<IActorComponent> Components => _components;
+
+    /// <summary>
+    /// Get components sorted by priority (highest first), using lazy sorting.
+    /// </summary>
+    IEnumerable<IActorComponent> ComponentsByPriority() {
+        if (_componentsDirty) {
+            _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+            _componentsDirty = false;
+        }
+        return _components;
+    }
+
     public void AddComponent(IActorComponent component) {
         component.Initialize(this);
         _components.Add(component);
+        _componentsDirty = true; // Mark for re-sort
         component.OnComponentAdded();
 
         // Subscribe component to encounter events if we're in an encounter
@@ -225,8 +239,80 @@ public class Crawler: IActor {
             component.SubscribeToEncounter(encounter);
         }
     }
+
+    /// <summary>
+    /// Initialize components based on the crawler's role.
+    /// Called after crawler creation to set up role-specific behaviors.
+    /// </summary>
+    public void InitializeRoleComponents(ulong seed) {
+        var rng = new XorShift(seed);
+
+        switch (Role) {
+        case CrawlerRole.Settlement:
+            // Settlements: trade, repair, licensing, contraband enforcement
+            AddComponent(new SettlementContrabandComponent());
+            AddComponent(new ContrabandScannerComponent());
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f));
+            AddComponent(new RepairComponent());
+            AddComponent(new LicenseComponent());
+            break;
+
+        case CrawlerRole.Trader:
+            // Mobile merchants: primarily trade-focused
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f));
+            AddComponent(new HostileAIComponent(rng.Seed())); // Can defend themselves
+            AddComponent(new RetreatComponent()); // Flee when vulnerable
+            break;
+
+        case CrawlerRole.Customs:
+            // Customs officers: contraband scanning and enforcement
+            AddComponent(new ContrabandScannerComponent());
+            AddComponent(new SettlementContrabandComponent());
+            AddComponent(new HostileAIComponent(rng.Seed())); // Combat capable
+            AddComponent(new RetreatComponent());
+            break;
+
+        case CrawlerRole.Bandit:
+            // Bandits: extortion, robbery, combat
+            AddComponent(new BanditComponent(rng.Seed(), 0.5f));
+            AddComponent(new RetreatComponent());
+            // Bandits have higher markup/spread for goods they steal/trade
+            var gaussian = new GaussianSampler(rng.Seed());
+            Markup = Tuning.Trade.BanditMarkup(gaussian);
+            Spread = Tuning.Trade.BanditSpread(gaussian);
+            break;
+
+        case CrawlerRole.Traveler:
+            // Travelers: quest givers, general interactions
+            // TODO: Add quest-related components when quest system is implemented
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.15f)); // Limited trading
+            AddComponent(new RetreatComponent());
+            break;
+
+        case CrawlerRole.None:
+        default:
+            // No role-specific components
+            break;
+        }
+
+        // All NPCs get basic survival components
+        if (!Flags.HasFlag(EActorFlags.Player)) {
+            // Settlement actors already have components, don't duplicate
+            if (Role != CrawlerRole.Settlement) {
+                if (!_components.Any(c => c is RetreatComponent)) {
+                    AddComponent(new RetreatComponent());
+                }
+                if (!_components.Any(c => c is HostileAIComponent)) {
+                    AddComponent(new HostileAIComponent(rng.Seed()));
+                }
+            }
+        }
+    }
+
     public void RemoveComponent(IActorComponent component) {
         if (_components.Remove(component)) {
+            _componentsDirty = true; // Mark for re-sort (though not strictly necessary)
+
             // Unsubscribe component from encounter events
             if (Location?.HasEncounter == true) {
                 var encounter = Location.GetEncounter();
@@ -244,6 +330,13 @@ public class Crawler: IActor {
         return !ScanForContraband(crawler).IsEmpty;
     }
     public Inventory ScanForContraband(IActor target) {
+        // Use ContrabandScannerComponent if available, otherwise use old method
+        var scanner = _components.OfType<ContrabandScannerComponent>().FirstOrDefault();
+        if (scanner != null && target is Crawler targetCrawler) {
+            return scanner.ScanForContraband(targetCrawler);
+        }
+
+        // Fallback: original implementation
         var contraband = new Inventory();
 
         // Random chance to detect
@@ -347,8 +440,12 @@ public class Crawler: IActor {
 
         var actors = Location.GetEncounter().ActorsExcept(this);
 
-        // Let components provide proactive behaviors
-        foreach (var component in Components) {
+        // Let components provide proactive behaviors in priority order
+        // All NPCs should now have appropriate AI components:
+        // - RetreatComponent (priority 1000): flee when vulnerable
+        // - BanditComponent (priority 600): bandit-specific AI
+        // - HostileAIComponent (priority 400): generic combat fallback
+        foreach (var component in ComponentsByPriority()) {
             int? ap = component.ThinkAction(actors);
             if (ap.HasValue && ap.Value > 0) {
                 // Component scheduled an action, we're done
@@ -356,26 +453,8 @@ public class Crawler: IActor {
             }
         }
 
-        // Fallback: default NPC behavior
-        if (IsDepowered) {
-            Message($"{Name} has no power.");
-            return;
-        }
-
-        // Flee if vulnerable and not pinned
-        if (IsVulnerable && !Pinned()) {
-            Message($"{Name} flees the encounter.");
-            Location.GetEncounter().RemoveActor(this);
-            return;
-        }
-
-        var hostile = Rng.ChooseRandom(actors.Where(a => To(a).Hostile));
-        if (hostile != null) {
-            int ap = this.Attack(hostile);
-            if (ap > 0) {
-                ConsumeTime(ap, null);
-            }
-        }
+        // No fallback needed - all actors should have appropriate components
+        // If we reach here, no component took action (idle/waiting)
     }
 
     public void Message(string message) {
@@ -729,13 +808,26 @@ public class Crawler: IActor {
         overflowPower += ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Generate(hours));
         overflowPower += ChargerSegments.Aggregate(0.0f, (i, s) => i + s.Generate(hours));
         float excessPower = FeedPower(overflowPower);
-        excessPower = Repair(excessPower, elapsed); // doesn't return accurate excess :(
 
-        ScrapInv -= WagesPerHr * hours;
-        RationsInv -= RationsPerHr * hours;
-        WaterInv -= WaterRecyclingLossPerHr * hours;
-        AirInv -= AirLeakagePerHr * hours;
-        FuelInv -= FuelPerHr * hours;
+        // Use AutoRepairComponent if available, otherwise use old method
+        var autoRepair = _components.OfType<AutoRepairComponent>().FirstOrDefault();
+        if (autoRepair != null) {
+            excessPower = autoRepair.PerformRepair(this, excessPower, elapsed);
+        } else {
+            excessPower = Repair(excessPower, elapsed);
+        }
+
+        // Use LifeSupportComponent if available, otherwise use old method
+        var lifeSupport = _components.OfType<LifeSupportComponent>().FirstOrDefault();
+        if (lifeSupport != null) {
+            lifeSupport.ConsumeResources(this, elapsed);
+        } else {
+            ScrapInv -= WagesPerHr * hours;
+            RationsInv -= RationsPerHr * hours;
+            WaterInv -= WaterRecyclingLossPerHr * hours;
+            AirInv -= AirLeakagePerHr * hours;
+            FuelInv -= FuelPerHr * hours;
+        }
     }
     float repairProgress = 0;
     // Self-repair system: use excess power to repair damaged segments
@@ -837,41 +929,47 @@ public class Crawler: IActor {
     }
 
     void Decay(int elapsed) {
-        // Check rations
-        if (RationsInv <= 0) {
-            Message("You are out of rations and your crew is starving.");
-            float liveRate = 0.99f;
-            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
-            CrewInv *= liveRate;
-            RationsInv = 0;
-        }
-
-        // Check water
-        if (WaterInv <= 0) {
-            Message("You are out of water. People are dying of dehydration.");
-            float keepRate = 0.98f;
-            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
-            CrewInv *= keepRate;
-            WaterInv = 0;
-        }
-
-        // Check air
-        float maxPopulation = (int)(AirInv / Tuning.Crawler.AirPerPerson);
-        if (maxPopulation < TotalPeople) {
-            Message("You are out of air. People are suffocating.");
-            var died = TotalPeople - maxPopulation;
-            if (died >= CrewInv) {
-                died -= CrewInv;
-                CrewInv = 0;
-            } else {
-                CrewInv -= died;
-                died = 0;
+        // Use LifeSupportComponent if available, otherwise use old method
+        var lifeSupport = _components.OfType<LifeSupportComponent>().FirstOrDefault();
+        if (lifeSupport != null) {
+            lifeSupport.ProcessSurvival(this, elapsed);
+        } else {
+            // Check rations
+            if (RationsInv <= 0) {
+                Message("You are out of rations and your crew is starving.");
+                float liveRate = 0.99f;
+                liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
+                CrewInv *= liveRate;
+                RationsInv = 0;
             }
-        }
 
-        if (IsDepowered) {
-            Message("Your life support systems are offline.");
-            MoraleInv -= 1.0f;
+            // Check water
+            if (WaterInv <= 0) {
+                Message("You are out of water. People are dying of dehydration.");
+                float keepRate = 0.98f;
+                keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
+                CrewInv *= keepRate;
+                WaterInv = 0;
+            }
+
+            // Check air
+            float maxPopulation = (int)(AirInv / Tuning.Crawler.AirPerPerson);
+            if (maxPopulation < TotalPeople) {
+                Message("You are out of air. People are suffocating.");
+                var died = TotalPeople - maxPopulation;
+                if (died >= CrewInv) {
+                    died -= CrewInv;
+                    CrewInv = 0;
+                } else {
+                    CrewInv -= died;
+                    died = 0;
+                }
+            }
+
+            if (IsDepowered) {
+                Message("Your life support systems are offline.");
+                MoraleInv -= 1.0f;
+            }
         }
 
     }
@@ -1052,5 +1150,24 @@ public class Crawler: IActor {
     public double GetGaussianZSin() => Gaussian.GetZSin();
     public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
     public int Domes { get; set; } = 0;
-    public RepairMode RepairMode { get; set; } = RepairMode.Off;
+
+    RepairMode _repairMode = RepairMode.Off;
+    public RepairMode RepairMode {
+        get {
+            // If AutoRepairComponent exists, use its mode
+            var autoRepair = _components.OfType<AutoRepairComponent>().FirstOrDefault();
+            if (autoRepair != null) {
+                return autoRepair.RepairMode;
+            }
+            return _repairMode;
+        }
+        set {
+            _repairMode = value;
+            // If AutoRepairComponent exists, update its mode
+            var autoRepair = _components.OfType<AutoRepairComponent>().FirstOrDefault();
+            if (autoRepair != null) {
+                autoRepair.RepairMode = value;
+            }
+        }
+    }
 }

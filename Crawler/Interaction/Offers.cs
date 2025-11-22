@@ -207,7 +207,7 @@ public record SearchOffer(string Description): IOffer {
         !Agent.HasFlag(EActorFlags.Settlement) ? "Not a Settlement" :
         Subject is not Crawler subject ? "Not a Crawler" :
         Agent.Ended() ? "Destroyed" :
-        Agent.Faction is Faction.Bandit ? "Bandit" :
+        Agent is Crawler { Role: CrawlerRole.Bandit } ? "Bandit" :
         null;
     public void PerformOn(IActor Agent, IActor Subject) {
         if (Agent is Crawler settlement && Subject is Crawler subject) {

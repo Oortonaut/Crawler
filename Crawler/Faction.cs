@@ -2,10 +2,19 @@
 
 namespace Crawler;
 
+public enum CrawlerRole {
+    None,        // No specific role/generic crawler
+    Settlement,  // Static settlement actor
+    Trader,      // Mobile merchant (buys/sells goods)
+    Customs,     // Contraband enforcement officer
+    Bandit,      // Extortion/robbery specialist
+    Traveler     // Dynamic quest giver/wanderer
+}
+
 public enum Faction {
-    Player, // eg a Player crawler
-    Bandit, // a Bandit crawler
-    Independent, // Traveling merchants
+    Player, // Player-controlled faction
+    Bandit, // Criminal faction (allegiance, not behavior - use CrawlerRole for behavior)
+    Independent, // Neutral/unaffiliated faction (allegiance, not behavior - use CrawlerRole for behavior)
 
     // Civilian factions - regional powers controlling sectors
     // Generated during map creation based on highest population settlements
