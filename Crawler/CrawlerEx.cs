@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Crawler.Logging;
 using MathNet.Numerics.Distributions;
+using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
@@ -286,7 +287,10 @@ public static partial class CrawlerEx {
     public static int Length<ENUM>() where ENUM: struct, Enum => Enum.GetValues<ENUM>().Length;
     public static ENUM ChooseRandom<ENUM>(ref this XorShift rng) where ENUM: struct, Enum => Enum.GetValues<ENUM>()[rng.NextInt(Length<ENUM>())];
     static List<string> _messages = new();
-    public static Action<string>? OnMessage = message => _messages.Add(message);
+    public static Action<string>? OnMessage = message => {
+        LogCat.Log.LogInformation(message);
+        _messages.Add(message);
+    };
     public static void Message(string message) {
         OnMessage?.Invoke(message);
     }
@@ -298,6 +302,7 @@ public static partial class CrawlerEx {
             Console.WriteLine(message);
         }
     }
+    public static bool IsPlayer(this IActor agent) => agent.HasFlag(EActorFlags.Player);
     public static bool HasFlag(this IActor agent, EActorFlags flags) => agent.Flags.HasFlag(flags);
     public static bool SurrenderedTo(this IActor agent, IActor other) => agent.To(other).Surrendered;
     public static int Attack(this Crawler attacker, IActor defender) {

@@ -412,7 +412,8 @@ public class Crawler: IActor {
         } else if (elapsed > 0) {
             ThinkFor(elapsed);
         } else  {
-            throw new InvalidOperationException($"Elapsed time should only be zero for scheduled events.");
+            // throw new InvalidOperationException($"Elapsed time should only be zero for scheduled events.");
+            ThinkFor(elapsed);
         }
         PostTick(time);
     }
@@ -451,16 +452,18 @@ public class Crawler: IActor {
             Message("Not enough fuel.");
             return;
         }
-        long arrivalTime = SimulationTime + (int)(time * 3600);
 
         Location.GetEncounter().RemoveActor(this);
+
         FuelInv -= fuel;
         int delay = (int)(time * 3600);
-        ConsumeTime(delay, c => {
+        var arrivalTime = SimulationTime + delay;
+
+        // Schedule this crawler in the game's traveling crawlers queue
+        Game.Instance!.ScheduleCrawler(this, arrivalTime);
+        ConsumeTime(delay, _ => {
             Location = loc;
-            loc.GetEncounter().AddActorAt(this, arrivalTime);
-            // think for 2.5 minutes before entering an encounter
-            ThinkFor(Math.Min(delay, 150));
+            Location.GetEncounter().AddActor(this);
         });
     }
     public void ThinkFor(int elapsed) {
@@ -492,18 +495,22 @@ public class Crawler: IActor {
     public void Message(string message) {
         // TODO: Message history for other actors
         if (this == Game.Instance?.Player) {
-            CrawlerEx.Message(Game.Instance!.TimeString() + ": " + message);
+            CrawlerEx.Message(Game.TimeString(SimulationTime) + ": " + message);
         }
     }
     public long NextEvent { get; private set; } = 0;
 
     Action<Crawler>? _nextEventAction;
 
-    public void ConsumeTime(long delay, Action<Crawler>? action) {
+    public void ConsumeTime(long delay, Action<Crawler>? action = null) {
         if (delay < 0) throw new ArgumentOutOfRangeException(nameof(delay));
 
-        NextEvent = SimulationTime + delay;
-        _nextEventAction = action;
+        if (NextEvent == 0) {
+            NextEvent = SimulationTime + delay;
+            _nextEventAction = action;
+        } else {
+            throw new InvalidOperationException($"Double scheduled.");
+        }
 
         // Ensure the encounter reschedules this crawler for the new time
         Location?.GetEncounter()?.Schedule(this);

@@ -142,23 +142,105 @@ public class Game {
     SortedDictionary<long, List<Encounter>> encountersByTurn = new();
     Dictionary<Encounter, long> turnForEncounter = new();
 
+    // Traveling crawlers management (using PriorityQueue with lazy deletion like Encounter)
+    PriorityQueue<Crawler, long> travelingCrawlers = new();
+    Dictionary<Crawler, long> travelingCrawlerData = new();
+
     // TODO: use this for log scoping too
     static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => null; // LogCat.Game.StartActivity(name, kind);
     static ILogger Log => LogCat.Log;
     static Meter Metrics => LogCat.GameMetrics;
 
+    public void ScheduleCrawler(Crawler crawler, long time) {
+        // Lazy Deletion: If already scheduled, overwrite with new time if earlier
+        if (travelingCrawlerData.TryGetValue(crawler, out var scheduled)) {
+            if (time >= scheduled) {
+                Log.LogInformation($"ScheduleCrawler: {crawler.Name} already scheduled earlier at {scheduled}");
+                return;
+            }
+            Log.LogInformation($"ScheduleCrawler: {crawler.Name} rescheduling from {scheduled} to {time}");
+        } else {
+            Log.LogInformation($"ScheduleCrawler: {crawler.Name} scheduled for {time}");
+        }
+
+        travelingCrawlerData[crawler] = time;
+        travelingCrawlers.Enqueue(crawler, time);
+    }
+
+    public void UnscheduleTravelingCrawler(Crawler crawler) {
+        if (travelingCrawlerData.Remove(crawler)) {
+            Log.LogInformation($"UnscheduleTravelingCrawler: {crawler.Name} unscheduled");
+            // The entry in PriorityQueue becomes "stale" (ignored on dequeue)
+        }
+    }
+
+    void ProcessTravelingCrawlers(long currentTime) {
+        while (travelingCrawlers.Count > 0) {
+            if (!travelingCrawlers.TryPeek(out var crawler, out var eventTime)) break;
+
+            // Stop if we haven't reached the event time yet
+            if (eventTime > currentTime) break;
+
+            travelingCrawlers.Dequeue();
+
+            // Lazy Deletion: Check if this event is stale
+            if (!travelingCrawlerData.TryGetValue(crawler, out var data) || data != eventTime) {
+                continue;
+            }
+            travelingCrawlerData.Remove(crawler);
+
+            // Execute the callback action
+            Log.LogInformation($"ProcessTravelingCrawlers: {crawler.Name} event at time {eventTime}");
+        }
+    }
+
+    long? NextTravelingCrawlerArrival() {
+        while (travelingCrawlers.Count > 0) {
+            if (travelingCrawlers.TryPeek(out var crawler, out var eventTime)) {
+                // Check if this is a valid (non-stale) entry
+                if (travelingCrawlerData.TryGetValue(crawler, out var data) && data == eventTime) {
+                    return eventTime;
+                }
+                // Stale entry, skip it
+                travelingCrawlers.Dequeue();
+            }
+        }
+        return null;
+    }
 
     public void Run() {
 
-        while (!quit && encountersByTurn.Any()) {
-            var (turn, turnEncounters) = TurnEncounters();
+        while (!quit && (encountersByTurn.Count > 0 || travelingCrawlers.Count > 0)) {
+            // Determine the next event time (encounter or traveling crawler arrival)
+            long? nextEncounterTime = encountersByTurn.Any() ? encountersByTurn.First().Key : null;
+            long? nextTravelTime = NextTravelingCrawlerArrival();
+
+            long turn;
+            if (nextEncounterTime.HasValue && nextTravelTime.HasValue) {
+                // Process whichever comes first
+                turn = Math.Min(nextEncounterTime.Value, nextTravelTime.Value);
+            } else if (nextEncounterTime.HasValue) {
+                turn = nextEncounterTime.Value;
+            } else if (nextTravelTime.HasValue) {
+                turn = nextTravelTime.Value;
+            } else {
+                break; // No more events
+            }
+
             using var activity = Scope($"Game::Turn")?
-                .AddTag("#encounters", turnEncounters.Count)
                 .AddTag("turn", turn);
             TimeSeconds = turn;
-            foreach (var encounter in turnEncounters) {
-                encounter.Tick(turn);
-                Schedule(encounter);
+
+            // Process traveling crawler arrivals at this time
+            ProcessTravelingCrawlers(turn);
+
+            // Process encounters at this time
+            if (nextEncounterTime.HasValue && nextEncounterTime.Value == turn) {
+                var (_, turnEncounters) = TurnEncounters();
+                foreach (var encounter in turnEncounters) {
+                    encounter.Tick(turn);
+                    Schedule(encounter);
+                }
             }
 
             if (PlayerWon || PlayerLost) {
@@ -234,8 +316,7 @@ public class Game {
     }
     int GoTo(Location loc) {
         Player.Travel(loc);
-        // TODO: Travel scheduling is a little weird
-        return 60;
+        return 0;
     }
 
     IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
@@ -299,9 +380,9 @@ public class Game {
     }
     Encounter PlayerEncounter() => PlayerLocation.GetEncounter();
 
-    public string DateString() {
-        long seconds = TimeSeconds;
-        long minutes = TimeSeconds / 60;
+    public static string DateString(long t) {
+        long seconds = t;
+        long minutes = t / 60;
         long hours = minutes / 60;
         long days = hours / 24;
         long months = days / 30;
@@ -313,16 +394,18 @@ public class Game {
         months %= 12;
         return $"{years:D4}/{months + 1:D2}/{days + 1:D2}";
     }
+    public string DateString() => DateString(TimeSeconds);
 
-    public string TimeString() {
-        long seconds = TimeSeconds;
-        long minutes = TimeSeconds / 60;
+    public static string TimeString(long t) {
+        long seconds = t;
+        long minutes = t / 60;
         long hours = minutes / 60;
         seconds %= 60;
         minutes %= 60;
         hours %= 24;
         return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
     }
+    public string TimeString() => TimeString(TimeSeconds);
 
     int Look() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);

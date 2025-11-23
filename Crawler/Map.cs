@@ -310,7 +310,6 @@ public class Map {
             var sector = setLocation.Sector;
             sector.ControllingFaction = faction;
             var encounter = new Encounter(Rng.Seed(), setLocation, faction);
-            setLocation.SetEncounter(encounter);
             var crawler = encounter.GenerateCapital(Rng.Seed());
             var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
             float influence = 5 + crawler.Domes;

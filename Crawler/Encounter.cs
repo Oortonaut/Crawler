@@ -34,6 +34,7 @@ public sealed class Encounter {
     }
     public Encounter(ulong seed, Location location, Faction faction) {
         this.location = location;
+        location.SetEncounter(this);
         var wealth = location.Wealth;
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
