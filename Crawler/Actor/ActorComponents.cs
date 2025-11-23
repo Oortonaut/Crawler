@@ -1118,7 +1118,7 @@ public class ContrabandScannerComponent : ActorComponentBase {
 public class RetreatComponent : ActorComponentBase {
     public override int Priority => 1000; // Highest priority - survival first
 
-    public override int? ThinkAction(IEnumerable<IActor> actors) {
+    public override int? ThinkAction() {
         if (Owner is not Crawler crawler) return null;
 
         // Check if depowered first
@@ -1142,12 +1142,10 @@ public class RetreatComponent : ActorComponentBase {
 /// Bandit AI component that handles extortion, targeting, and combat.
 /// Consolidates all bandit-specific behaviors.
 /// </summary>
-public class BanditComponent : ActorComponentBase {
-    XorShift _rng;
+public class BanditComponent : CombatComponentBase {
     float _demandFraction;
 
-    public BanditComponent(ulong seed, float demandFraction = 0.5f) {
-        _rng = new XorShift(seed);
+    public BanditComponent(ulong seed, float demandFraction = 0.5f) : base(seed) {
         _demandFraction = demandFraction;
     }
 
@@ -1226,59 +1224,92 @@ public class BanditComponent : ActorComponentBase {
         }
     }
 
-    public override int? ThinkAction(IEnumerable<IActor> actors) {
-        if (Owner is not Crawler bandit) return null;
-        if (bandit.IsDisarmed) return null;
-
+    /// <summary>
+    /// Bandits prioritize vulnerable targets over healthy ones.
+    /// </summary>
+    protected override IActor? SelectTarget(Crawler crawler, IEnumerable<IActor> actors) {
         var actorList = actors.ToList();
 
         // Priority 1: Attack vulnerable hostiles first (easy targets)
         var vulnerableHostile = _rng.ChooseRandom(actorList
             .OfType<Crawler>()
-            .Where(a => bandit.To(a).Hostile && a.IsVulnerable && a.Lives()));
+            .Where(a => crawler.To(a).Hostile && a.IsVulnerable && a.Lives()));
 
         if (vulnerableHostile != null) {
-            int ap = bandit.Attack(vulnerableHostile);
-            if (ap > 0) {
-                bandit.ConsumeTime(ap, null);
-                return ap;
-            }
+            return vulnerableHostile;
         }
 
         // Priority 2: Attack any hostile
-        var hostile = _rng.ChooseRandom(actorList.Where(a => bandit.To(a).Hostile));
-        if (hostile != null) {
-            int ap = bandit.Attack(hostile);
-            if (ap > 0) {
-                bandit.ConsumeTime(ap, null);
-                return ap;
-            }
-        }
+        return _rng.ChooseRandom(actorList.Where(a => crawler.To(a).Hostile));
+    }
 
-        return null; // No action taken
+    public override int? ThinkAction() {
+        if (Owner is not Crawler bandit) return null;
+        return AttackTarget(bandit);
     }
 }
 
 /// <summary>
-/// Generic hostile AI component that attacks enemies.
-/// Used as fallback behavior for NPCs that should fight but have no specialized AI.
+/// Base class for combat components that provides shared combat functionality.
+/// Handles target tracking and provides helper methods for combat behavior.
 /// </summary>
-public class HostileAIComponent : ActorComponentBase {
-    XorShift _rng;
+public abstract class CombatComponentBase : ActorComponentBase {
+    protected XorShift _rng;
 
-    public HostileAIComponent(ulong seed) {
+    public CombatComponentBase(ulong seed) {
         _rng = new XorShift(seed);
     }
 
-    public override int Priority => 400; // Generic combat behavior
+    /// <summary>
+    /// Current target this component is tracking. Stored in Owner.To(target) relation.
+    /// </summary>
+    public IActor? CurrentTarget {
+        get => _currentTarget;
+        set {
+            _currentTarget = value;
+            // Also update the Owner.To(target) relation for persistence
+            if (value != null && Owner is Crawler crawler) {
+                // The relation itself tracks the target through its Hostile flag and damage tracking
+                var relation = crawler.To(value);
+                // Relation already tracks hostility and damage
+            }
+        }
+    }
+    IActor? _currentTarget;
 
-    public override int? ThinkAction(IEnumerable<IActor> actors) {
-        if (Owner is not Crawler crawler) return null;
+    /// <summary>
+    /// Select a hostile target to attack. Returns null if no valid target found.
+    /// Can be overridden to implement custom target selection logic.
+    /// </summary>
+    protected virtual IActor? SelectTarget(Crawler crawler, IEnumerable<IActor> actors) {
+        return _rng.ChooseRandom(actors.Where(a => crawler.To(a).Hostile));
+    }
+
+    /// <summary>
+    /// Attempt to attack the current or selected target.
+    /// Returns AP cost if attack was performed, null otherwise.
+    /// </summary>
+    protected int? AttackTarget(Crawler crawler) {
         if (crawler.IsDisarmed) return null;
 
-        var hostile = _rng.ChooseRandom(actors.Where(a => crawler.To(a).Hostile));
-        if (hostile != null) {
-            int ap = crawler.Attack(hostile);
+        var actors = crawler.Location.GetEncounter().ActorsExcept(Owner);
+
+        // Try to attack current target if still valid
+        if (CurrentTarget != null &&
+            actors.Contains(CurrentTarget) &&
+            crawler.To(CurrentTarget).Hostile &&
+            CurrentTarget.Lives()) {
+            int ap = crawler.Attack(CurrentTarget);
+            if (ap > 0) {
+                crawler.ConsumeTime(ap, null);
+                return ap;
+            }
+        }
+
+        // Select new target
+        CurrentTarget = SelectTarget(crawler, actors);
+        if (CurrentTarget != null) {
+            int ap = crawler.Attack(CurrentTarget);
             if (ap > 0) {
                 crawler.ConsumeTime(ap, null);
                 return ap;
@@ -1286,5 +1317,30 @@ public class HostileAIComponent : ActorComponentBase {
         }
 
         return null;
+    }
+
+    public override void SubscribeToEncounter(Encounter encounter) {
+        base.SubscribeToEncounter(encounter);
+        // Subscribe to combat events if needed
+    }
+
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        base.UnsubscribeFromEncounter(encounter);
+    }
+}
+
+/// <summary>
+/// Generic hostile AI component that attacks enemies.
+/// Used as fallback behavior for NPCs that should fight but have no specialized AI.
+/// </summary>
+public class HostileAIComponent : CombatComponentBase {
+    public HostileAIComponent(ulong seed) : base(seed) {
+    }
+
+    public override int Priority => 400; // Generic combat behavior
+
+    public override int? ThinkAction() {
+        if (Owner is not Crawler crawler) return null;
+        return AttackTarget(crawler);
     }
 }
