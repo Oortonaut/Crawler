@@ -1118,13 +1118,13 @@ public class ContrabandScannerComponent : ActorComponentBase {
 public class RetreatComponent : ActorComponentBase {
     public override int Priority => 1000; // Highest priority - survival first
 
-    public override int? ThinkAction() {
-        if (Owner is not Crawler crawler) return null;
+    public override int ThinkAction() {
+        if (Owner is not Crawler crawler) return 0;
 
         // Check if depowered first
         if (crawler.IsDepowered) {
             crawler.Message($"{crawler.Name} has no power.");
-            return null; // Can't act, but don't let other components try either
+            return 0; // Can't act, but don't let other components try either
         }
 
         // Flee if vulnerable and not pinned
@@ -1134,7 +1134,114 @@ public class RetreatComponent : ActorComponentBase {
             return 1; // Consumed time to flee
         }
 
-        return null; // Not vulnerable, let lower priority components handle it
+        return 0; // Not vulnerable, let lower priority components handle it
+    }
+}
+
+/// <summary>
+/// Base class for combat components that provides shared combat functionality.
+/// Handles target tracking and provides helper methods for combat behavior.
+/// </summary>
+public abstract class CombatComponentBase : ActorComponentBase {
+    protected XorShift _rng;
+
+    public CombatComponentBase(ulong seed) {
+        _rng = new XorShift(seed);
+    }
+
+    /// <summary>
+    /// Current target this component is tracking.
+    /// </summary>
+    protected IActor? CurrentTarget { get; set; }
+
+    /// <summary>
+    /// Select a hostile target to attack. Returns null if no valid target found.
+    /// Can be overridden to implement custom target selection logic.
+    /// </summary>
+    protected virtual IActor? SelectTarget() {
+        // TODO: Rank based on faction scores, after we have faction scores
+        var actors = Owner.Location.GetEncounter().ActorsExcept(Owner);
+        return _rng.ChooseRandom(actors.Where(a => Owner.To(a).Hostile));
+    }
+    protected IEnumerable<IActor> PotentialTargets() {
+        return Owner.Location.GetEncounter().ActorsExcept(Owner).Where(IsValidTarget);
+    }
+
+    protected bool IsValidTarget(IActor? target) {
+        return target is not null &&
+               target.Lives() &&
+               Owner.Location == target.Location;
+    }
+
+    /// <summary>
+    /// Attempt to attack the current or selected target.
+    /// Returns AP cost if attack was performed, null otherwise.
+    /// </summary>
+    protected int? AttackTarget() {
+        if (Owner is not Crawler attacker) return null;
+        if (attacker.IsDisarmed) return null;
+        if (CurrentTarget is null) return null;
+
+        // Try to attack current target if still valid
+        if (CurrentTarget != null &&
+            attacker.Location == CurrentTarget.Location &&
+            attacker.To(CurrentTarget).Hostile &&
+            CurrentTarget.Lives()) {
+            int ap = attacker.Attack(CurrentTarget);
+            if (ap > 0) {
+                attacker.ConsumeTime(ap, null);
+                return ap;
+            }
+        }
+
+        // Select new target
+        CurrentTarget = SelectTarget();
+        if (CurrentTarget != null) {
+            int ap = attacker.Attack(CurrentTarget);
+            if (ap > 0) {
+                attacker.ConsumeTime(ap, null);
+                return ap;
+            }
+        }
+
+        return null;
+    }
+
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.ActorArrived += OnActorArrived;
+        encounter.ActorLeft += OnActorLeft;
+    }
+
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeft -= OnActorLeft;
+    }
+
+    protected virtual void OnActorArrived(IActor actor, long time) {
+        if (Owner is not Crawler bandit) return;
+        if (actor == Owner) return;
+    }
+
+    protected virtual void OnActorLeft(IActor actor, long time) {
+        if (Owner is not Crawler bandit) return;
+        if (actor == Owner) return;
+
+        // Clear ultimatum when target leaves
+        bandit.To(actor).Ultimatum = null;
+    }
+
+    public override int ThinkAction() {
+        if (Owner is not Crawler bandit) return 0;
+        if (IsValidTarget(CurrentTarget)) {
+            CurrentTarget = SelectTarget();
+            if (!IsValidTarget(CurrentTarget)) {
+                throw new InvalidOperationException($"Chose an invalid target: {CurrentTarget?.Name}");
+            }
+        }
+        if (CurrentTarget != null) {
+            return AttackTarget() ?? 60;
+        }
+        return 0;
     }
 }
 
@@ -1151,34 +1258,21 @@ public class BanditComponent : CombatComponentBase {
 
     public override int Priority => 600; // Faction-specific behavior
 
-    public override void SubscribeToEncounter(Encounter encounter) {
-        encounter.ActorArrived += OnActorArrived;
-        encounter.ActorLeft += OnActorLeft;
+    protected override void OnActorArrived(IActor actor, long time) {
+        base.OnActorArrived(actor, time);
+        SetupExtortion(actor, time);
     }
 
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
-        encounter.ActorArrived -= OnActorArrived;
-        encounter.ActorLeft -= OnActorLeft;
-    }
-
-    void OnActorArrived(IActor actor, long time) {
-        if (Owner is not Crawler bandit) return;
-        if (actor == Owner) return;
-
-        SetupExtortion(bandit, actor, time);
-    }
-
-    void OnActorLeft(IActor actor, long time) {
-        if (Owner is not Crawler bandit) return;
-        if (actor == Owner) return;
+    protected override void OnActorLeft(IActor actor, long time) {
+        base.OnActorLeft(actor, time);
 
         // Clear ultimatum when target leaves
-        bandit.To(actor).Ultimatum = null;
+        Owner.To(actor).Ultimatum= null;
     }
 
-    void SetupExtortion(Crawler bandit, IActor target, long time) {
-        // Note: Early return because current code has this disabled
-        // Remove this return to enable bandit extortion
+    void SetupExtortion(IActor target, long time) {
+        if (Owner == target) return;
+        if (Owner is not Crawler bandit) return;
 
         if (bandit.Role != CrawlerRole.Bandit || target.Faction != Faction.Player) return;
 
@@ -1227,12 +1321,12 @@ public class BanditComponent : CombatComponentBase {
     /// <summary>
     /// Bandits prioritize vulnerable targets over healthy ones.
     /// </summary>
-    protected override IActor? SelectTarget(Crawler crawler, IEnumerable<IActor> actors) {
-        var actorList = actors.ToList();
+    protected override IActor? SelectTarget() {
+        if (Owner is not Crawler crawler) return null;
+        var actorList = Owner.Location.GetEncounter().CrawlersExcept(Owner).ToList();
 
         // Priority 1: Attack vulnerable hostiles first (easy targets)
         var vulnerableHostile = _rng.ChooseRandom(actorList
-            .OfType<Crawler>()
             .Where(a => crawler.To(a).Hostile && a.IsVulnerable && a.Lives()));
 
         if (vulnerableHostile != null) {
@@ -1240,92 +1334,7 @@ public class BanditComponent : CombatComponentBase {
         }
 
         // Priority 2: Attack any hostile
-        return _rng.ChooseRandom(actorList.Where(a => crawler.To(a).Hostile));
-    }
-
-    public override int? ThinkAction() {
-        if (Owner is not Crawler bandit) return null;
-        return AttackTarget(bandit);
-    }
-}
-
-/// <summary>
-/// Base class for combat components that provides shared combat functionality.
-/// Handles target tracking and provides helper methods for combat behavior.
-/// </summary>
-public abstract class CombatComponentBase : ActorComponentBase {
-    protected XorShift _rng;
-
-    public CombatComponentBase(ulong seed) {
-        _rng = new XorShift(seed);
-    }
-
-    /// <summary>
-    /// Current target this component is tracking. Stored in Owner.To(target) relation.
-    /// </summary>
-    public IActor? CurrentTarget {
-        get => _currentTarget;
-        set {
-            _currentTarget = value;
-            // Also update the Owner.To(target) relation for persistence
-            if (value != null && Owner is Crawler crawler) {
-                // The relation itself tracks the target through its Hostile flag and damage tracking
-                var relation = crawler.To(value);
-                // Relation already tracks hostility and damage
-            }
-        }
-    }
-    IActor? _currentTarget;
-
-    /// <summary>
-    /// Select a hostile target to attack. Returns null if no valid target found.
-    /// Can be overridden to implement custom target selection logic.
-    /// </summary>
-    protected virtual IActor? SelectTarget(Crawler crawler, IEnumerable<IActor> actors) {
-        return _rng.ChooseRandom(actors.Where(a => crawler.To(a).Hostile));
-    }
-
-    /// <summary>
-    /// Attempt to attack the current or selected target.
-    /// Returns AP cost if attack was performed, null otherwise.
-    /// </summary>
-    protected int? AttackTarget(Crawler crawler) {
-        if (crawler.IsDisarmed) return null;
-
-        var actors = crawler.Location.GetEncounter().ActorsExcept(Owner);
-
-        // Try to attack current target if still valid
-        if (CurrentTarget != null &&
-            actors.Contains(CurrentTarget) &&
-            crawler.To(CurrentTarget).Hostile &&
-            CurrentTarget.Lives()) {
-            int ap = crawler.Attack(CurrentTarget);
-            if (ap > 0) {
-                crawler.ConsumeTime(ap, null);
-                return ap;
-            }
-        }
-
-        // Select new target
-        CurrentTarget = SelectTarget(crawler, actors);
-        if (CurrentTarget != null) {
-            int ap = crawler.Attack(CurrentTarget);
-            if (ap > 0) {
-                crawler.ConsumeTime(ap, null);
-                return ap;
-            }
-        }
-
-        return null;
-    }
-
-    public override void SubscribeToEncounter(Encounter encounter) {
-        base.SubscribeToEncounter(encounter);
-        // Subscribe to combat events if needed
-    }
-
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
-        base.UnsubscribeFromEncounter(encounter);
+        return base.SelectTarget();
     }
 }
 
@@ -1338,9 +1347,4 @@ public class HostileAIComponent : CombatComponentBase {
     }
 
     public override int Priority => 400; // Generic combat behavior
-
-    public override int? ThinkAction() {
-        if (Owner is not Crawler crawler) return null;
-        return AttackTarget(crawler);
-    }
 }

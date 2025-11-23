@@ -3,6 +3,7 @@ using System.Collections;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Crawler.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
@@ -381,38 +382,59 @@ public class Crawler: IActor {
     // run action or think
     public void TickTo(long time) {
         if (NextEvent == 0) {
-            _TickTo(time, null);
+            _nextEventAction = null; // to be sure, should be already
+            _TickTo(time);
+            return;
         }
         while (time <= NextEvent) {
-            _TickTo(NextEvent, _nextEventAction);
+            _TickTo(NextEvent);
         }
         if (SimulationTime < time) {
-            _TickTo(time, null);
+            // _nextEventAction might not be null but it won't get called
+            _TickTo(time);
         }
     }
-    void _TickTo(long time, Action<Crawler>? action) {
+    void _TickTo(long time) {
         int elapsed = SimulateTo(time);
-        if (action != null) {
-            action.Invoke(this);
-        } else {
+        if (time == NextEvent) {
+            NextEvent = 0;
+            if (_nextEventAction != null) {
+                var action = _nextEventAction;
+                _nextEventAction = null;
+                action.Invoke(this);
+            } else {
+                if (elapsed == 0) {
+                    ThinkFor(elapsed);
+                } else {
+                    ThinkFor(elapsed);
+                }
+            }
+        } else if (elapsed > 0) {
             ThinkFor(elapsed);
+        } else  {
+            throw new InvalidOperationException($"Elapsed time should only be zero for scheduled events.");
         }
         PostTick(time);
     }
-    // Returns elapsed
+    public ILogger Log => LogCat.Log;
+    // Returns elapsed, >= 0
     public int SimulateTo(long time) {
         int elapsed = (int)(time - SimulationTime);
         SimulationTime = time;
+        if (elapsed < 0) {
+            throw new InvalidOperationException("TODO: Time Travel");
+        }
 
         if (EndState != null || elapsed == 0) {
             return elapsed;
         }
 
-        using var activity = LogCat.Game.StartActivity(
-                "Crawler.Tick", System.Diagnostics.ActivityKind.Internal)?
-            .SetTag("crawler.name", Name)
-            .SetTag("crawler.faction", Faction)
-            .SetTag("elapsed_seconds", elapsed);
+        //using var activity = LogCat.Game.StartActivity(
+        //        "Crawler.Tick", System.Diagnostics.ActivityKind.Internal)?
+        //    .SetTag("crawler.name", Name)
+        //    .SetTag("crawler.faction", Faction)
+        //    .SetTag("elapsed_seconds", elapsed);
+        Log.LogInformation($"Ticking {Name} at {Location.Name} time {time}, elapsed {elapsed}");
 
         Recharge(elapsed);
         Decay(elapsed);
@@ -455,8 +477,9 @@ public class Crawler: IActor {
         // - BanditComponent (priority 600): bandit-specific AI
         // - HostileAIComponent (priority 400): generic combat fallback
         foreach (var component in ComponentsByPriority()) {
-            int? ap = component.ThinkAction();
-            if (ap.HasValue) {
+            int ap = component.ThinkAction();
+
+            if (NextEvent != 0) {
                 // Component scheduled an action, we're done
                 break;
             }

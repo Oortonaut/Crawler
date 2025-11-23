@@ -61,7 +61,7 @@ public interface IActorComponent {
     /// Components are evaluated in priority order (highest first).
     /// Returns AP cost if action was scheduled, null otherwise.
     /// </summary>
-    int? ThinkAction();
+    int ThinkAction();
 }
 
 /// <summary>
@@ -89,5 +89,5 @@ public abstract class ActorComponentBase : IActorComponent {
 
     public virtual void UnsubscribeFromEncounter(Encounter encounter) { }
 
-    public virtual int? ThinkAction() => null;
+    public virtual int ThinkAction() => 0;
 }

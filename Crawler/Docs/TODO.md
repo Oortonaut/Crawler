@@ -18,7 +18,9 @@
   * [ ] Organize code and methods inside classes into regions
   * [ ] XML documentation comments
   * [ ] Prettify comments 
-
+                                            
+* [ ] Add component flags 
+  * [ ] Thinking - keep a separate list of thinking components for speed.
 
 ## Finished
 

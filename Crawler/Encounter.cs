@@ -541,7 +541,7 @@ public sealed class Encounter {
     }
 
     public IEnumerable<IActor> ActorsExcept(IActor actor) => Actors.Where(a => a != actor);
-    public IEnumerable<IActor> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
+    public IEnumerable<Crawler> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
 
     static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => null; //LogCat.Encounter.StartActivity(name, kind);
     static ILogger Log => LogCat.Log;
@@ -623,10 +623,16 @@ public sealed class Encounter {
     void Schedule(Crawler crawler, long nextTurn) {
         // Lazy Deletion: If already scheduled later/same, ignore. If earlier, mark old time stale.
         if (scheduledTimes.TryGetValue(crawler, out var scheduledTurn)) {
-            if (nextTurn >= scheduledTurn) return;
-            // Implicitly unschedule by overwriting the authoritative time in scheduledTimes
+            if (nextTurn >= scheduledTurn) {
+                Log.LogTrace($"{Name}: {crawler.Name} has already scheduled earlier: turn {nextTurn} scheduled {scheduledTurn}");
+                return;
+            } else {
+                // Implicitly unschedule by overwriting the authoritative time in scheduledTimes
+                Log.LogTrace($"{Name}: {crawler.Name} was previously scheduled later: turn {nextTurn} scheduled {scheduledTurn}");
+            }
         }
-        
+
+        Log.LogTrace($"{Name}: {crawler.Name} scheduled for {nextTurn}");
         scheduledTimes[crawler] = nextTurn;
         eventQueue.Enqueue(crawler, nextTurn);
 
