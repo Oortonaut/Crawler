@@ -125,10 +125,11 @@ public interface IActor {
     // ===== Simulation =====
     /// <summary>Update this actor (called every game second)</summary>
     /// <param name="time"></param>
-    void Tick(long time);
+    /// <returns>Elapsed time</returns>
+    int Tick(long time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
-    void Think(int elapsed);
+    void ThinkFor(int elapsed);
 
     /// <summary>Receive combat damage from another actor</summary>
     void ReceiveFire(IActor from, List<HitRecord> fire);
@@ -177,9 +178,8 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
             component.OnComponentRemoved();
         }
     }
-    public void Tick(long time) {
-    }
-    public void Think(int elapsed) { }
+    public int Tick(long time) => 0;
+    public void ThinkFor(int elapsed) { }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         Message($"{from.Name} fired uselessly at you");
         from.Message($"You fired uselessly at {Name}");

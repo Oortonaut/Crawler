@@ -140,7 +140,9 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         Working.Pristine;
     // Active segments are usable until they take half damage, rounded down
     public bool IsActive => State is Working.Pristine or Working.Running;
+    // IsActiveReady combines the usable, running active segments with those that are ready to fire
     public bool IsActiveCycle => IsActive && Cycle == 0;
+    // The cycling state indicates that the weapon is somewhere in the charge cycle.
     public bool IsCycling => IsActive && Cycle > 0;
     public void CycleStart() => Cycle = CycleLength;
     public virtual int CycleLength => 0;

@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Crawler.Logging;
 using MathNet.Numerics.Distributions;
@@ -314,10 +315,15 @@ public static partial class CrawlerEx {
             }
 
             defender.ReceiveFire(attacker, fire);
-            return 60;
+
+            // Schedule weapon cooldown delay with follow-up attack
+            var delay = attacker.WeaponDelay();
+            Debug.Assert(delay.HasValue);
+            attacker.ConsumeTime(delay.Value, null);
+            return delay.Value;
         } else {
             attacker.Message($"No fire on {defender.Name} ({attacker.StateString(defender)}");
-            return 0;
+            return 60;
         }
     }
     public static bool Visited(this IActor actor, Location location) => actor.Knows(location) && actor.To(location).Visited;

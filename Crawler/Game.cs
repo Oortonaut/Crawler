@@ -382,7 +382,7 @@ public class Game {
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
         if (ap > 0) {
-            Player.ConsumeTime(Player.LastEvent + ap, null);
+            Player.ConsumeTime(ap, null);
         }
         return selected;
     }

@@ -588,7 +588,9 @@ public sealed class Encounter {
             eventQueue.TryPeek(out _, out long nextCrawlerEvent);
 
             // High Precision Mode: If player is here, we must run exactly at the next event
-            if (_hasPlayer) return nextCrawlerEvent;
+            if (_hasPlayer) {
+                return nextCrawlerEvent;
+            }
 
             // Batch Mode: For background encounters, only wake up the Game loop hourly.
             // This prevents thousands of micro-updates from clogging the global scheduler.
@@ -611,7 +613,7 @@ public sealed class Encounter {
     public void Schedule(Crawler crawler) {
         long eventTime = crawler.NextEvent;
         if (eventTime == 0) {
-            eventTime = LastEncounterEvent + Tuning.MaxDelay;
+            eventTime = crawler.LastEvent + Tuning.MaxDelay;
         } else if (eventTime < LastEncounterEvent) {
             throw new InvalidOperationException($"Encounter {Name} has a crawler with a negative NextEvent: {crawler.Name} {crawler.NextEvent}");
         }
@@ -678,7 +680,7 @@ public sealed class Encounter {
 
                 // Process Crawler
                 var crawlerStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                crawler.TickThink(eventTime);
+                crawler.TickTo(eventTime);
                 
                 if (crawler.Flags.HasFlag(EActorFlags.Player)) {
                     Game.Instance!.GameMenu();

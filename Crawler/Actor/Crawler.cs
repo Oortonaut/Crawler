@@ -217,7 +217,7 @@ public class Crawler: IActor {
     /// <summary>
     /// Get components sorted by priority (highest first), using lazy sorting.
     /// </summary>
-    IEnumerable<IActorComponent> ComponentsByPriority() {
+    List<IActorComponent> ComponentsByPriority() {
         if (_componentsDirty) {
             _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
             _componentsDirty = false;
@@ -377,29 +377,35 @@ public class Crawler: IActor {
     }
 
     internal long LastEvent = 0;
-    public void TickThink(long time) {
-        int elapsed = (int)(time - LastEvent);
-        // Run any scheduled per-crawler action when its time is reached
-        if (_nextEventAction != null && NextEvent != 0 && time >= NextEvent) {
-            var action = _nextEventAction;
-            _nextEventAction = null;
-            NextEvent = 0;
-            try {
-                action(this);
-            } catch (Exception ex) {
-                // Don't let a user action break the scheduler
-                Message($"Action error: {ex.Message}");
-            }
+    // Simulate
+    // run action or think
+    public void TickTo(long time) {
+        if (NextEvent == 0) {
+            _TickTo(time, null);
         }
-        Tick(time);
-        Think(elapsed);
+        while (time <= NextEvent) {
+            _TickTo(NextEvent, _nextEventAction);
+        }
+        if (LastEvent < time) {
+            _TickTo(time, null);
+        }
     }
-    public void Tick(long time) {
+    void _TickTo(long time, Action<Crawler>? action) {
+        int elapsed = Tick(time);
+        if (action != null) {
+            action.Invoke(this);
+        } else {
+            ThinkFor(elapsed);
+        }
+        PostTick(time);
+    }
+    // Returns elapsed
+    public int Tick(long time) {
         int elapsed = (int)(time - LastEvent);
         LastEvent = time;
 
         if (EndState != null || elapsed == 0) {
-            return;
+            return elapsed;
         }
 
         using var activity = LogCat.Game.StartActivity(
@@ -412,7 +418,9 @@ public class Crawler: IActor {
         Decay(elapsed);
 
         UpdateSegmentCache();
-        // post-update
+        return elapsed;
+    }
+    void PostTick(long time) {
         TestEnded();
     }
     public void Travel(Location loc) {
@@ -425,12 +433,15 @@ public class Crawler: IActor {
 
         Location.GetEncounter().RemoveActor(this);
         FuelInv -= fuel;
-        Location = loc;
-        loc.GetEncounter().AddActorAt(this, arrivalTime);
         int delay = (int)(time * 3600);
-        ConsumeTime(delay, null);
+        ConsumeTime(delay, c => {
+            Location = loc;
+            loc.GetEncounter().AddActorAt(this, arrivalTime);
+            // think for 2.5 minutes before entering an encounter
+            ThinkFor(Math.Min(delay, 150));
+        });
     }
-    public void Think(int elapsed) {
+    public void ThinkFor(int elapsed) {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
         if (Flags.HasFlag(EActorFlags.Player)) {
             return;
@@ -444,10 +455,10 @@ public class Crawler: IActor {
         // - BanditComponent (priority 600): bandit-specific AI
         // - HostileAIComponent (priority 400): generic combat fallback
         foreach (var component in ComponentsByPriority()) {
-            int? ap = component.ThinkAction(actors);
-            if (ap.HasValue && ap.Value > 0) {
+            int? ap = component.ThinkAction();
+            if (ap.HasValue) {
                 // Component scheduled an action, we're done
-                return;
+                break;
             }
         }
 
@@ -474,7 +485,7 @@ public class Crawler: IActor {
         // Ensure the encounter reschedules this crawler for the new time
         Location?.GetEncounter()?.Schedule(this);
     }
-    int? WeaponDelay() {
+    public int? WeaponDelay() {
         int minDelay = Tuning.MaxDelay;
         int N = 0;
         foreach (var segment in CyclingSegments) {
@@ -798,12 +809,6 @@ public class Crawler: IActor {
             fire.AddRange(segment.GenerateFire(rng.Seed(), 0));
         }
 
-        // Schedule weapon cooldown delay
-        var delay = WeaponDelay();
-        if (delay.HasValue) {
-            ConsumeTime(delay.Value, null);
-        }
-
         return fire;
     }
     void Recharge(int elapsed) {
@@ -1000,10 +1005,20 @@ public class Crawler: IActor {
         }
     }
 
+    /// <summary>
+    /// Event fired when this crawler receives fire from another actor.
+    /// Invoked before damage is processed, allowing components to react to incoming attacks.
+    /// </summary>
+    public event Action<IActor, List<HitRecord>>? OnReceiveFire;
+
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         if (!Supplies.Segments.Any() || !fire.Any()) {
             return;
         }
+
+        // Notify components that we're receiving fire
+        OnReceiveFire?.Invoke(from, fire);
+
         var rngRecvFire = new XorShift(Rng.Seed());
 
         bool wasDestroyed = IsDestroyed;
