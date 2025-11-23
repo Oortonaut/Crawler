@@ -71,11 +71,11 @@ public record LicenseOffer(
         Agent.Ended() ? "Issuer Dead" :
         Subject.Ended() ? "Buyer Dead" :
         Subject is not Crawler buyer ? "Not a Crawler" :
-        buyer.To(AgentFaction).Licenses[Category] >= Tier ? "Already Licensed" :
+        buyer.To(AgentFaction).GetLicense(Category) >= Tier ? "Already Licensed" :
         null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
         if (Subject is Crawler buyer) {
-            buyer.To(AgentFaction).Licenses[Category] = Tier;
+            buyer.To(AgentFaction).GrantLicense(Category, Tier);
             buyer.Message($"Acquired {Category} License ({Tier}) for {AgentFaction} territory");
         }
     }

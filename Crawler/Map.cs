@@ -302,7 +302,8 @@ public class Map {
 
         var policies = FactionEx.GenerateFactionPolicies(NumFactions, Rng.Seed()).ToArray();
         for (int j = 0; j < NumFactions; ++j) {
-            Tuning.FactionPolicies.Policies[Faction.Civilian0 + j] = policies[j];
+            var faction = Faction.Civilian0 + j;
+            faction.SetPolicy(policies[j]);
         }
 
         for (Faction faction = Faction.Civilian0; faction < FactionEnd; faction++) {
@@ -537,7 +538,7 @@ public class Map {
                 var data = FactionData[faction]!;
                 var option = Style.MenuOption.Format($"{y + 1}");
                 var capitalString = faction.GetColor().On(Color.Black) + data.Name + defaultStyle;
-                var policy = Tuning.FactionPolicies.Policies[faction];
+                var policy = faction.GetPolicy();
                 map += Faction1(faction);
                 map2 += Faction2(faction);
             }
@@ -551,7 +552,7 @@ public class Map {
         var data = FactionData[faction]!;
         var index = faction.CivilianIndex();
         var option = Style.MenuOption.Format($"{index + 1}");
-        var policy = Tuning.FactionPolicies.Policies[faction].Description;
+        var policy = faction.GetPolicy().Description;
         if (data.Capital is { } capital) {
             var capitalString = faction.GetColor().On(Color.Black) + $"{data.Name}" + Style.MenuNormal.StyleString();
             return $" [{option}] {capitalString}: {capital.Name} at {capital.Location.GetEncounter().Name} | {policy}";
@@ -561,7 +562,7 @@ public class Map {
     }
     string Faction2(Faction faction) {
         string result = " ";
-        var policy = Tuning.FactionPolicies.Policies[faction];
+        var policy = faction.GetPolicy();
 
         // we want to build a set of categories by TradePolicy
         EArray<TradePolicy, List<string>> categoriesByPolicy = new();

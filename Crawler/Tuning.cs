@@ -134,21 +134,23 @@ public static partial class Tuning {
             policy.Initialize(defaultPolicy);
             return policy;
         }
-
+        
         public static EArray<SegmentKind, TradePolicy> CreateSegmentDefaultPolicy(TradePolicy defaultPolicy) {
             var policy = new EArray<SegmentKind, TradePolicy>();
             policy.Initialize(defaultPolicy);
             return policy;
         }
-
-        public static TradePolicy GetPolicy(Faction faction, Commodity commodity) {
-            return GetPolicy(faction, commodity.Category());
-        }
-
-        public static TradePolicy GetPolicy(Faction faction, CommodityCategory category) => Policies[faction].Commodities[category];
-        public static TradePolicy GetPolicy(Faction faction, SegmentKind kind) => Policies[faction].Segments[kind];
     }
-
+    public static bool IsLegal(this Faction faction, CommodityCategory category) => faction.GetPolicy(category) is not (TradePolicy.Controlled or TradePolicy.Restricted or TradePolicy.Prohibited);
+    public static bool IsLicensed(this Faction faction, CommodityCategory category) => faction.GetPolicy(category) is (TradePolicy.Controlled or TradePolicy.Restricted);
+    public static bool IsIllegal(this Faction faction, CommodityCategory category) => faction.GetPolicy(category) is TradePolicy.Prohibited;
+    public static TradePolicy GetPolicy(this Faction faction, Commodity commodity) => faction.GetPolicy(commodity.Category());
+    public static TradePolicy GetPolicy(this Faction faction, CommodityCategory category) => FactionPolicies.Policies[faction].Commodities[category];
+    public static TradePolicy GetPolicy(this Faction faction, SegmentKind kind) => FactionPolicies.Policies[faction].Segments[kind];
+    public static Policy GetPolicy(this Faction faction) => FactionPolicies.Policies[faction];
+    public static void SetPolicy(this Faction faction, CommodityCategory category, TradePolicy policy) => FactionPolicies.Policies[faction].Commodities[category] = policy;
+    public static void SetPolicy(this Faction faction, SegmentKind kind, TradePolicy policy) => FactionPolicies.Policies[faction].Segments[kind] = policy;
+    public static void SetPolicy(this Faction faction, Policy policy) => FactionPolicies.Policies[faction] = policy;
     public static class Crawler {
         public static float MoraleAdjCrewLoss = 0.5f;
         public static float StandbyFraction = 0.007f;

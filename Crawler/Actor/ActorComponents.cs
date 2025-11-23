@@ -36,7 +36,7 @@ public class SettlementContrabandComponent : ActorComponentBase {
         }
 
         var contraband = settlement.ScanForContraband(target);
-        if (!contraband.IsEmpty && !settlement.Fighting(target)) {
+        if (!settlement.Fighting(target)) {
             // Set ultimatum with timeout
             settlement.To(target).Ultimatum = new ActorToActor.UltimatumState {
                 ExpirationTime = time + 300,
@@ -117,14 +117,7 @@ public class SettlementContrabandComponent : ActorComponentBase {
 
         public override string Description => $"Refuse search from {Settlement.Name}";
 
-        public override string? MessageFor(IActor viewer) {
-            if (viewer != Target) return null;
-            var ultimatum = Settlement.To(Target).Ultimatum;
-            if (ultimatum?.ExpirationTime > 0) {
-                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to submit to customs search";
-            }
-            return null;
-        }
+        public override string? MessageFor(IActor viewer) => null;
 
         public override int Perform(string args = "") {
             var hostilityOffer = new HostilityOffer("refuses search");
@@ -473,7 +466,7 @@ public class LicenseComponent : ActorComponentBase {
 
         // Iterate through all commodity categories
         foreach (CommodityCategory category in Enum.GetValues<CommodityCategory>()) {
-            var policy = Tuning.FactionPolicies.GetPolicy(agentFaction, category);
+            var policy = agentFaction.GetPolicy(category);
 
             // Only offer licenses for Controlled or Restricted goods
             if (policy != TradePolicy.Controlled && policy != TradePolicy.Restricted) {
@@ -481,7 +474,7 @@ public class LicenseComponent : ActorComponentBase {
             }
 
             var prices = policy == TradePolicy.Controlled ? controlledPrices : restrictedPrices;
-            var currentLicense = buyerRelation.Licenses[category];
+            var currentLicense = buyerRelation.GetLicense(category);
 
             // Offer licenses at each tier higher than what the player currently has
             foreach (GameTier tier in Enum.GetValues<GameTier>()) {
@@ -1127,21 +1120,21 @@ public class ContrabandScannerComponent : ActorComponentBase {
         foreach (var commodityAmount in target.Supplies.Pairs) {
             var (commodity, amount) = commodityAmount;
             amount += target.Cargo[commodity];
-            var policy = Tuning.FactionPolicies.GetPolicy(Owner.Faction, commodity);
+            var policy = Owner.Faction.GetPolicy(commodity);
             var licensed = targetToFaction.CanTrade(commodity);
             if (!licensed && amount > 0) {
                 contraband.Add(commodity, amount);
             }
         }
         foreach (var segment in target.Cargo.Segments) {
-            var policy = Tuning.FactionPolicies.GetPolicy(Owner.Faction, segment.SegmentKind);
+            var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
             var licensed = targetToFaction.CanTrade(segment.SegmentDef);
             if (!licensed) {
                 contraband.Add(segment);
             }
         }
         foreach (var segment in target.Supplies.Segments.Where(s => s.IsPackaged)) {
-            var policy = Tuning.FactionPolicies.GetPolicy(Owner.Faction, segment.SegmentKind);
+            var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
             var licensed = targetToFaction.CanTrade(segment.SegmentDef);
             if (!licensed) {
                 contraband.Add(segment);

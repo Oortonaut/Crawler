@@ -60,7 +60,7 @@ public static class TradeEx {
         float CFrac = wealth;
 
         foreach (var commodity in commodities) {
-            var policy = Tuning.FactionPolicies.GetPolicy(faction, commodity);
+            var policy = faction.GetPolicy(commodity);
 
             if (policy == TradePolicy.Prohibited && rng.NextSingle() > 0.5f) {
                 continue;
@@ -103,7 +103,7 @@ public static class TradeEx {
 
         // Offer segments from trade inventory
         foreach (var segment in seller?.Cargo.Segments.ToList() ?? []) {
-            var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
+            var policy = faction.GetPolicy(segment.SegmentKind);
 
             if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
                 continue;
@@ -127,7 +127,7 @@ public static class TradeEx {
             var segmentDef = rng.ChooseRandom(SegmentEx.AllDefs)!;
             var segment = segmentDef.NewSegment(rng.Seed());
 
-            var policy = Tuning.FactionPolicies.GetPolicy(faction, segment.SegmentKind);
+            var policy = faction.GetPolicy(segment.SegmentKind);
 
             if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
                 continue;

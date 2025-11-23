@@ -109,12 +109,22 @@ public class ActorFaction {
                 FactionStanding = -100;
             }
         }
+        Faction = faction;
     }
-
-    public EArray<CommodityCategory, GameTier> Licenses = new();
-    public bool CanTrade(Commodity c) => Licenses[c.Category()] >= c.Tier();
-    public bool CanTrade(SegmentDef segdef) =>
-        segdef.SegmentKind == SegmentKind.Offense ? Licenses[CommodityCategory.Dangerous] >= weaponTier(segdef) : true;
+    public Faction Faction { get; }
+    public GameTier GetLicense(CommodityCategory category) =>
+        Faction.IsLegal(category) ? GameTier.Late :
+        Faction.IsLicensed(category) ? licenses[category] :
+        GameTier.None;
+    public void GrantLicense(CommodityCategory category, GameTier tier) {
+        if (tier > licenses[category]) {
+            licenses[category] = tier;
+        }
+    }
+    EArray<CommodityCategory, GameTier> licenses = new();
+    public bool CanTrade(CommodityCategory cat, GameTier tier) => GetLicense(cat) >= tier;
+    public bool CanTrade(Commodity c) => CanTrade(c.Category(), c.Tier());
+    public bool CanTrade(SegmentDef segdef) => segdef.SegmentKind is not SegmentKind.Offense || CanTrade(CommodityCategory.Dangerous, weaponTier(segdef));
     public int ActorStanding { get; set; } // How the actor feels about the faction
     public int FactionStanding { get; set; } // How the faction feels about the actor
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
@@ -349,21 +359,18 @@ public class Crawler: IActor {
             foreach (var commodityAmount in subject.Supplies.Pairs) {
                 var (commodity, amount) = commodityAmount;
                 amount += subject.Cargo[commodity];
-                var policy = Tuning.FactionPolicies.GetPolicy(Faction, commodity);
                 var licensed = targetToFaction.CanTrade(commodity);
                 if (!licensed && amount > 0) {
                     contraband.Add(commodity, amount);
                 }
             }
             foreach (var segment in subject.Cargo.Segments) {
-                var policy = Tuning.FactionPolicies.GetPolicy(Faction, segment.SegmentKind);
                 var licensed = targetToFaction.CanTrade(segment.SegmentDef);
                 if (!licensed) {
                     contraband.Add(segment);
                 }
             }
             foreach (var segment in subject.Supplies.Segments.Where(s => s.IsPackaged)) {
-                var policy = Tuning.FactionPolicies.GetPolicy(Faction, segment.SegmentKind);
                 var licensed = targetToFaction.CanTrade(segment.SegmentDef);
                 if (!licensed) {
                     contraband.Add(segment);

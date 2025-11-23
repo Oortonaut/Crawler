@@ -378,7 +378,7 @@ public static partial class CrawlerEx {
         foreach (var interaction in interactions) {
             var msg = interaction.MessageFor(agent);
             if (!string.IsNullOrEmpty(msg)) {
-                agent.Message(msg);
+                agent.Message(Style.Em.Format(msg));
             }
             if (interaction.GetImmediacy() == Immediacy.Immediate) {
                 result += interaction.Perform();
