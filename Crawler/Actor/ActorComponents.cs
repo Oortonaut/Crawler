@@ -31,6 +31,10 @@ public class SettlementContrabandComponent : ActorComponentBase {
     }
 
     void SetupContrabandScan(Crawler settlement, IActor target, long time) {
+        if (!target.IsPlayer()) {
+            return;
+        }
+
         var contraband = settlement.ScanForContraband(target);
         if (!contraband.IsEmpty && !settlement.Fighting(target)) {
             // Set ultimatum with timeout
@@ -73,6 +77,15 @@ public class SettlementContrabandComponent : ActorComponentBase {
 
         public override string Description => $"Allow search: surrender {Contraband}";
 
+        public override string? MessageFor(IActor viewer) {
+            if (viewer != Target) return null;
+            var ultimatum = Settlement.To(Target).Ultimatum;
+            if (ultimatum?.ExpirationTime > 0) {
+                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to submit to customs search";
+            }
+            return null;
+        }
+
         public override int Perform(string args = "") {
             var searchOffer = new SearchOffer("allow boarding and search");
             var inventoryOffer = new InventoryOffer(false, Contraband);
@@ -103,6 +116,15 @@ public class SettlementContrabandComponent : ActorComponentBase {
     ) : Interaction(Settlement, Target, MenuOption) {
 
         public override string Description => $"Refuse search from {Settlement.Name}";
+
+        public override string? MessageFor(IActor viewer) {
+            if (viewer != Target) return null;
+            var ultimatum = Settlement.To(Target).Ultimatum;
+            if (ultimatum?.ExpirationTime > 0) {
+                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to submit to customs search";
+            }
+            return null;
+        }
 
         public override int Perform(string args = "") {
             var hostilityOffer = new HostilityOffer("refuses search");
@@ -602,6 +624,15 @@ public static class ExtortionInteractions {
 
         public override string Description => DescriptionText;
 
+        public override string? MessageFor(IActor viewer) {
+            if (viewer != Target) return null;
+            var ultimatum = Extortioner.To(Target).Ultimatum;
+            if (ultimatum?.ExpirationTime > 0) {
+                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to surrender goods";
+            }
+            return null;
+        }
+
         public override int Perform(string args = "") {
             var demand = MakeDemand();
 
@@ -640,6 +671,15 @@ public static class ExtortionInteractions {
     ) : Interaction(Extortioner, Target, MenuOption) {
 
         public override string Description => $"Refuse extortion from {Extortioner.Name}";
+
+        public override string? MessageFor(IActor viewer) {
+            if (viewer != Target) return null;
+            var ultimatum = Extortioner.To(Target).Ultimatum;
+            if (ultimatum?.ExpirationTime > 0) {
+                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to surrender goods";
+            }
+            return null;
+        }
 
         public override int Perform(string args = "") {
             Extortioner.To(Target).Hostile = true;
