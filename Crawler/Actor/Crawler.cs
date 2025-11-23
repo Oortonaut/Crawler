@@ -259,8 +259,7 @@ public class Crawler: IActor {
         switch (Role) {
         case CrawlerRole.Settlement:
             // Settlements: trade, repair, licensing, contraband enforcement
-            AddComponent(new SettlementContrabandComponent());
-            AddComponent(new ContrabandScannerComponent());
+            AddComponent(new ContrabandEnforcementComponent());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f));
             AddComponent(new RepairComponent());
             AddComponent(new LicenseComponent());
@@ -275,8 +274,7 @@ public class Crawler: IActor {
 
         case CrawlerRole.Customs:
             // Customs officers: contraband scanning and enforcement
-            AddComponent(new ContrabandScannerComponent());
-            AddComponent(new SettlementContrabandComponent());
+            AddComponent(new ContrabandEnforcementComponent());
             AddComponent(new HostileAIComponent(rng.Seed())); // Combat capable
             AddComponent(new RetreatComponent());
             break;
@@ -332,6 +330,7 @@ public class Crawler: IActor {
     }
 
     // Scan actor's inventory for contraband based on this faction's policies
+    // Delegates to ContrabandEnforcementComponent if available
     public bool HasContraband(IActor target) {
         if (target is not Crawler crawler) {
             return false;
@@ -339,45 +338,11 @@ public class Crawler: IActor {
         return !ScanForContraband(crawler).IsEmpty;
     }
     public Inventory ScanForContraband(IActor target) {
-        // Use ContrabandScannerComponent if available, otherwise use old method
-        var scanner = _components.OfType<ContrabandScannerComponent>().FirstOrDefault();
-        if (scanner != null && target is Crawler targetCrawler) {
-            return scanner.ScanForContraband(targetCrawler);
+        var enforcement = _components.OfType<ContrabandEnforcementComponent>().FirstOrDefault();
+        if (enforcement != null && target is Crawler targetCrawler) {
+            return enforcement.ScanForContraband(targetCrawler);
         }
-
-        // Fallback: original implementation
-        var contraband = new Inventory();
-
-        // Random chance to detect
-        //if (Rng.NextSingle() > Tuning.Civilian.contrabandScanChance) {
-        //    return contraband; // Scan failed
-        //}
-
-        if (target is Crawler subject) {
-            var targetToFaction = subject.To(this.Faction);
-            // Check each commodity
-            foreach (var commodityAmount in subject.Supplies.Pairs) {
-                var (commodity, amount) = commodityAmount;
-                amount += subject.Cargo[commodity];
-                var licensed = targetToFaction.CanTrade(commodity);
-                if (!licensed && amount > 0) {
-                    contraband.Add(commodity, amount);
-                }
-            }
-            foreach (var segment in subject.Cargo.Segments) {
-                var licensed = targetToFaction.CanTrade(segment.SegmentDef);
-                if (!licensed) {
-                    contraband.Add(segment);
-                }
-            }
-            foreach (var segment in subject.Supplies.Segments.Where(s => s.IsPackaged)) {
-                var licensed = targetToFaction.CanTrade(segment.SegmentDef);
-                if (!licensed) {
-                    contraband.Add(segment);
-                }
-            }
-        }
-        return contraband;
+        return new Inventory();
     }
 
     public bool Pinned() {

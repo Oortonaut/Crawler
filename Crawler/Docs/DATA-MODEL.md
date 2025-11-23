@@ -159,10 +159,11 @@ public record EncounterEvent(
 - Subscribes: ActorArrived, ActorLeft
 - Generates: No proposals (uses ActorToActor.StoredProposals for ultimatums)
 
-**SettlementContrabandComponent** (`ActorComponents.cs`)
+**ContrabandEnforcementComponent** (`ActorComponents.cs`)
 - Purpose: Scans for contraband and creates seizure ultimatums
 - Subscribes: ActorArrived, ActorLeft
-- Generates: No proposals (uses ActorToActor.StoredProposals for ultimatums)
+- Generates: No proposals (uses ActorToActor.Ultimatum)
+- Used by: Settlements and Customs officers
 
 **TradeOfferComponent** (`ActorComponents.cs`)
 - Purpose: Generates trade proposals on-demand

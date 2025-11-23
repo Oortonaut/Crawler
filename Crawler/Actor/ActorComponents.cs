@@ -1,10 +1,11 @@
 namespace Crawler;
 
 /// <summary>
-/// Component that handles settlement contraband scanning and seizure.
-/// Settlements scan for prohibited goods and create ultimatums to seize them or turn hostile.
+/// Component that handles contraband scanning, enforcement, and seizure.
+/// Actors with this component scan for prohibited goods and create ultimatums to seize them or turn hostile.
+/// Can be added to settlements, customs officers, or other enforcement actors.
 /// </summary>
-public class SettlementContrabandComponent : ActorComponentBase {
+public class ContrabandEnforcementComponent : ActorComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
@@ -35,7 +36,7 @@ public class SettlementContrabandComponent : ActorComponentBase {
             return;
         }
 
-        var contraband = settlement.ScanForContraband(target);
+        var contraband = ScanForContraband(target);
         if (!settlement.Fighting(target)) {
             // Set ultimatum with timeout
             settlement.To(target).Ultimatum = new ActorToActor.UltimatumState {
@@ -46,6 +47,58 @@ public class SettlementContrabandComponent : ActorComponentBase {
         }
     }
 
+    /// <summary>
+    /// Scan actor's inventory for contraband based on this faction's policies
+    /// </summary>
+    public bool HasContraband(IActor target) {
+        if (target is not Crawler crawler) {
+            return false;
+        }
+        return !ScanForContraband(crawler).IsEmpty;
+    }
+
+    /// <summary>
+    /// Scan and return all contraband items found
+    /// </summary>
+    public Inventory ScanForContraband(IActor target) {
+        if (target is not Crawler targetCrawler) {
+            return new Inventory();
+        }
+
+        var contraband = new Inventory();
+
+        // Random chance to detect (currently disabled)
+        //if (Rng.NextSingle() > Tuning.Civilian.contrabandScanChance) {
+        //    return contraband; // Scan failed
+        //}
+
+        var targetToFaction = targetCrawler.To(Owner.Faction);
+        // Check each commodity
+        foreach (var commodityAmount in targetCrawler.Supplies.Pairs) {
+            var (commodity, amount) = commodityAmount;
+            amount += targetCrawler.Cargo[commodity];
+            var policy = Owner.Faction.GetPolicy(commodity);
+            var licensed = targetToFaction.CanTrade(commodity);
+            if (!licensed && amount > 0) {
+                contraband.Add(commodity, amount);
+            }
+        }
+        foreach (var segment in targetCrawler.Cargo.Segments) {
+            var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
+            var licensed = targetToFaction.CanTrade(segment.SegmentDef);
+            if (!licensed) {
+                contraband.Add(segment);
+            }
+        }
+        foreach (var segment in targetCrawler.Supplies.Segments.Where(s => s.IsPackaged)) {
+            var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
+            var licensed = targetToFaction.CanTrade(segment.SegmentDef);
+            if (!licensed) {
+                contraband.Add(segment);
+            }
+        }
+        return contraband;
+    }
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         if (Owner is not Crawler settlement) yield break;
@@ -1089,60 +1142,6 @@ public class AutoRepairComponent : ActorComponentBase {
     }
 }
 
-/// <summary>
-/// Component that provides contraband scanning capability.
-/// Can be added to settlements, police, or other enforcement actors.
-/// </summary>
-public class ContrabandScannerComponent : ActorComponentBase {
-    /// <summary>
-    /// Scan actor's inventory for contraband based on this faction's policies
-    /// </summary>
-    public bool HasContraband(IActor target) {
-        if (target is not Crawler crawler) {
-            return false;
-        }
-        return !ScanForContraband(crawler).IsEmpty;
-    }
-
-    /// <summary>
-    /// Scan and return all contraband items found
-    /// </summary>
-    public Inventory ScanForContraband(Crawler target) {
-        var contraband = new Inventory();
-
-        // Random chance to detect (currently disabled)
-        //if (Rng.NextSingle() > Tuning.Civilian.contrabandScanChance) {
-        //    return contraband; // Scan failed
-        //}
-
-        var targetToFaction = target.To(Owner.Faction);
-        // Check each commodity
-        foreach (var commodityAmount in target.Supplies.Pairs) {
-            var (commodity, amount) = commodityAmount;
-            amount += target.Cargo[commodity];
-            var policy = Owner.Faction.GetPolicy(commodity);
-            var licensed = targetToFaction.CanTrade(commodity);
-            if (!licensed && amount > 0) {
-                contraband.Add(commodity, amount);
-            }
-        }
-        foreach (var segment in target.Cargo.Segments) {
-            var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
-            var licensed = targetToFaction.CanTrade(segment.SegmentDef);
-            if (!licensed) {
-                contraband.Add(segment);
-            }
-        }
-        foreach (var segment in target.Supplies.Segments.Where(s => s.IsPackaged)) {
-            var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
-            var licensed = targetToFaction.CanTrade(segment.SegmentDef);
-            if (!licensed) {
-                contraband.Add(segment);
-            }
-        }
-        return contraband;
-    }
-}
 
 /// <summary>
 /// High-priority survival component that makes crawlers flee when vulnerable.

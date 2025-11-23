@@ -413,9 +413,10 @@ public interface IActorComponent : IEncounterEventHandler {
 - Behavior: Threatens valuable targets, creates extortion ultimatums
 - Note: Currently disabled with early return (remove to enable)
 
-**SettlementContrabandComponent:**
+**ContrabandEnforcementComponent:**
 - Subscribes to: ActorArrived, ActorLeft
 - Behavior: Scans for contraband, creates seizure ultimatums
+- Used by: Settlements and Customs officers
 
 **TradeOfferComponent:**
 - Subscribes to: (none)
