@@ -102,7 +102,7 @@ public sealed class Encounter {
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
         var crawler = GenerateFactionActor(seed, faction, arrivalTime, lifetime);
-        crawler.LastEvent = arrivalTime;
+        crawler.SimulationTime = arrivalTime;
         return crawler;
     }
     void UpdateDynamicCrawlers(long currentTime) {
@@ -178,7 +178,7 @@ public sealed class Encounter {
 
 
         if (actor is Crawler crawler) {
-            crawler.LastEvent = arrivalTime;
+            crawler.SimulationTime = arrivalTime;
             Schedule(crawler);
         }
     }
@@ -613,7 +613,7 @@ public sealed class Encounter {
     public void Schedule(Crawler crawler) {
         long eventTime = crawler.NextEvent;
         if (eventTime == 0) {
-            eventTime = crawler.LastEvent + Tuning.MaxDelay;
+            eventTime = crawler.SimulationTime + Tuning.MaxDelay;
         } else if (eventTime < LastEncounterEvent) {
             throw new InvalidOperationException($"Encounter {Name} has a crawler with a negative NextEvent: {crawler.Name} {crawler.NextEvent}");
         }

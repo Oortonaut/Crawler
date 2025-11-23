@@ -320,8 +320,8 @@ public class CrawlerArena {
             firstAttacker.ReceiveFire(secondAttacker, fire2);
 
             // Recharge both crawlers
-            crawler1.Tick(time);
-            crawler2.Tick(time);
+            crawler1.SimulateTo(time);
+            crawler2.SimulateTo(time);
         }
 
         // Determine winner

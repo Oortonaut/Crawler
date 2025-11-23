@@ -376,7 +376,7 @@ public class Crawler: IActor {
         return Rng.NextSingle() > this.EscapeChance();
     }
 
-    internal long LastEvent = 0;
+    internal long SimulationTime = 0;
     // Simulate
     // run action or think
     public void TickTo(long time) {
@@ -386,12 +386,12 @@ public class Crawler: IActor {
         while (time <= NextEvent) {
             _TickTo(NextEvent, _nextEventAction);
         }
-        if (LastEvent < time) {
+        if (SimulationTime < time) {
             _TickTo(time, null);
         }
     }
     void _TickTo(long time, Action<Crawler>? action) {
-        int elapsed = Tick(time);
+        int elapsed = SimulateTo(time);
         if (action != null) {
             action.Invoke(this);
         } else {
@@ -400,9 +400,9 @@ public class Crawler: IActor {
         PostTick(time);
     }
     // Returns elapsed
-    public int Tick(long time) {
-        int elapsed = (int)(time - LastEvent);
-        LastEvent = time;
+    public int SimulateTo(long time) {
+        int elapsed = (int)(time - SimulationTime);
+        SimulationTime = time;
 
         if (EndState != null || elapsed == 0) {
             return elapsed;
@@ -429,7 +429,7 @@ public class Crawler: IActor {
             Message("Not enough fuel.");
             return;
         }
-        long arrivalTime = LastEvent + (int)(time * 3600);
+        long arrivalTime = SimulationTime + (int)(time * 3600);
 
         Location.GetEncounter().RemoveActor(this);
         FuelInv -= fuel;
@@ -479,7 +479,7 @@ public class Crawler: IActor {
     public void ConsumeTime(long delay, Action<Crawler>? action) {
         if (delay < 0) throw new ArgumentOutOfRangeException(nameof(delay));
 
-        NextEvent = LastEvent + delay;
+        NextEvent = SimulationTime + delay;
         _nextEventAction = action;
 
         // Ensure the encounter reschedules this crawler for the new time
@@ -554,7 +554,7 @@ public class Crawler: IActor {
     public List<Segment> ActiveSegmentsFor(SegmentKind segmentKind) => _activeSegmentsByClass[segmentKind];
     public List<Segment> Segments => _allSegments;
     public List<Segment> ActiveSegments => _activeSegments;
-    public IEnumerable<Segment> ActiveCycleSegments => _activeSegments.Where(s => s.IsActiveCycle);
+    public IEnumerable<Segment> ActiveCycleSegments => _activeSegments.Where(s => s.IsReadyToFire);
     public IEnumerable<Segment> CyclingSegments => _activeSegments.Where(s => s.IsCycling);
 
     public List<Segment> DisabledSegments => _disabledSegments;

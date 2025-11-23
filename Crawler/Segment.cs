@@ -141,7 +141,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
     // Active segments are usable until they take half damage, rounded down
     public bool IsActive => State is Working.Pristine or Working.Running;
     // IsActiveReady combines the usable, running active segments with those that are ready to fire
-    public bool IsActiveCycle => IsActive && Cycle == 0;
+    public bool IsReadyToFire => IsActive && Cycle == 0;
     // The cycling state indicates that the weapon is somewhere in the charge cycle.
     public bool IsCycling => IsActive && Cycle > 0;
     public void CycleStart() => Cycle = CycleLength;
@@ -256,7 +256,7 @@ public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? Owner): Offe
     public float Aim => weaponDef.Aim;
     public override int CycleLength => weaponDef.CycleLength;
     public virtual IEnumerable<HitRecord> GenerateFire(ulong seed, float aim) {
-        if (IsActiveCycle) {
+        if (IsReadyToFire) {
             var rng = new XorShift(seed);
             for (int i = 0; i < Shots; i++) {
                 yield return new(rng.Seed(), this, Damage, Aim + aim);

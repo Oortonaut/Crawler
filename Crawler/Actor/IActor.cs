@@ -126,7 +126,7 @@ public interface IActor {
     /// <summary>Update this actor (called every game second)</summary>
     /// <param name="time"></param>
     /// <returns>Elapsed time</returns>
-    int Tick(long time);
+    int SimulateTo(long time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
     void ThinkFor(int elapsed);
@@ -178,7 +178,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
             component.OnComponentRemoved();
         }
     }
-    public int Tick(long time) => 0;
+    public int SimulateTo(long time) => 0;
     public void ThinkFor(int elapsed) { }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         Message($"{from.Name} fired uselessly at you");
