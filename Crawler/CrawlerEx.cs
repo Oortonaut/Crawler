@@ -310,7 +310,7 @@ public static partial class CrawlerEx {
         if (fire.Any()) {
             attacker.Message($"{attacker.Name} attacks {defender.Name}:");
             var (a2d, d2a) = attacker.ToTo(defender);
-            a2d.Hostile = true;
+            attacker.SetHostileTo(defender, true);
 
             if (a2d.Spared && a2d.Latch(ActorToActor.EFlags.Betrayed, true)) {
                 defender.Message($"You were betrayed by {attacker.Name}");

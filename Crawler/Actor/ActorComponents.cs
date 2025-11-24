@@ -728,8 +728,8 @@ public static class ExtortionInteractions {
         }
 
         public override int Perform(string args = "") {
-            Extortioner.To(Target).Hostile = true;
-            Target.To(Extortioner).Hostile = true;
+            if (Extortioner is Crawler extortionerCrawler) extortionerCrawler.SetHostileTo(Target, true);
+            if (Target is Crawler targetCrawler) targetCrawler.SetHostileTo(Extortioner, true);
 
             Extortioner.Message($"{Target.Name} refuses your demand!");
             Target.Message($"You refuse {Extortioner.Name}'s demand - now hostile!");
@@ -1215,27 +1215,11 @@ public abstract class CombatComponentBase : ActorComponentBase {
         if (CurrentTarget is null) return null;
 
         // Try to attack current target if still valid
-        if (CurrentTarget != null &&
-            attacker.Location == CurrentTarget.Location &&
-            attacker.To(CurrentTarget).Hostile &&
-            CurrentTarget.Lives()) {
-            int ap = attacker.Attack(CurrentTarget);
-            if (ap > 0) {
-                attacker.ConsumeTime(ap, null);
-                return ap;
-            }
+        int ap = attacker.Attack(CurrentTarget);
+        if (ap > 0) {
+            attacker.ConsumeTime(ap, null);
+            return ap;
         }
-
-        // Select new target
-        CurrentTarget = SelectTarget();
-        if (CurrentTarget != null) {
-            int ap = attacker.Attack(CurrentTarget);
-            if (ap > 0) {
-                attacker.ConsumeTime(ap, null);
-                return ap;
-            }
-        }
-
         return null;
     }
 
@@ -1278,28 +1262,39 @@ public abstract class CombatComponentBase : ActorComponentBase {
 }
 
 /// <summary>
-/// Bandit AI component that handles extortion, targeting, and combat.
-/// Consolidates all bandit-specific behaviors.
+/// Bandit AI component that handles extortion and ultimatum management.
+/// Does not handle combat - use with CombatComponentAdvanced for that.
 /// </summary>
-public class BanditComponent : CombatComponentBase {
+public class BanditComponent : ActorComponentBase {
+    XorShift _rng;
     float _demandFraction;
 
-    public BanditComponent(ulong seed, float demandFraction = 0.5f) : base(seed) {
+    public BanditComponent(ulong seed, float demandFraction = 0.5f) {
+        _rng = new XorShift(seed);
         _demandFraction = demandFraction;
     }
 
     public override int Priority => 600; // Faction-specific behavior
 
-    protected override void OnActorArrived(IActor actor, long time) {
-        base.OnActorArrived(actor, time);
+    public override void SubscribeToEncounter(Encounter encounter) {
+        encounter.ActorArrived += OnActorArrived;
+        encounter.ActorLeft += OnActorLeft;
+    }
+
+    public override void UnsubscribeFromEncounter(Encounter encounter) {
+        encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeft -= OnActorLeft;
+    }
+
+    void OnActorArrived(IActor actor, long time) {
+        if (Owner == actor) return;
         SetupExtortion(actor, time);
     }
 
-    protected override void OnActorLeft(IActor actor, long time) {
-        base.OnActorLeft(actor, time);
-
+    void OnActorLeft(IActor actor, long time) {
+        if (Owner == actor) return;
         // Clear ultimatum when target leaves
-        Owner.To(actor).Ultimatum= null;
+        Owner.To(actor).Ultimatum = null;
     }
 
     void SetupExtortion(IActor target, long time) {
@@ -1349,9 +1344,41 @@ public class BanditComponent : CombatComponentBase {
             yield return new ExtortionInteractions.ExtortionExpiredInteraction(Owner, subject, "");
         }
     }
+}
+
+/// <summary>
+/// Advanced combat AI component with smart targeting that prioritizes vulnerable enemies.
+/// Subscribes to OnHostilityChanged events to react to new hostilities.
+/// </summary>
+public class CombatComponentAdvanced : CombatComponentBase {
+    public CombatComponentAdvanced(ulong seed) : base(seed) {
+    }
+
+    public override int Priority => 600; // Advanced combat behavior
+
+    public override void OnComponentAdded() {
+        base.OnComponentAdded();
+        if (Owner is Crawler crawler) {
+            crawler.OnHostilityChanged += OnHostilityChanged;
+        }
+    }
+
+    public override void OnComponentRemoved() {
+        if (Owner is Crawler crawler) {
+            crawler.OnHostilityChanged -= OnHostilityChanged;
+        }
+        base.OnComponentRemoved();
+    }
+
+    void OnHostilityChanged(IActor other, bool hostile) {
+        // React to hostility changes - could retarget or take immediate action
+        if (hostile && CurrentTarget == null) {
+            CurrentTarget = other;
+        }
+    }
 
     /// <summary>
-    /// Bandits prioritize vulnerable targets over healthy ones.
+    /// Advanced targeting: prioritize vulnerable targets over healthy ones.
     /// </summary>
     protected override IActor? SelectTarget() {
         if (Owner is not Crawler crawler) return null;

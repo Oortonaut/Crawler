@@ -281,7 +281,8 @@ public class Crawler: IActor {
 
         case CrawlerRole.Bandit:
             // Bandits: extortion, robbery, combat
-            AddComponent(new BanditComponent(rng.Seed(), 0.5f));
+            AddComponent(new BanditComponent(rng.Seed(), 0.5f)); // Extortion/ultimatums
+            AddComponent(new CombatComponentAdvanced(rng.Seed())); // Smart combat targeting
             AddComponent(new RetreatComponent());
             // Bandits have higher markup/spread for goods they steal/trade
             var gaussian = new GaussianSampler(rng.Seed());
@@ -1029,7 +1030,7 @@ public class Crawler: IActor {
         var relation = To(from);
         var wasAlreadyDamaged = relation.WasDamaged;
 
-        relation.Hostile = true;
+        SetHostileTo(from, true);
 
         string msg = "";
         foreach (var hit in fire) {
@@ -1130,6 +1131,24 @@ public class Crawler: IActor {
     public EArraySparse<Faction, ActorFaction> FactionRelations { get; } = new();
     public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
 
+    /// <summary>
+    /// Event fired when hostility state changes between this crawler and another actor.
+    /// Parameters: (other actor, new hostile state)
+    /// </summary>
+    public event Action<IActor, bool>? OnHostilityChanged;
+
+    /// <summary>
+    /// Internal method to set hostility state and fire OnHostilityChanged event.
+    /// Components should use this instead of directly setting relation.Hostile.
+    /// </summary>
+    internal void SetHostileTo(IActor other, bool hostile) {
+        var relation = To(other);
+        if (relation.Hostile != hostile) {
+            relation.Hostile = hostile;
+            OnHostilityChanged?.Invoke(other, hostile);
+        }
+    }
+
     Dictionary<IActor, ActorToActor> _relations = new();
     public bool Knows(IActor other) => _relations.ContainsKey(other);
     public ActorToActor To(IActor other) {
@@ -1140,7 +1159,7 @@ public class Crawler: IActor {
         bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.GetEncounter().Faction is Faction.Independent;
         var actorFaction = To(to.Faction);
         if (actorFaction.ActorStanding < 0) {
-            result.Hostile = true;
+            SetHostileTo(to, true);
         }
         return result;
     }

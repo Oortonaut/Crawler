@@ -91,8 +91,8 @@ public record AcceptSurrenderOffer(float value, string _description): IOffer {
         Loser.Message($"You have surrendered to {Winner.Name}. {Tuning.Crawler.MoraleSurrendered} Morale");
         Loser.To(Winner).Surrendered = true;
         Winner.To(Loser).Spared = true;
-        Loser.To(Winner).Hostile = false;
-        Winner.To(Loser).Hostile = false;
+        if (Loser is Crawler loserCrawler) loserCrawler.SetHostileTo(Winner, false);
+        if (Winner is Crawler winnerCrawler) winnerCrawler.SetHostileTo(Loser, false);
         Winner.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
         Loser.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
     }
@@ -169,8 +169,8 @@ public record HostilityOffer(string Reason): IOffer {
         null;
 
     public void PerformOn(IActor Agent, IActor Subject) {
-        Agent.To(Subject).Hostile = true;
-        Subject.To(Agent).Hostile = true;
+        if (Agent is Crawler agentCrawler) agentCrawler.SetHostileTo(Subject, true);
+        if (Subject is Crawler subjectCrawler) subjectCrawler.SetHostileTo(Agent, true);
         Agent.Message($"{Subject.Name} {Reason}. You are now hostile.");
         Subject.Message($"{Agent.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
         Subject.Supplies[Commodity.Morale] -= 2;
