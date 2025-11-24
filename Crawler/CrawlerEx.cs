@@ -269,16 +269,20 @@ public static partial class CrawlerEx {
             .SetTag("SubjectToAgent", subject.To(agent).ToString());
 
         // Get interactions from agent's components
-        foreach (var component in agent.Components) {
-            foreach (var interaction in component.EnumerateInteractions(subject)) {
-                yield return interaction;
+        if (agent is Crawler agentCrawler) {
+            foreach (var component in agentCrawler.Components) {
+                foreach (var interaction in component.EnumerateInteractions(subject)) {
+                    yield return interaction;
+                }
             }
         }
 
         // Get interactions from subject's components
-        foreach (var component in subject.Components) {
-            foreach (var interaction in component.EnumerateInteractions(agent)) {
-                yield return interaction;
+        if (subject is Crawler subjectCrawler) {
+            foreach (var component in subjectCrawler.Components) {
+                foreach (var interaction in component.EnumerateInteractions(agent)) {
+                    yield return interaction;
+                }
             }
         }
     }
@@ -302,8 +306,8 @@ public static partial class CrawlerEx {
             Console.WriteLine(message);
         }
     }
-    public static bool IsPlayer(this IActor agent) => agent.HasFlag(EActorFlags.Player);
-    public static bool HasFlag(this IActor agent, EActorFlags flags) => agent.Flags.HasFlag(flags);
+    public static bool IsPlayer(this IActor agent) => agent.HasFlag(ActorFlags.Player);
+    public static bool HasFlag(this IActor agent, ActorFlags flags) => agent.Flags.HasFlag(flags);
     public static bool SurrenderedTo(this IActor agent, IActor other) => agent.To(other).Surrendered;
     public static int Attack(this Crawler attacker, IActor defender) {
         var fire = attacker.CreateFire();
@@ -324,7 +328,6 @@ public static partial class CrawlerEx {
             // Schedule weapon cooldown delay with follow-up attack
             var delay = attacker.WeaponDelay();
             Debug.Assert(delay.HasValue);
-            attacker.ConsumeTime(delay.Value, null);
             return delay.Value;
         } else {
             attacker.Message($"No fire on {defender.Name} ({attacker.StateString(defender)}");

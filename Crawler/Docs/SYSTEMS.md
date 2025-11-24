@@ -340,7 +340,7 @@ public bool InteractionCapable(IActor Agent, IActor Subject) =>
 ## Component and Event System
 
 **Files:** `Components.cs`, `ActorComponents.cs`, `Encounter.cs`, `IActor.cs`, `Crawler.cs`
-**Purpose:** Event-driven, pluggable behaviors for actors
+**Purpose:** Event-driven, pluggable behaviors for Crawlers
 
 ### Overview
 
@@ -408,29 +408,79 @@ public interface IActorComponent : IEncounterEventHandler {
 
 ### Built-in Components
 
-**BanditExtortionComponent:**
+**CustomsComponent (CrawlerComponentBase):**
 - Subscribes to: ActorArrived, ActorLeft
-- Behavior: Threatens valuable targets, creates extortion ultimatums
-- Note: Currently disabled with early return (remove to enable)
+- Behavior: Scans for contraband, creates seizure ultimatums via ActorToActor.Ultimatum
+- Used by: Settlements and Customs officers (CrawlerRole.Settlement, CrawlerRole.Customs)
 
-**ContrabandEnforcementComponent:**
-- Subscribes to: ActorArrived, ActorLeft
-- Behavior: Scans for contraband, creates seizure ultimatums
-- Used by: Settlements and Customs officers
+**TradeOfferComponent (CrawlerComponentBase):**
+- Priority: 500 (default)
+- Behavior: Generates trade interactions on-demand based on faction and location
+- Used by: Settlements, Traders, Travelers
 
-**TradeOfferComponent:**
-- Subscribes to: (none)
-- Behavior: Generates trade proposals on-demand
-- Replaces: Cached StoredProposals for trade offers
+**AttackComponent (CrawlerComponentBase):**
+- Used by: Player only
+- Behavior: Provides attack interactions for combat initiation
 
-**EncounterMessengerComponent:**
-- Subscribes to: ActorArrived, ActorLeft
-- Behavior: Displays "{Name} enters" and "{Name} leaves" messages
+**PlayerDemandComponent (CrawlerComponentBase):**
+- Used by: Player only
+- Behavior: Enables threatening vulnerable NPCs for cargo
 
-**RelationPrunerComponent:**
+**RepairComponent (CrawlerComponentBase):**
+- Used by: Settlements
+- Behavior: Offers repair services using bidirectional ultimatums for state tracking
+
+**LicenseComponent (CrawlerComponentBase):**
+- Used by: Settlements
+- Behavior: Sells licenses for controlled commodity categories
+
+**SurrenderComponent (CrawlerComponentBase):**
+- Used by: All non-settlements
+- Behavior: Allows player to accept surrender from vulnerable enemies
+
+**EncounterMessengerComponent (CrawlerComponentBase):**
+- Subscribes to: ActorArrived, ActorLeaving, ActorLeft, EncounterTick
+- Crawler events: HostilityChanged, ReceivingFire
+- Behavior: Displays encounter and combat messages (player only)
+
+**RelationPrunerComponent (CrawlerComponentBase):**
 - Subscribes to: ActorLeaving
 - Behavior: Cleans up transient actor relationships when leaving
-- Keeps: Settlements and hostile relationships
+- Keeps: Settlement relationships and hostile relationships
+
+**LifeSupportComponent (CrawlerComponentBase):**
+- Behavior: Handles resource consumption (fuel, rations, water, air) and crew survival
+
+**AutoRepairComponent (CrawlerComponentBase):**
+- Behavior: Automatically repairs damaged segments using excess power, crew, and scrap
+
+**RetreatComponent (CrawlerComponentBase):**
+- Priority: 1000 (highest - survival first)
+- ThinkAction: Flee when vulnerable and not pinned
+- Used by: All non-settlements
+
+**CombatComponentBase (abstract):**
+- Base class for combat AI components
+- Manages target tracking and attack execution
+
+**CombatComponentAdvanced (CombatComponentBase):**
+- Priority: 600
+- ThinkAction: Intelligent targeting and combat for NPCs
+- Subscribes to: HostilityChanged event (via OnComponentsDirty)
+- Used by: Bandits
+
+**CombatComponentDefense (CombatComponentBase):**
+- Priority: 400
+- ThinkAction: Generic attack hostile targets
+- Used by: All non-bandit NPCs
+
+**BanditComponent (CrawlerComponentBase):**
+- Priority: 600
+- ThinkAction: Evaluates extortion opportunities, creates ultimatums
+- Used by: Bandits
+
+**HarvestComponent, HazardComponent:**
+- Used by: Static actors for resource gathering interactions
 
 ### Component Lifecycle
 

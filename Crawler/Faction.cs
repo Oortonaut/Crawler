@@ -4,11 +4,12 @@ namespace Crawler;
 
 public enum CrawlerRole {
     None,        // No specific role/generic crawler
+    Player,      // Player
     Settlement,  // Static settlement actor
     Trader,      // Mobile merchant (buys/sells goods)
     Customs,     // Contraband enforcement officer
     Bandit,      // Extortion/robbery specialist
-    Traveler     // Dynamic quest giver/wanderer
+    Traveler,    // Dynamic quest giver/wanderer
 }
 
 public enum Faction {

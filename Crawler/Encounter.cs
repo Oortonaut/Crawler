@@ -159,7 +159,7 @@ public sealed class Encounter {
         }
 
         // Update caching when actors join
-        if (actor.Flags.HasFlag(EActorFlags.Player)) UpdatePlayerStatus();
+        if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
 
         long exitTime = lifetime.HasValue ? arrivalTime + lifetime.Value : 0;
         var metadata = new EncounterActor {
@@ -168,15 +168,10 @@ public sealed class Encounter {
         };
         actors[actor] = metadata;
         actor.To(Location).Visited = true;
-
-        // Subscribe all actor components to encounter events
-        foreach (var component in actor.Components) {
-            component.SubscribeToEncounter(this);
-        }
+        actor.Arrived(this);
 
         // Raise ActorArrived event
         ActorArrived?.Invoke(actor, arrivalTime);
-
 
         if (actor is Crawler crawler) {
             crawler.SimulationTime = arrivalTime;
@@ -188,28 +183,24 @@ public sealed class Encounter {
 
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
     public void RemoveActor(IActor actor) {
+        if (actor is Crawler crawler) {
+            Unschedule(crawler);
+        }
+
         // Raise ActorLeaving event
         ActorLeaving?.Invoke(actor, LastEncounterEvent);
+
+        actors.Remove(actor);
+        actor.Left(this);
 
         // Raise ActorLeft event
         ActorLeft?.Invoke(actor, LastEncounterEvent);
 
-        // Unsubscribe all actor components from encounter events
-        foreach (var component in actor.Components) {
-            component.UnsubscribeFromEncounter(this);
-        }
-
-        actors.Remove(actor);
-
         // Update caching when actors leave
-        if (actor.Flags.HasFlag(EActorFlags.Player)) UpdatePlayerStatus();
-
-        if (actor is Crawler crawler) {
-            Unschedule(crawler);
-        }
+        if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
     }
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
-    public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(EActorFlags.Settlement));
+    public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(ActorFlags.Settlement));
     public Location Location => location;
     public Faction Faction { get; }
 
@@ -222,12 +213,6 @@ public sealed class Encounter {
         var trader = Crawler.NewRandom(actorRng.Seed(), Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
         trader.Faction = Faction.Independent;
         trader.Role = CrawlerRole.Trader;
-
-        // Add base components
-        trader.AddComponent(new LifeSupportComponent());
-        trader.AddComponent(new AutoRepairComponent(RepairMode.Off)); // Traders don't auto-repair
-        trader.AddComponent(new EncounterMessengerComponent());
-        trader.AddComponent(new RelationPrunerComponent());
 
         // Initialize role-specific components
         trader.InitializeRoleComponents(actorRng.Seed());
@@ -242,7 +227,7 @@ public sealed class Encounter {
         float goodsWealth = wealth * 0.65f;
         float segmentWealth = wealth * 0.5f;
         var player = Crawler.NewRandom(seed, Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
-        player.Flags |= EActorFlags.Player;
+        player.Flags |= ActorFlags.Player;
         player.Faction = Faction.Player;
 
         // Add player-specific components
@@ -271,7 +256,6 @@ public sealed class Encounter {
         // Add base components
         enemy.AddComponent(new LifeSupportComponent());
         enemy.AddComponent(new AutoRepairComponent(RepairMode.RepairLowest)); // Bandits auto-repair
-        enemy.AddComponent(new EncounterMessengerComponent());
         enemy.AddComponent(new RelationPrunerComponent());
 
         // Initialize role-specific components
@@ -299,12 +283,6 @@ public sealed class Encounter {
             _ => CrawlerRole.Customs         // 20% customs officers
         };
 
-        // Add base components
-        civilian.AddComponent(new LifeSupportComponent());
-        civilian.AddComponent(new AutoRepairComponent(RepairMode.Off)); // Civilians don't auto-repair
-        civilian.AddComponent(new EncounterMessengerComponent());
-        civilian.AddComponent(new RelationPrunerComponent());
-
         // Initialize role-specific components
         civilian.InitializeRoleComponents(actorRng.Seed());
 
@@ -316,7 +294,7 @@ public sealed class Encounter {
         using var activity = Scope($"GenerateCapital {nameof(Encounter)}");
         var settlement = GenerateSettlement(seed);
         settlement.Domes += 2;
-        settlement.Flags |= EActorFlags.Capital;
+        settlement.Flags |= ActorFlags.Capital;
         return settlement;
     }
     public Crawler GenerateSettlement(ulong seed) {
@@ -330,17 +308,17 @@ public sealed class Encounter {
         float segmentWealth = Location.Wealth * domes * 0.25f;
         var settlement = Crawler.NewRandom(settlementRng.Seed(), Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
         settlement.Domes = domes;
-        settlement.Flags |= EActorFlags.Settlement;
-        settlement.Flags &= ~EActorFlags.Mobile;
+        settlement.Flags |= ActorFlags.Settlement;
+        settlement.Flags &= ~ActorFlags.Mobile;
         settlement.Role = CrawlerRole.Settlement;
 
         // Add base components
         settlement.AddComponent(new LifeSupportComponent());
         settlement.AddComponent(new AutoRepairComponent(RepairMode.RepairLowest)); // Settlements auto-repair
-        settlement.AddComponent(new EncounterMessengerComponent());
-
-        // Initialize role-specific components (adds trade, repair, license, contraband scanning)
-        settlement.InitializeRoleComponents(settlementRng.Seed());
+        settlement.AddComponent(new CustomsComponent());
+        settlement.AddComponent(new TradeOfferComponent(settlementRng.Seed(), 0.25f));
+        settlement.AddComponent(new RepairComponent());
+        settlement.AddComponent(new LicenseComponent());
 
         settlement.UpdateSegmentCache();
 
@@ -579,7 +557,7 @@ public sealed class Encounter {
     // Tracks if the player is present to toggle between High Precision and Batched modes
     bool _hasPlayer = false;
     void UpdatePlayerStatus() {
-        _hasPlayer = actors.Keys.Any(a => a.Flags.HasFlag(EActorFlags.Player));
+        _hasPlayer = actors.Keys.Any(a => a.Flags.HasFlag(ActorFlags.Player));
     }
 
     public long NextEncounterEvent {
@@ -689,7 +667,7 @@ public sealed class Encounter {
                 var crawlerStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 crawler.TickTo(eventTime);
                 
-                if (crawler.Flags.HasFlag(EActorFlags.Player)) {
+                if (crawler.Flags.HasFlag(ActorFlags.Player)) {
                     Game.Instance!.GameMenu();
                 }
 

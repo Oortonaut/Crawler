@@ -82,118 +82,137 @@ interface IActor {
 ## Actor Component System
 
 **Files:** `Components.cs`, `ActorComponents.cs`
-**Purpose:** Pluggable, event-driven behaviors for actors
+**Purpose:** Pluggable, event-driven behaviors for Crawlers
 
-### IActorComponent Interface
+### ICrawlerComponent Interface
 
 ```csharp
-public interface IActorComponent : IEncounterEventHandler {
-    IActor Owner { get; }
-    void Initialize(IActor owner);
-    IEnumerable<IProposal> GenerateProposals(IActor owner);
-    void OnComponentAdded();
-    void OnComponentRemoved();
-    IEnumerable<EncounterEventType> SubscribedEvents { get; }
+public interface ICrawlerComponent {
+    Crawler Owner { get; }
+    int Priority { get; }
+
+    void Attach(Crawler owner);
+    void Detach();
+    void OnComponentsDirty();
+
+    IEnumerable<Interaction> EnumerateInteractions(IActor subject);
+    int ThinkAction();
+
+    void SubscribeToEncounter(Encounter encounter);
+    void UnsubscribeFromEncounter(Encounter encounter);
 }
 ```
 
 **Properties:**
-- `Owner` - The actor this component is attached to
-- `SubscribedEvents` - Which encounter events this component wants to receive
+- `Owner` - The Crawler this component is attached to
+- `Priority` - Higher values execute ThinkAction first (default 500)
 
 **Methods:**
-- `Initialize(owner)` - Called when component is attached to an actor
-- `GenerateProposals(owner)` - Generate proposals dynamically (replaces cached StoredProposals)
-- `OnComponentAdded()` - Lifecycle hook when component is added
-- `OnComponentRemoved()` - Lifecycle hook when component is removed
-- `HandleEvent(EncounterEvent)` - From IEncounterEventHandler, responds to encounter events
+- `Attach(owner)` - Called when component is attached to crawler
+- `Detach()` - Called when component is detached from crawler
+- `OnComponentsDirty()` - Called after component list changes (for late initialization)
+- `EnumerateInteractions(subject)` - Generate interactions on-demand between owner and subject
+- `ThinkAction()` - NPC AI behavior, returns AP cost if action taken (0 = no action)
+- `SubscribeToEncounter()/UnsubscribeFromEncounter()` - Register/unregister event handlers
 
-### IEncounterEventHandler Interface
+### CrawlerComponentBase
 
 ```csharp
-public interface IEncounterEventHandler {
-    void HandleEvent(EncounterEvent evt);
+public abstract class CrawlerComponentBase : ICrawlerComponent {
+    public Crawler Owner { get; private set; }
+    public virtual int Priority => 500;
+
+    public virtual void Attach(Crawler owner);
+    public virtual void Detach();
+    public virtual void OnComponentsDirty();
+    public virtual IEnumerable<Interaction> EnumerateInteractions(IActor subject) => [];
+    public virtual int ThinkAction() => 0;
+    public virtual void SubscribeToEncounter(Encounter encounter);
+    public virtual void UnsubscribeFromEncounter(Encounter encounter);
 }
 ```
 
-Simple interface for anything that can handle encounter events.
+Base class providing common component functionality with default implementations.
 
-### ActorComponentBase
+### Encounter Event Handlers
+
+Components can subscribe to encounter events via delegates:
 
 ```csharp
-public abstract class ActorComponentBase : IActorComponent {
-    public IActor Owner { get; private set; }
-    public virtual void Initialize(IActor owner);
-    public abstract IEnumerable<IProposal> GenerateProposals(IActor owner);
-    public virtual void OnComponentAdded();
-    public virtual void OnComponentRemoved();
-    public abstract void HandleEvent(EncounterEvent evt);
-    public abstract IEnumerable<EncounterEventType> SubscribedEvents { get; }
-}
+// In SubscribeToEncounter():
+encounter.ActorArrived += OnActorArrived;
+encounter.ActorLeaving += OnActorLeaving;
+encounter.ActorLeft += OnActorLeft;
+encounter.EncounterTick += OnEncounterTick;
+
+// Event handler signatures:
+void OnActorArrived(IActor actor, long time);
+void OnActorLeaving(IActor actor, long time);
+void OnActorLeft(IActor actor, long time);
+void OnEncounterTick(long time);
 ```
 
-Base class providing common component functionality.
+### Crawler Event Handlers
 
-### EncounterEvent & EncounterEventType
+Components can also subscribe to crawler-specific events:
 
 ```csharp
-public enum EncounterEventType {
-    ActorArrived,    // New actor joined encounter
-    ActorLeaving,    // Actor about to leave (cleanup phase)
-    ActorLeft,       // Actor has left encounter
-    EncounterTick,   // Time advancement (reserved)
-}
+// In Attach() or OnComponentsDirty():
+Owner.HostilityChanged += OnHostilityChanged;
+Owner.ReceivingFire += OnReceivingFire;
 
-public record EncounterEvent(
-    EncounterEventType Type,
-    IActor? Actor,
-    long Time,
-    Encounter Encounter
-);
+// Event handler signatures:
+void OnHostilityChanged(IActor other, bool hostile);
+void OnReceivingFire(IActor from, List<HitRecord> fire);
 ```
 
 ### Built-in Component Types
 
-**BanditExtortionComponent** (`ActorComponents.cs`)
-- Purpose: Handles bandit threats and extortion
-- Subscribes: ActorArrived, ActorLeft
-- Generates: No proposals (uses ActorToActor.StoredProposals for ultimatums)
+See [SYSTEMS.md#built-in-components](SYSTEMS.md#built-in-components) for full descriptions.
 
-**ContrabandEnforcementComponent** (`ActorComponents.cs`)
-- Purpose: Scans for contraband and creates seizure ultimatums
-- Subscribes: ActorArrived, ActorLeft
-- Generates: No proposals (uses ActorToActor.Ultimatum)
-- Used by: Settlements and Customs officers
+**Core Components:**
+- **CustomsComponent** - Contraband scanning and seizure ultimatums
+- **TradeOfferComponent** - On-demand trade interaction generation
+- **LifeSupportComponent** - Resource consumption and crew survival
+- **AutoRepairComponent** - Automatic segment repair
 
-**TradeOfferComponent** (`ActorComponents.cs`)
-- Purpose: Generates trade proposals on-demand
-- Subscribes: None
-- Generates: Trade proposals via MakeTradeProposals()
-- Replaces: Cached StoredProposals for trade offers
+**Player Components:**
+- **AttackComponent** - Player attack interactions
+- **PlayerDemandComponent** - Player extortion of vulnerable NPCs
+- **EncounterMessengerComponent** - Display messages for encounters and combat
 
-**EncounterMessengerComponent** (`ActorComponents.cs`)
-- Purpose: Displays arrival/departure messages
-- Subscribes: ActorArrived, ActorLeft
-- Generates: No proposals
+**NPC AI Components:**
+- **RetreatComponent** (Priority 1000) - Flee when vulnerable
+- **CombatComponentAdvanced** (Priority 600) - Intelligent combat AI (Bandits)
+- **CombatComponentDefense** (Priority 400) - Generic hostile target attack
+- **BanditComponent** (Priority 600) - Extortion and ultimatum creation
 
-**RelationPrunerComponent** (`ActorComponents.cs`)
-- Purpose: Cleans up transient relationships when leaving
-- Subscribes: ActorLeaving
-- Generates: No proposals
+**Service Components:**
+- **RepairComponent** - Repair services at settlements
+- **LicenseComponent** - License purchases at settlements
+- **SurrenderComponent** - Accept surrender from vulnerable enemies
+
+**Utility Components:**
+- **RelationPrunerComponent** - Cleanup transient relationships on departure
+- **HarvestComponent** - Resource gathering interactions
+- **HazardComponent** - Risk/reward exploration interactions
 
 ### Usage Example
 
 ```csharp
-// Creating an actor with components
+// Creating a crawler with components
 var trader = Crawler.NewRandom(seed, faction, location, ...);
 trader.AddComponent(new TradeOfferComponent(seed, 0.25f));
-trader.AddComponent(new EncounterMessengerComponent());
+trader.AddComponent(new RelationPrunerComponent());
 
-// Components automatically subscribe when actor joins encounter
+// Components automatically subscribe when crawler joins encounter
 encounter.AddActor(trader);
 
-// Proposals generated dynamically
-var proposals = trader.Proposals(); // Yields from all components
+// Interactions enumerated dynamically
+var interactions = trader.EnumerateInteractions(player); // Yields from all components
+
+// NPC AI runs through components by priority
+trader.ThinkFor(elapsed); // Calls ThinkAction() on each component until one acts
 ```
 
 ---
@@ -604,23 +623,25 @@ Commodity.Scrap.Round(123.456f) == 123.5f;  // Scrap rounds to 0.1
 
 ## Key Enums
 
-### EActorFlags
+### ActorFlags
 
-**File:** `IActor.cs:36-44`
+**File:** `IActor.cs:38-48`
 ```csharp
 [Flags]
-enum EActorFlags {
+enum ActorFlags : ulong {
     None = 0,
     Player = 1 << 0,        // Is the player
     Mobile = 1 << 1,        // Can move
     Settlement = 1 << 2,    // Is a settlement
     Creature = 1 << 3,      // Living being (unused currently)
+    Capital = 1 << 4,       // Is a faction capital
+    Loading = 1ul << 63,    // Temporary flag during initialization
 }
 ```
 
 **Usage:**
 ```csharp
-if ((actor.Flags & EActorFlags.Settlement) != 0) {
+if (actor.Flags.HasFlag(ActorFlags.Settlement)) {
     // Settlement-specific logic
 }
 ```

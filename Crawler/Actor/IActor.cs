@@ -35,14 +35,14 @@ public enum EEndState {
 }
 
 [Flags]
-public enum EActorFlags {
+public enum ActorFlags: ulong {
     None = 0,
     Player = 1 << 0,
     Mobile = 1 << 1,
     Settlement = 1 << 2,
     Creature = 1 << 3,
     Capital = 1 << 4,
-
+    Loading = 1ul << 63,
 }
 
 /// <summary>
@@ -58,7 +58,7 @@ public interface IActor {
     Faction Faction { get; }
 
     /// <summary>Type flags (Mobile, Settlement, Creature)</summary>
-    EActorFlags Flags { get; set; }
+    ActorFlags Flags { get; set; }
 
     /// <summary>Current location in the world</summary>
     Location Location { get; set; }
@@ -105,22 +105,6 @@ public interface IActor {
     /// </summary>
     LocationActor NewRelation(Location other);
 
-    // ===== Component System =====
-    /// <summary>
-    /// Get all components attached to this actor
-    /// </summary>
-    IEnumerable<IActorComponent> Components { get; }
-
-    /// <summary>
-    /// Add a component to this actor
-    /// </summary>
-    void AddComponent(IActorComponent component);
-
-    /// <summary>
-    /// Remove a component from this actor
-    /// </summary>
-    void RemoveComponent(IActorComponent component);
-
     // ===== Interactions =====
     // ===== Simulation =====
     /// <summary>Update this actor (called every game second)</summary>
@@ -150,6 +134,9 @@ public interface IActor {
     // ===== Misc =====
     /// <summary>Number of domes (for settlements)</summary>
     int Domes { get; }
+
+    void Arrived(Encounter encounter);
+    void Left(Encounter encounter);
 }
 
 public class StaticActor(string name, string brief, Faction faction, Inventory inv, Location location): IActor {
@@ -157,7 +144,7 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     public Faction Faction => faction;
     public Inventory Supplies { get; } = new Inventory().SetOverdraft(inv);
     public Inventory Cargo { get; } = inv;
-    public EActorFlags Flags { get; set; } = EActorFlags.None;
+    public ActorFlags Flags { get; set; } = ActorFlags.None;
     public Location Location { get; set; } = location;
     public bool Harvested => EndState == EEndState.Looted;
     public string Brief(IActor viewer) => brief + (Harvested ? " (Harvested)" : "") + "\n";
@@ -166,18 +153,8 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
 
     // Component system
-    List<IActorComponent> _components = new();
-    public IEnumerable<IActorComponent> Components => _components;
-    public void AddComponent(IActorComponent component) {
-        component.Initialize(this);
-        _components.Add(component);
-        component.OnComponentAdded();
-    }
-    public void RemoveComponent(IActorComponent component) {
-        if (_components.Remove(component)) {
-            component.OnComponentRemoved();
-        }
-    }
+    List<ICrawlerComponent> _components = new();
+    public IEnumerable<ICrawlerComponent> Components => _components;
     public int SimulateTo(long time) => 0;
     public void ThinkFor(int elapsed) { }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
@@ -186,6 +163,8 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
     public void Message(string message) {}
     public int Domes => 0;
+    public void Arrived(Encounter encounter) { }
+    public void Left(Encounter encounter) { }
     public bool Knows(Location loc) => false;
     public LocationActor To(Location loc) => new();
 

@@ -144,6 +144,7 @@ public class Crawler: IActor {
         return crawler;
     }
     public Crawler(ulong seed, Faction faction, Location location, Inventory inventory) {
+        Flags = ActorFlags.Loading;
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Faction = faction;
@@ -175,7 +176,7 @@ public class Crawler: IActor {
         }
         return string.Join("\n", C);
     }
-    public EActorFlags Flags { get; set; } = EActorFlags.Mobile;
+    public ActorFlags Flags { get; set; } = ActorFlags.Mobile;
     public Location Location { get; set; }
 
     static Crawler() {
@@ -220,27 +221,29 @@ public class Crawler: IActor {
     public int EvilPoints { get; set; } = 0;
 
     // Component system
-    List<IActorComponent> _components = new();
+    List<ICrawlerComponent> _components = new();
     bool _componentsDirty = false;
 
-    public IEnumerable<IActorComponent> Components => _components;
+    public IEnumerable<ICrawlerComponent> Components => _components;
 
     /// <summary>
     /// Get components sorted by priority (highest first), using lazy sorting.
     /// </summary>
-    List<IActorComponent> ComponentsByPriority() {
+    List<ICrawlerComponent> ComponentsByPriority() {
         if (_componentsDirty) {
             _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
             _componentsDirty = false;
+            foreach (var component in _components) {
+                component.OnComponentsDirty();
+            }
         }
         return _components;
     }
 
-    public void AddComponent(IActorComponent component) {
-        component.Initialize(this);
+    public void AddComponent(ICrawlerComponent component) {
+        component.Attach(this);
         _components.Add(component);
         _componentsDirty = true; // Mark for re-sort
-        component.OnComponentAdded();
 
         // Subscribe component to encounter events if we're in an encounter
         if (Location?.HasEncounter == true) {
@@ -256,10 +259,31 @@ public class Crawler: IActor {
     public void InitializeRoleComponents(ulong seed) {
         var rng = new XorShift(seed);
 
+        AddComponent(new LifeSupportComponent());
+        AddComponent(new AutoRepairComponent(RepairMode.Off)); // Civilians don't auto-repair
+        if (Role is not CrawlerRole.Player) {
+            AddComponent(new RelationPrunerComponent());
+        }
+        if (Role is not CrawlerRole.Settlement) {
+            AddComponent(new RetreatComponent()); // High priority survival
+            AddComponent(new SurrenderComponent(rng.Seed(), "S"));
+        }
+        if (Role is CrawlerRole.Bandit) {
+            AddComponent(new CombatComponentAdvanced(rng.Seed())); // Smart combat targeting
+        } else {
+            AddComponent(new CombatComponentDefense(rng.Seed())); // Combat capable
+        }
+
         switch (Role) {
+        case CrawlerRole.Player:
+            AddComponent(new AttackComponent("A"));
+            AddComponent(new PlayerDemandComponent(rng.Seed(), 0.5f, "X"));
+            AddComponent(new EncounterMessengerComponent());
+            break;
+
         case CrawlerRole.Settlement:
             // Settlements: trade, repair, licensing, contraband enforcement
-            AddComponent(new ContrabandEnforcementComponent());
+            AddComponent(new CustomsComponent());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f));
             AddComponent(new RepairComponent());
             AddComponent(new LicenseComponent());
@@ -268,22 +292,17 @@ public class Crawler: IActor {
         case CrawlerRole.Trader:
             // Mobile merchants: primarily trade-focused
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f));
-            AddComponent(new HostileAIComponent(rng.Seed())); // Can defend themselves
-            AddComponent(new RetreatComponent()); // Flee when vulnerable
+            AddComponent(new CombatComponentDefense(rng.Seed())); // Can defend themselves
             break;
 
         case CrawlerRole.Customs:
             // Customs officers: contraband scanning and enforcement
-            AddComponent(new ContrabandEnforcementComponent());
-            AddComponent(new HostileAIComponent(rng.Seed())); // Combat capable
-            AddComponent(new RetreatComponent());
+            AddComponent(new CustomsComponent());
             break;
 
         case CrawlerRole.Bandit:
             // Bandits: extortion, robbery, combat
             AddComponent(new BanditComponent(rng.Seed(), 0.5f)); // Extortion/ultimatums
-            AddComponent(new CombatComponentAdvanced(rng.Seed())); // Smart combat targeting
-            AddComponent(new RetreatComponent());
             // Bandits have higher markup/spread for goods they steal/trade
             var gaussian = new GaussianSampler(rng.Seed());
             Markup = Tuning.Trade.BanditMarkup(gaussian);
@@ -294,7 +313,6 @@ public class Crawler: IActor {
             // Travelers: quest givers, general interactions
             // TODO: Add quest-related components when quest system is implemented
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.15f)); // Limited trading
-            AddComponent(new RetreatComponent());
             break;
 
         case CrawlerRole.None:
@@ -302,22 +320,9 @@ public class Crawler: IActor {
             // No role-specific components
             break;
         }
-
-        // All NPCs get basic survival components
-        if (!Flags.HasFlag(EActorFlags.Player)) {
-            // Settlement actors already have components, don't duplicate
-            if (Role != CrawlerRole.Settlement) {
-                if (!_components.Any(c => c is RetreatComponent)) {
-                    AddComponent(new RetreatComponent());
-                }
-                if (!_components.Any(c => c is HostileAIComponent)) {
-                    AddComponent(new HostileAIComponent(rng.Seed()));
-                }
-            }
-        }
     }
 
-    public void RemoveComponent(IActorComponent component) {
+    public void RemoveComponent(ICrawlerComponent component) {
         if (_components.Remove(component)) {
             _componentsDirty = true; // Mark for re-sort (though not strictly necessary)
 
@@ -326,24 +331,7 @@ public class Crawler: IActor {
                 var encounter = Location.GetEncounter();
                 component.UnsubscribeFromEncounter(encounter);
             }
-            component.OnComponentRemoved();
         }
-    }
-
-    // Scan actor's inventory for contraband based on this faction's policies
-    // Delegates to ContrabandEnforcementComponent if available
-    public bool HasContraband(IActor target) {
-        if (target is not Crawler crawler) {
-            return false;
-        }
-        return !ScanForContraband(crawler).IsEmpty;
-    }
-    public Inventory ScanForContraband(IActor target) {
-        var enforcement = _components.OfType<ContrabandEnforcementComponent>().FirstOrDefault();
-        if (enforcement != null && target is Crawler targetCrawler) {
-            return enforcement.ScanForContraband(targetCrawler);
-        }
-        return new Inventory();
     }
 
     public bool Pinned() {
@@ -439,9 +427,25 @@ public class Crawler: IActor {
             Location.GetEncounter().AddActor(this);
         });
     }
+    public void Arrived(Encounter encounter) {
+        // Unsubscribe all actor components from encounter events
+        ComponentsByPriority();
+        foreach (var component in Components) {
+            component.SubscribeToEncounter(encounter);
+        }
+    }
+    public void Left(Encounter encounter) {
+        foreach (var component in Components) {
+            component.UnsubscribeFromEncounter(encounter);
+        }
+    }
     public void ThinkFor(int elapsed) {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
-        if (Flags.HasFlag(EActorFlags.Player)) {
+        if (Flags.HasFlag(ActorFlags.Player)) {
+            return;
+        }
+        if (NextEvent != 0) {
+            Log.LogError($"Next event should be null, but it's {NextEvent} and elapsed {elapsed}");
             return;
         }
 
@@ -482,7 +486,7 @@ public class Crawler: IActor {
             NextEvent = SimulationTime + delay;
             _nextEventAction = action;
         } else {
-            throw new InvalidOperationException($"Double scheduled.");
+            Log.LogWarning($"Double scheduled {NextEvent} vs {SimulationTime + delay}");
         }
 
         // Ensure the encounter reschedules this crawler for the new time
@@ -674,7 +678,7 @@ public class Crawler: IActor {
         if (IsDepowered) {
             Adjs.Add("Depowered");
         }
-        if (IsImmobile && (Flags & EActorFlags.Mobile) != 0) {
+        if (IsImmobile && (Flags & ActorFlags.Mobile) != 0) {
             Adjs.Add("Immobile");
         }
         if (IsDisarmed) {
@@ -716,8 +720,8 @@ public class Crawler: IActor {
         string result = coloredSegments.TransposeJoinStyled();
         var Adjs = StateString(viewer);
         var nameString = Style.Name.Format(Name) + $": {Faction.Name()}{Adjs}";
-        if (Flags.HasFlag(EActorFlags.Settlement)) {
-            if (Flags.HasFlag(EActorFlags.Capital)) {
+        if (Flags.HasFlag(ActorFlags.Settlement)) {
+            if (Flags.HasFlag(ActorFlags.Capital)) {
                 nameString += " [Capital]";
             } else {
                 nameString += $" [Settlement]";
@@ -778,7 +782,7 @@ public class Crawler: IActor {
 
     public bool IsDestroyed => EndState is not null;
     public bool IsVulnerable => IsDefenseless || IsImmobile || IsDisarmed || IsDepowered;
-    public bool IsSettlement => Flags.HasFlag(EActorFlags.Settlement);
+    public bool IsSettlement => Flags.HasFlag(ActorFlags.Settlement);
 
     public string About => ToString() + StateString();
     public override string ToString() => $"{Name} ({Faction})";
@@ -1012,7 +1016,7 @@ public class Crawler: IActor {
     /// Event fired when this crawler receives fire from another actor.
     /// Invoked before damage is processed, allowing components to react to incoming attacks.
     /// </summary>
-    public event Action<IActor, List<HitRecord>>? OnReceiveFire;
+    public event Action<IActor, List<HitRecord>>? ReceivingFire;
 
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         if (!Supplies.Segments.Any() || !fire.Any()) {
@@ -1020,7 +1024,7 @@ public class Crawler: IActor {
         }
 
         // Notify components that we're receiving fire
-        OnReceiveFire?.Invoke(from, fire);
+        ReceivingFire?.Invoke(from, fire);
 
         var rngRecvFire = new XorShift(Rng.Seed());
 
@@ -1135,7 +1139,7 @@ public class Crawler: IActor {
     /// Event fired when hostility state changes between this crawler and another actor.
     /// Parameters: (other actor, new hostile state)
     /// </summary>
-    public event Action<IActor, bool>? OnHostilityChanged;
+    public event Action<IActor, bool>? HostilityChanged;
 
     /// <summary>
     /// Internal method to set hostility state and fire OnHostilityChanged event.
@@ -1145,23 +1149,23 @@ public class Crawler: IActor {
         var relation = To(other);
         if (relation.Hostile != hostile) {
             relation.Hostile = hostile;
-            OnHostilityChanged?.Invoke(other, hostile);
+            HostilityChanged?.Invoke(other, hostile);
         }
     }
 
     Dictionary<IActor, ActorToActor> _relations = new();
     public bool Knows(IActor other) => _relations.ContainsKey(other);
-    public ActorToActor To(IActor other) {
-        return _relations.GetOrAddNew(other, () => NewRelation(other));
-    }
-    public ActorToActor NewRelation(IActor to) {
-        var result = new ActorToActor();
-        bool isTradeSettlement = Location.Type is EncounterType.Settlement && Location.GetEncounter().Faction is Faction.Independent;
-        var actorFaction = To(to.Faction);
+    public ActorToActor To(IActor other) => _relations.GetOrAddNew(other, () => NewRelation(other));
+    public ActorToActor NewRelation(IActor other) {
+        var relation = new ActorToActor();
+        var actorFaction = To(other.Faction);
+
         if (actorFaction.ActorStanding < 0) {
-            SetHostileTo(to, true);
+            bool hostile = true;
+            relation.Hostile = hostile;
+            HostilityChanged?.Invoke(other, hostile);
         }
-        return result;
+        return relation;
     }
 
     Dictionary<Location, LocationActor> _locations = new();

@@ -24,9 +24,9 @@ public delegate void EncounterTickEventHandler(long time);
 /// Component-based behavior system for actors.
 /// Components can subscribe to encounter events and enumerate interactions directly.
 /// </summary>
-public interface IActorComponent {
+public interface ICrawlerComponent {
     /// <summary>The actor that owns this component</summary>
-    IActor Owner { get; }
+    Crawler Owner { get; }
 
     /// <summary>
     /// Priority for ThinkAction evaluation. Higher priority = evaluated first.
@@ -39,16 +39,16 @@ public interface IActorComponent {
     int Priority { get; }
 
     /// <summary>Initialize the component with its owner</summary>
-    void Initialize(IActor owner);
+    void Attach(Crawler owner);
+
+    void Detach();
 
     /// <summary>Enumerate interactions this component provides between owner and subject</summary>
     IEnumerable<Interaction> EnumerateInteractions(IActor subject);
 
-    /// <summary>Called when this component is added to an actor</summary>
-    void OnComponentAdded();
-
-    /// <summary>Called when this component is removed from an actor</summary>
-    void OnComponentRemoved();
+    /// <summary>Called when the actors component list changes. During construction and loading,
+    /// called once all components are installed.</summary>
+    void OnComponentsDirty();
 
     /// <summary>Subscribe this component's event handlers to an encounter</summary>
     void SubscribeToEncounter(Encounter encounter);
@@ -67,23 +67,22 @@ public interface IActorComponent {
 /// <summary>
 /// Base class for actor components providing common functionality
 /// </summary>
-public abstract class ActorComponentBase : IActorComponent {
-    public IActor Owner { get; private set; } = null!;
+public abstract class CrawlerComponentBase : ICrawlerComponent {
+    public Crawler Owner { get; private set; } = null!;
 
     /// <summary>Default priority for components. Override to set specific priority.</summary>
     public virtual int Priority => 500;
 
-    public virtual void Initialize(IActor owner) {
+    public virtual void Attach(Crawler owner) {
         Owner = owner;
     }
-
-    public virtual IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        yield break;
+    public virtual void Detach() {
+        Owner = null!;
     }
 
-    public virtual void OnComponentAdded() { }
+    public virtual IEnumerable<Interaction> EnumerateInteractions(IActor subject) => [];
 
-    public virtual void OnComponentRemoved() { }
+    public virtual void OnComponentsDirty() { }
 
     public virtual void SubscribeToEncounter(Encounter encounter) { }
 

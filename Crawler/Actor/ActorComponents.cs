@@ -3,9 +3,9 @@ namespace Crawler;
 /// <summary>
 /// Component that handles contraband scanning, enforcement, and seizure.
 /// Actors with this component scan for prohibited goods and create ultimatums to seize them or turn hostile.
-/// Can be added to settlements, customs officers, or other enforcement actors.
+/// Can be added to Owners, customs officers, or other enforcement actors.
 /// </summary>
-public class ContrabandEnforcementComponent : ActorComponentBase {
+public class CustomsComponent : CrawlerComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
@@ -17,50 +17,38 @@ public class ContrabandEnforcementComponent : ActorComponentBase {
     }
 
     void OnActorArrived(IActor actor, long time) {
-        if (Owner is not Crawler settlement) return;
         if (actor == Owner) return;
 
-        SetupContrabandScan(settlement, actor, time);
+        SetupContrabandUltimatum(actor, time);
     }
 
     void OnActorLeft(IActor actor, long time) {
-        if (Owner is not Crawler settlement) return;
         if (actor == Owner) return;
 
         // Clear ultimatum when target leaves
-        settlement.To(actor).Ultimatum = null;
+        Owner.To(actor).Ultimatum = null;
     }
 
-    void SetupContrabandScan(Crawler settlement, IActor target, long time) {
+    void SetupContrabandUltimatum(IActor target, long time) {
         if (!target.IsPlayer()) {
             return;
         }
 
-        var contraband = ScanForContraband(target);
-        if (!settlement.Fighting(target)) {
+        var contraband = Scan(target);
+        if (!Owner.Fighting(target)) {
             // Set ultimatum with timeout
-            settlement.To(target).Ultimatum = new ActorToActor.UltimatumState {
+            Owner.To(target).Ultimatum = new ActorToActor.UltimatumState {
                 ExpirationTime = time + 300,
                 Type = "ContrabandSeizure",
-                Data = contraband
+                Data = contraband,
             };
         }
     }
 
     /// <summary>
-    /// Scan actor's inventory for contraband based on this faction's policies
-    /// </summary>
-    public bool HasContraband(IActor target) {
-        if (target is not Crawler crawler) {
-            return false;
-        }
-        return !ScanForContraband(crawler).IsEmpty;
-    }
-
-    /// <summary>
     /// Scan and return all contraband items found
     /// </summary>
-    public Inventory ScanForContraband(IActor target) {
+    public Inventory Scan(IActor target) {
         if (target is not Crawler targetCrawler) {
             return new Inventory();
         }
@@ -101,87 +89,92 @@ public class ContrabandEnforcementComponent : ActorComponentBase {
     }
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        if (Owner is not Crawler settlement) yield break;
-
-        var relation = settlement.To(subject);
+        var relation = Owner.To(subject);
         if (relation.Ultimatum?.Type != "ContrabandSeizure") yield break;
         if (relation.Ultimatum.Data is not Inventory contraband) yield break;
+
+        // Rescan for contraband at enforcement time
+        contraband = Scan(subject);
+        if (contraband.IsEmpty) {
+            // No contraband found, clear ultimatum
+            relation.Ultimatum = null;
+            yield break;
+        }
 
         long expirationTime = relation.Ultimatum.ExpirationTime;
         bool expired = expirationTime > 0 && Game.SafeTime > expirationTime;
 
         if (!expired) {
             // Offer accept option (allow search and seizure)
-            yield return new ContrabandAcceptInteraction(settlement, subject, contraband, "CY");
+            yield return new ContrabandAcceptInteraction(Owner, subject, contraband, "CY");
             // Offer refuse option (go hostile)
-            yield return new ContrabandRefuseInteraction(settlement, subject, "");
+            yield return new ContrabandRefuseInteraction(Owner, subject, "");
         } else {
             // Time expired - turn hostile
-            yield return new ContrabandExpiredInteraction(settlement, subject, "");
+            yield return new ContrabandExpiredInteraction(Owner, subject, "");
         }
     }
 
     public record ContrabandAcceptInteraction(
-        IActor Settlement,
+        Crawler Owner,
         IActor Target,
         Inventory Contraband,
         string MenuOption
-    ) : Interaction(Settlement, Target, MenuOption) {
+    ) : Interaction(Owner, Target, MenuOption) {
 
         public override string Description => $"Allow search: surrender {Contraband}";
 
         public override string? MessageFor(IActor viewer) {
             if (viewer != Target) return null;
-            var ultimatum = Settlement.To(Target).Ultimatum;
-            if (ultimatum?.ExpirationTime > 0) {
-                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to submit to customs search";
+            var ultimatum = Owner.To(Target).Ultimatum;
+            if (ultimatum == null) return null;
+            var contraband = ultimatum.Data as Inventory;
+            if (contraband != null && ultimatum?.ExpirationTime > 0) {
+                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to submit to customs search.\n" +
+                       $"You are carrying {contraband.Brief()}";
+
             }
             return null;
         }
 
         public override int Perform(string args = "") {
-            var searchOffer = new SearchOffer("allow boarding and search");
-            var inventoryOffer = new InventoryOffer(false, Contraband);
+            Owner.Message($"{Target.Name} allows search and surrenders {Contraband}");
+            Target.Message($"You allow {Owner.Name} to search and seize {Contraband}");
 
-            Settlement.Message($"{Target.Name} allows search and surrenders {Contraband}");
-            Target.Message($"You allow {Settlement.Name} to search and seize {Contraband}");
-
-            searchOffer.PerformOn(Settlement, Target);
-            inventoryOffer.PerformOn(Target, Settlement);
+            Target.Supplies.Remove(Contraband);
+            // TODO: Generalize different inventories into components
+            // TODO: Move to evidence inventory
+            Owner.Cargo.Add(Contraband);
 
             // Clear ultimatum
-            Settlement.To(Target).Ultimatum = null;
+            Owner.To(Target).Ultimatum = null;
 
             return 1;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
             var inventoryOffer = new InventoryOffer(false, Contraband);
-            if (inventoryOffer.DisabledFor(Target, Settlement) != null) return Immediacy.Failed;
+            if (inventoryOffer.DisabledFor(Target, Owner) != null) return Immediacy.Failed;
             return Immediacy.Menu;
         }
     }
 
     public record ContrabandRefuseInteraction(
-        IActor Settlement,
+        Crawler Owner,
         IActor Target,
         string MenuOption
-    ) : Interaction(Settlement, Target, MenuOption) {
+    ) : Interaction(Owner, Target, MenuOption) {
 
-        public override string Description => $"Refuse search from {Settlement.Name}";
+        public override string Description => $"Refuse search from {Owner.Name}";
 
         public override string? MessageFor(IActor viewer) => null;
 
         public override int Perform(string args = "") {
-            var hostilityOffer = new HostilityOffer("refuses search");
+            Owner.Message($"{Target.Name} refuses search!");
+            Target.Message($"You refuse {Owner.Name}'s search - now hostile!");
 
-            Settlement.Message($"{Target.Name} refuses search!");
-            Target.Message($"You refuse {Settlement.Name}'s search - now hostile!");
-
-            hostilityOffer.PerformOn(Settlement, Target);
-
-            // Clear ultimatum
-            Settlement.To(Target).Ultimatum = null;
+            Owner.To(Target).Ultimatum = null;
+            Owner.SetHostileTo(Target, true);
 
             return 1;
         }
@@ -190,18 +183,19 @@ public class ContrabandEnforcementComponent : ActorComponentBase {
     }
 
     public record ContrabandExpiredInteraction(
-        IActor Settlement,
+        Crawler Owner,
         IActor Target,
         string MenuOption
-    ) : Interaction(Settlement, Target, MenuOption) {
+    ) : Interaction(Owner, Target, MenuOption) {
 
-        public override string Description => $"Search refused - {Settlement.Name} turns hostile!";
+        public override string Description => $"Search refused - {Owner.Name} turns hostile!";
 
         public override int Perform(string args = "") {
-            var hostilityOffer = new HostilityOffer("refuses search (timeout)");
-            hostilityOffer.PerformOn(Settlement, Target);
+            Owner.Message($"{Target.Name} has passed the deadline!");
+            Target.Message($"You wait out {Owner.Name}'s search.");
 
-            Settlement.To(Target).Ultimatum = null;
+            Owner.To(Target).Ultimatum = null;
+            Owner.SetHostileTo(Target, true);
 
             return 0;
         }
@@ -214,7 +208,7 @@ public class ContrabandEnforcementComponent : ActorComponentBase {
 /// Component that generates trade interactions on-demand.
 /// Trade offers are generated once and cached, interactions are enumerated fresh each time.
 /// </summary>
-public class TradeOfferComponent : ActorComponentBase {
+public class TradeOfferComponent : CrawlerComponentBase {
     float _wealthFraction;
     ulong _seed;
     List<TradeOffer>? _offers;
@@ -290,13 +284,13 @@ public class TradeOfferComponent : ActorComponentBase {
     /// Trade interaction using NewInteraction base class
     /// </summary>
     public record TradeInteraction(
-        IActor Agent,
+        IActor Attacker,
         IOffer AgentOffer,
         IActor Subject,
         IOffer SubjectOffer,
         string MenuOption,
         string Desc
-    ) : Interaction(Agent, Subject, MenuOption) {
+    ) : Interaction(Attacker, Subject, MenuOption) {
         public override string Description => Desc;
 
         public override int Perform(string args = "") {
@@ -305,16 +299,16 @@ public class TradeOfferComponent : ActorComponentBase {
                 count = Math.Max(1, parsed);
             }
 
-            Agent.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
-            Subject.Message($"You gave {Agent.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
+            Attacker.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
+            Subject.Message($"You gave {Attacker.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
 
             int performed = 0;
             for (int i = 0; i < count; i++) {
-                if (AgentOffer.DisabledFor(Agent, Subject) != null || SubjectOffer.DisabledFor(Subject, Agent) != null) {
+                if (AgentOffer.DisabledFor(Attacker, Subject) != null || SubjectOffer.DisabledFor(Subject, Attacker) != null) {
                     break;
                 }
-                AgentOffer.PerformOn(Agent, Subject);
-                SubjectOffer.PerformOn(Subject, Agent);
+                AgentOffer.PerformOn(Attacker, Subject);
+                SubjectOffer.PerformOn(Subject, Attacker);
                 performed++;
             }
 
@@ -322,7 +316,7 @@ public class TradeOfferComponent : ActorComponentBase {
         }
 
         public override Immediacy GetImmediacy(string args = "") {
-            if (AgentOffer.DisabledFor(Agent, Subject) == null && SubjectOffer.DisabledFor(Subject, Agent) == null) {
+            if (AgentOffer.DisabledFor(Attacker, Subject) == null && SubjectOffer.DisabledFor(Subject, Attacker) == null) {
                 return Immediacy.Menu;
             }
             return Immediacy.Failed;
@@ -331,9 +325,12 @@ public class TradeOfferComponent : ActorComponentBase {
 }
 
 /// <summary>
-/// Component that provides attack interactions for player
+/// Component that provides attack interactions for player.
 /// </summary>
-public class AttackComponent : ActorComponentBase {
+// TODO: Change this so the player can "Engage" or "Disengage" from a certain target.
+// The player can only be engaged with ont target at once. Probably should change to inherit
+// from combat component base.
+public class AttackComponent : CrawlerComponentBase {
     string _optionCode;
 
     public AttackComponent(string optionCode = "A") {
@@ -353,23 +350,22 @@ public class AttackComponent : ActorComponentBase {
     /// <summary>
     /// Attack interaction - initiates combat
     /// </summary>
-    public record AttackInteraction(IActor Agent, IActor Subject, string MenuOption)
-        : Interaction(Agent, Subject, MenuOption) {
+    public record AttackInteraction(Crawler Crawler, IActor Subject, string MenuOption)
+        : Interaction(Crawler, Subject, MenuOption) {
 
         public override string Description => $"Attack {Subject.Name}";
 
         public override int Perform(string args = "") {
-            if (Agent is Crawler attacker) {
-                attacker.Attack(Subject);
-                return 1;
+            if (Attacker is Crawler attacker) {
+                return attacker.Attack(Subject);
             }
             return 0;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
-            if (Agent.Ended()) return Immediacy.Failed;
+            if (Attacker.Ended()) return Immediacy.Failed;
             if (Subject.Ended()) return Immediacy.Failed;
-            if (Agent is not Crawler attacker) return Immediacy.Failed;
+            if (Attacker is not Crawler attacker) return Immediacy.Failed;
             if (attacker.IsDisarmed) return Immediacy.Failed;
             return Immediacy.Menu;
         }
@@ -377,9 +373,9 @@ public class AttackComponent : ActorComponentBase {
 }
 
 /// <summary>
-/// Component that provides repair services at settlements
+/// Component that provides repair services at Owners
 /// </summary>
-public class RepairComponent : ActorComponentBase {
+public class RepairComponent : CrawlerComponentBase {
     string _optionCode;
     float _markup;
 
@@ -390,8 +386,8 @@ public class RepairComponent : ActorComponentBase {
 
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        // Feasibility: owner must be settlement, subject must be damaged crawler, not hostile
-        if (!Owner.Flags.HasFlag(EActorFlags.Settlement)) yield break;
+        // Feasibility: owner must be Owner, subject must be damaged crawler, not hostile
+        if (!Owner.Flags.HasFlag(ActorFlags.Settlement)) yield break;
         if (subject is not Crawler damaged) yield break;
         if (Owner.To(subject).Hostile || subject.To(Owner).Hostile) yield break;
 
@@ -416,8 +412,8 @@ public class RepairComponent : ActorComponentBase {
     /// <summary>
     /// Repair interaction - fixes a damaged segment for scrap
     /// </summary>
-    public record RepairInteraction(IActor Agent, IActor Subject, Segment SegmentToRepair, float Price, string MenuOption)
-        : Interaction(Agent, Subject, MenuOption) {
+    public record RepairInteraction(IActor Attacker, IActor Subject, Segment SegmentToRepair, float Price, string MenuOption)
+        : Interaction(Attacker, Subject, MenuOption) {
 
         public override string Description => $"Repair {SegmentToRepair.Name} for {Price}¢¢";
 
@@ -426,13 +422,13 @@ public class RepairComponent : ActorComponentBase {
             long endTime = Game.SafeTime + duration;
 
             // Create bidirectional Ultimatums to track the repair relationship
-            Subject.To(Agent).Ultimatum = new ActorToActor.UltimatumState {
+            Subject.To(Attacker).Ultimatum = new ActorToActor.UltimatumState {
                 ExpirationTime = endTime,
                 Type = "RepairCustomer",
                 Data = SegmentToRepair
             };
 
-            Agent.To(Subject).Ultimatum = new ActorToActor.UltimatumState {
+            Attacker.To(Subject).Ultimatum = new ActorToActor.UltimatumState {
                 ExpirationTime = endTime,
                 Type = "RepairMechanic",
                 Data = SegmentToRepair
@@ -444,28 +440,28 @@ public class RepairComponent : ActorComponentBase {
                 SegmentToRepair.Hits = 0;
                 customer.Message($"Repair of {SegmentToRepair.Name} completed");
                 // Clear the Ultimatums
-                customer.To(Agent).Ultimatum = null;
-                Agent.To(customer).Ultimatum = null;
+                customer.To(Attacker).Ultimatum = null;
+                Attacker.To(customer).Ultimatum = null;
             });
 
-            (Agent as Crawler)?.ConsumeTime(duration, mechanic => {
+            (Attacker as Crawler)?.ConsumeTime(duration, mechanic => {
                 mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
             });
 
             // Pay for the repair upfront
             var scrapOffer = new ScrapOffer(Price);
-            scrapOffer.PerformOn(Subject, Agent);
+            scrapOffer.PerformOn(Subject, Attacker);
 
-            Agent.Message($"Starting repair of {Subject.Name}'s {SegmentToRepair.Name}...");
-            Subject.Message($"{Agent.Name} begins repairing your {SegmentToRepair.Name}");
+            Attacker.Message($"Starting repair of {Subject.Name}'s {SegmentToRepair.Name}...");
+            Subject.Message($"{Attacker.Name} begins repairing your {SegmentToRepair.Name}");
 
             return (int)duration;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
             // Check if there's already an active repair relationship
-            var subjectToAgent = Subject.To(Agent).Ultimatum;
-            var agentToSubject = Agent.To(Subject).Ultimatum;
+            var subjectToAgent = Subject.To(Attacker).Ultimatum;
+            var agentToSubject = Attacker.To(Subject).Ultimatum;
 
             // Check if this specific segment is being repaired
             bool segmentBeingRepaired =
@@ -483,9 +479,9 @@ public class RepairComponent : ActorComponentBase {
 }
 
 /// <summary>
-/// Component that provides license purchases at settlements
+/// Component that provides license purchases at Owners
 /// </summary>
-public class LicenseComponent : ActorComponentBase {
+public class LicenseComponent : CrawlerComponentBase {
     string _optionCode;
 
     public LicenseComponent(string optionCode = "I") {
@@ -494,8 +490,8 @@ public class LicenseComponent : ActorComponentBase {
 
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        // Feasibility: owner must be settlement, subject must be crawler, not hostile
-        if (!Owner.Flags.HasFlag(EActorFlags.Settlement)) yield break;
+        // Feasibility: owner must be Owner, subject must be crawler, not hostile
+        if (!Owner.IsSettlement) yield break;
         if (subject is not Crawler buyer) yield break;
         if (Owner.To(subject).Hostile || subject.To(Owner).Hostile) yield break;
 
@@ -543,14 +539,14 @@ public class LicenseComponent : ActorComponentBase {
     /// License purchase interaction
     /// </summary>
     public record LicenseInteraction(
-        IActor Agent,
+        IActor Attacker,
         IActor Subject,
         Faction LicenseFaction,
         CommodityCategory Category,
         GameTier Tier,
         float Price,
         string MenuOption
-    ) : Interaction(Agent, Subject, MenuOption) {
+    ) : Interaction(Attacker, Subject, MenuOption) {
 
         public override string Description {
             get {
@@ -563,11 +559,11 @@ public class LicenseComponent : ActorComponentBase {
             var licenseOffer = new LicenseOffer(LicenseFaction, Category, Tier, Price);
             var scrapOffer = new ScrapOffer(Price);
 
-            Agent.Message($"You sold {Subject.Name} a {licenseOffer.Description} for {Price}¢¢");
-            Subject.Message($"{Agent.Name} sold you a {licenseOffer.Description} for {Price}¢¢");
+            Attacker.Message($"You sold {Subject.Name} a {licenseOffer.Description} for {Price}¢¢");
+            Subject.Message($"{Attacker.Name} sold you a {licenseOffer.Description} for {Price}¢¢");
 
-            licenseOffer.PerformOn(Agent, Subject);
-            scrapOffer.PerformOn(Subject, Agent);
+            licenseOffer.PerformOn(Attacker, Subject);
+            scrapOffer.PerformOn(Subject, Attacker);
 
             return 1;
         }
@@ -582,7 +578,7 @@ public class LicenseComponent : ActorComponentBase {
 /// <summary>
 /// Component that allows player to accept surrender from vulnerable enemies
 /// </summary>
-public class SurrenderComponent : ActorComponentBase {
+public class SurrenderComponent : CrawlerComponentBase {
     XorShift _rng;
     string _optionCode;
 
@@ -758,13 +754,11 @@ public static class ExtortionInteractions {
         public override string Description => $"Extortion expired - {Extortioner.Name} attacks!";
 
         public override int Perform(string args = "") {
+            Extortioner.To(Target).Ultimatum = null;
             if (Extortioner is Crawler extortioner) {
-                extortioner.Attack(Target);
+                extortioner.SetHostileTo(Target, true);
             }
 
-            if (Extortioner.To(Target).Ultimatum != null) {
-                Extortioner.To(Target).Ultimatum = null;
-            }
 
             return 0;
         }
@@ -776,7 +770,7 @@ public static class ExtortionInteractions {
 /// <summary>
 /// Component that allows player to threaten vulnerable NPCs for cargo
 /// </summary>
-public class PlayerDemandComponent : ActorComponentBase {
+public class PlayerDemandComponent : CrawlerComponentBase {
     XorShift _rng;
     float _demandFraction;
     string _optionCode;
@@ -816,7 +810,7 @@ public class PlayerDemandComponent : ActorComponentBase {
 /// <summary>
 /// Component for harvesting specific resources from static actors
 /// </summary>
-public class HarvestComponent : ActorComponentBase {
+public class HarvestComponent : CrawlerComponentBase {
     Inventory _amount;
     string _optionCode;
     string _verb;
@@ -869,7 +863,7 @@ public class HarvestComponent : ActorComponentBase {
 /// <summary>
 /// Component for hazardous exploration with risk/reward
 /// </summary>
-public class HazardComponent : ActorComponentBase {
+public class HazardComponent : CrawlerComponentBase {
     XorShift _rng;
     Inventory _risk;
     float _riskChance;
@@ -937,20 +931,42 @@ public class HazardComponent : ActorComponentBase {
 /// <summary>
 /// Component that displays arrival/departure messages.
 /// </summary>
-public class EncounterMessengerComponent : ActorComponentBase {
+public class EncounterMessengerComponent : CrawlerComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
+        encounter.ActorLeaving += OnActorLeaving;
         encounter.ActorLeft += OnActorLeft;
+        encounter.EncounterTick += OnEncounterTick;
     }
 
     public override void UnsubscribeFromEncounter(Encounter encounter) {
         encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeaving -= OnActorLeaving;
         encounter.ActorLeft -= OnActorLeft;
+        encounter.EncounterTick -=  OnEncounterTick;
+    }
+
+    public override void Attach(Crawler owner) {
+        base.Attach(owner);
+        Owner.HostilityChanged += HostilityChanged;
+        Owner.ReceivingFire += ReceivingFire;
+    }
+
+    public override void Detach() {
+        Owner.HostilityChanged -= HostilityChanged;
+        Owner.ReceivingFire -= ReceivingFire;
+        base.Detach();
     }
 
     void OnActorArrived(IActor actor, long time) {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} enters");
+        }
+    }
+
+    void OnActorLeaving(IActor actor, long time) {
+        if (actor != Owner) {
+            Owner.Message($"{actor.Name} about to leave");
         }
     }
 
@@ -960,13 +976,29 @@ public class EncounterMessengerComponent : ActorComponentBase {
         }
     }
 
+    void HostilityChanged(IActor other, bool hostile) {
+        if (hostile) {
+            Owner.Message($"{other.Name} became Hostile");
+        } else {
+            Owner.Message($"{other.Name} became Peaceful");
+        }
+    }
+
+    void ReceivingFire(IActor from, List<HitRecord> fire) {
+        Owner.Message($"{from.Name} fired {fire.Count} shots.");
+    }
+
+    void OnEncounterTick(long time) {
+        // TODO: Add message levels
+        Owner.Message($"Encounter ticked to {time}");
+    }
 }
 
 /// <summary>
 /// Component that prunes relations when leaving encounters.
-/// Keeps only hostile relationships and relationships with settlements.
+/// Keeps only hostile relationships and relationships with Owners.
 /// </summary>
-public class RelationPrunerComponent : ActorComponentBase {
+public class RelationPrunerComponent : CrawlerComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.ActorLeaving += OnActorLeaving;
     }
@@ -999,7 +1031,7 @@ public class RelationPrunerComponent : ActorComponentBase {
 /// Component that handles life support resource consumption and crew survival.
 /// Manages fuel, rations, water, and air consumption, as well as crew death from deprivation.
 /// </summary>
-public class LifeSupportComponent : ActorComponentBase {
+public class LifeSupportComponent : CrawlerComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.EncounterTick += OnEncounterTick;
     }
@@ -1074,7 +1106,7 @@ public class LifeSupportComponent : ActorComponentBase {
 /// <summary>
 /// Component that automatically repairs damaged segments using excess power, crew, and scrap.
 /// </summary>
-public class AutoRepairComponent : ActorComponentBase {
+public class AutoRepairComponent : CrawlerComponentBase {
     float _repairProgress = 0;
     RepairMode _repairMode;
 
@@ -1147,7 +1179,7 @@ public class AutoRepairComponent : ActorComponentBase {
 /// High-priority survival component that makes crawlers flee when vulnerable.
 /// Overrides other AI behaviors to prioritize survival.
 /// </summary>
-public class RetreatComponent : ActorComponentBase {
+public class RetreatComponent : CrawlerComponentBase {
     public override int Priority => 1000; // Highest priority - survival first
 
     public override int ThinkAction() {
@@ -1174,7 +1206,7 @@ public class RetreatComponent : ActorComponentBase {
 /// Base class for combat components that provides shared combat functionality.
 /// Handles target tracking and provides helper methods for combat behavior.
 /// </summary>
-public abstract class CombatComponentBase : ActorComponentBase {
+public abstract class CombatComponentBase : CrawlerComponentBase {
     protected XorShift _rng;
 
     public CombatComponentBase(ulong seed) {
@@ -1217,7 +1249,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
         // Try to attack current target if still valid
         int ap = attacker.Attack(CurrentTarget);
         if (ap > 0) {
-            attacker.ConsumeTime(ap, null);
+            //attacker.ConsumeTime(ap, null);
             return ap;
         }
         return null;
@@ -1265,7 +1297,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
 /// Bandit AI component that handles extortion and ultimatum management.
 /// Does not handle combat - use with CombatComponentAdvanced for that.
 /// </summary>
-public class BanditComponent : ActorComponentBase {
+public class BanditComponent : CrawlerComponentBase {
     XorShift _rng;
     float _demandFraction;
 
@@ -1356,21 +1388,14 @@ public class CombatComponentAdvanced : CombatComponentBase {
 
     public override int Priority => 600; // Advanced combat behavior
 
-    public override void OnComponentAdded() {
-        base.OnComponentAdded();
+    public override void OnComponentsDirty() {
+        base.OnComponentsDirty();
         if (Owner is Crawler crawler) {
-            crawler.OnHostilityChanged += OnHostilityChanged;
+            crawler.HostilityChanged += HostilityChanged;
         }
     }
 
-    public override void OnComponentRemoved() {
-        if (Owner is Crawler crawler) {
-            crawler.OnHostilityChanged -= OnHostilityChanged;
-        }
-        base.OnComponentRemoved();
-    }
-
-    void OnHostilityChanged(IActor other, bool hostile) {
+    void HostilityChanged(IActor other, bool hostile) {
         // React to hostility changes - could retarget or take immediate action
         if (hostile && CurrentTarget == null) {
             CurrentTarget = other;
@@ -1401,8 +1426,8 @@ public class CombatComponentAdvanced : CombatComponentBase {
 /// Generic hostile AI component that attacks enemies.
 /// Used as fallback behavior for NPCs that should fight but have no specialized AI.
 /// </summary>
-public class HostileAIComponent : CombatComponentBase {
-    public HostileAIComponent(ulong seed) : base(seed) {
+public class CombatComponentDefense : CombatComponentBase {
+    public CombatComponentDefense(ulong seed) : base(seed) {
     }
 
     public override int Priority => 400; // Generic combat behavior
