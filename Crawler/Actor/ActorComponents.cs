@@ -95,12 +95,6 @@ public class CustomsComponent : ActorComponentBase {
 
         // Rescan to update the interaction text
         contraband = Scan(subject);
-        if (contraband.IsEmpty) {
-            // No contraband found, clear ultimatum
-            relation.Ultimatum = null;
-            yield break;
-        }
-
         long expirationTime = relation.Ultimatum.ExpirationTime;
         bool expired = expirationTime > 0 && Game.SafeTime > expirationTime;
 
@@ -338,8 +332,6 @@ public class RepairComponent : ActorComponentBase {
 
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        // Feasibility: owner must be Owner, subject must be damaged crawler, not hostile
-        if (!Owner.Flags.HasFlag(ActorFlags.Settlement)) yield break;
         if (subject is not Crawler damaged) yield break;
         if (Owner.To(subject).Hostile || subject.To(Owner).Hostile) yield break;
 
@@ -442,8 +434,6 @@ public class LicenseComponent : ActorComponentBase {
 
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        // Feasibility: owner must be Owner, subject must be crawler, not hostile
-        if (!Owner.HasFlag(ActorFlags.Settlement)) yield break;
         if (subject is not Crawler buyer) yield break;
         if (Owner.To(subject).Hostile || subject.To(Owner).Hostile) yield break;
 
@@ -652,47 +642,51 @@ public class HazardComponent : ActorComponentBase {
 /// Component that displays arrival/departure messages.
 /// </summary>
 public class EncounterMessengerComponent : ActorComponentBase {
-    public override void SubscribeToEncounter(Encounter encounter) {
+    public override void Attach(IActor owner) {
+        base.Attach(owner);
+        Owner.ActorInitialized += ActorInitialized;
+        Owner.HostilityChanged += HostilityChanged;
+        Owner.ReceivingFire += ReceivingFire;
+    }
+
+    void ActorInitialized() {
+        Owner.Message($"{Owner.Name} initialized");
+    }
+
+    public override void Enter(Encounter encounter) {
+        base.Enter(encounter);
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeaving += OnActorLeaving;
         encounter.ActorLeft += OnActorLeft;
         encounter.EncounterTick += OnEncounterTick;
     }
 
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
-        encounter.ActorArrived -= OnActorArrived;
-        encounter.ActorLeaving -= OnActorLeaving;
-        encounter.ActorLeft -= OnActorLeft;
-        encounter.EncounterTick -=  OnEncounterTick;
-    }
-
-    public override void Attach(IActor owner) {
-        base.Attach(owner);
-        Owner.HostilityChanged += HostilityChanged;
-        Owner.ReceivingFire += ReceivingFire;
-    }
-
-    public override void Detach() {
-        Owner.HostilityChanged -= HostilityChanged;
-        Owner.ReceivingFire -= ReceivingFire;
-        base.Detach();
+    void OnEncounterTick(long time) {
+        // TODO: Add message levels
+        Owner.Message($"Encounter ticked to {time}");
     }
 
     void OnActorArrived(IActor actor, long time) {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} enters");
+        } else {
+            Owner.Message("You entered");
         }
     }
 
     void OnActorLeaving(IActor actor, long time) {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} about to leave");
+        } else {
+            Owner.Message("You are leaving");
         }
     }
 
     void OnActorLeft(IActor actor, long time) {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} leaves");
+        } else {
+            Owner.Message("You leave");
         }
     }
 

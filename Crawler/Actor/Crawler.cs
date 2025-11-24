@@ -146,7 +146,6 @@ public class Crawler: ActorScheduled {
     public Crawler(ulong seed, Faction faction, Location location, Inventory inventory)
         : base(Names.HumanName(seed), "", faction, inventory, new Inventory(), location) {
         Flags |= ActorFlags.Mobile;
-        Flags |= ActorFlags.Loading;
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Supplies.Overdraft = Cargo;
@@ -209,11 +208,15 @@ public class Crawler: ActorScheduled {
 
     public int EvilPoints { get; set; } = 0;
 
+    public override void Initialized() {
+        base.Initialized();
+        UpdateSegmentCache();
+    }
     /// <summary>
     /// Initialize components based on the crawler's role.
     /// Called after crawler creation to set up role-specific behaviors.
     /// </summary>
-    public void InitializeRoleComponents(ulong seed) {
+    public void InitializeComponents(ulong seed) {
         var rng = new XorShift(seed);
 
         AddComponent(new LifeSupportComponent());
@@ -345,9 +348,9 @@ public class Crawler: ActorScheduled {
         // - RetreatComponent (priority 1000): flee when vulnerable
         // - BanditComponent (priority 600): bandit-specific AI
         // - HostileAIComponent (priority 400): generic combat fallback
-        foreach (var component in ComponentsByPriority()) {
-            int ap = component.ThinkAction();
-
+        CleanComponents(true);
+        foreach (var component in Components) {
+            component.ThinkAction();
             if (NextEvent != 0) {
                 // Component scheduled an action, we're done
                 break;
@@ -645,7 +648,7 @@ public class Crawler: ActorScheduled {
     public bool IsVulnerable => IsDefenseless || IsImmobile || IsDisarmed || IsDepowered;
 
     public string About => ToString() + StateString();
-    public override string ToString() => $"{Name} ({Faction})";
+    public override string ToString() => $"{Name} ({Faction}/{Role})";
 
     public List<HitRecord> CreateFire() {
         var rng = new XorShift(Rng.Seed());

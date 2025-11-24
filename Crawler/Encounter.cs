@@ -158,6 +158,9 @@ public sealed class Encounter {
             throw new ArgumentException("Actor is already in encounter");
         }
 
+        if (actor.HasFlag(ActorFlags.Loading))
+            throw new InvalidOperationException($"Tried to add loading actor {actor.Name}");
+
         // Update caching when actors join
         if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
 
@@ -215,9 +218,8 @@ public sealed class Encounter {
         trader.Role = CrawlerRole.Trader;
 
         // Initialize role-specific components
-        trader.InitializeRoleComponents(actorRng.Seed());
-
-        trader.UpdateSegmentCache();
+        trader.InitializeComponents(actorRng.Seed());
+        trader.Initialized();
         return trader;
     }
     public Crawler GeneratePlayerActor(ulong seed) {
@@ -229,16 +231,12 @@ public sealed class Encounter {
         var player = Crawler.NewRandom(seed, Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         player.Flags |= ActorFlags.Player;
         player.Faction = Faction.Player;
+        player.Role = CrawlerRole.Player;
 
         // Add player-specific components
         var actorRng = new XorShift(seed);
-        player.AddComponent(new LifeSupportComponent());
-        player.AddComponent(new AutoRepairComponent(RepairMode.Off));
-        player.AddComponent(new AttackComponent("A"));
-        player.AddComponent(new SurrenderComponent(actorRng.Seed(), "S"));
-        player.AddComponent(new PlayerDemandComponent(actorRng.Seed(), 0.5f, "X"));
-        player.AddComponent(new RetreatComponent()); // High priority survival
-        player.AddComponent(new EncounterMessengerComponent());
+        player.InitializeComponents(actorRng.Seed());
+        player.Initialized();
 
         return player;
     }
@@ -253,13 +251,9 @@ public sealed class Encounter {
         enemy.Faction = Faction.Bandit;
         enemy.Role = CrawlerRole.Bandit;
 
-        // Add base components
-        enemy.AddComponent(new LifeSupportComponent());
-        enemy.AddComponent(new AutoRepairComponent(RepairMode.RepairLowest)); // Bandits auto-repair
-        enemy.AddComponent(new RelationPrunerComponent());
-
         // Initialize role-specific components
-        enemy.InitializeRoleComponents(actorRng.Seed());
+        enemy.InitializeComponents(actorRng.Seed());
+        enemy.Initialized();
 
         return enemy;
     }
@@ -284,9 +278,8 @@ public sealed class Encounter {
         };
 
         // Initialize role-specific components
-        civilian.InitializeRoleComponents(actorRng.Seed());
-
-        civilian.UpdateSegmentCache();
+        civilian.InitializeComponents(actorRng.Seed());
+        civilian.Initialized();
         return civilian;
     }
 
@@ -320,8 +313,6 @@ public sealed class Encounter {
         settlement.AddComponent(new RepairComponent());
         settlement.AddComponent(new LicenseComponent());
 
-        settlement.UpdateSegmentCache();
-
         IEnumerable<string> EncounterNames = [];
         if (t < 0.15f) {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.StormSettlementNames];
@@ -339,6 +330,8 @@ public sealed class Encounter {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.NightSettlementNames];
         }
         Name = settlementRng.ChooseRandom(EncounterNames)!;
+        settlement.Initialized();
+
         AddActor(settlement);
         return settlement;
     }
@@ -488,6 +481,7 @@ public sealed class Encounter {
             Tuning.Game.hazardNegativePayoffChance,
             description,
             "H"));
+        hazardActor.Initialized();
         AddActor(hazardActor);
     }
     public Encounter Generate() {

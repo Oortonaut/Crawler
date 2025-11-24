@@ -62,14 +62,16 @@ public class Game {
         Gaussian = new GaussianSampler(Rng.Seed());
         _map = new Map(Rng.Seed(), H, H * 5 / 2);
         var currentLocation = Map.GetStartingLocation();
-        _player = currentLocation.GetEncounter().GeneratePlayerActor(Rng.Seed());
         float wealth = currentLocation.Wealth * 1.25f;
+        _player = currentLocation.GetEncounter().GeneratePlayerActor(Rng.Seed());
+        /*
         int crew = 10;
         float goodsWealth = wealth;
         float segmentWealth = wealth * 0.5f;
         _player = Crawler.NewRandom(Rng.Seed(), Faction.Player, currentLocation, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
+        //_player.Flags |= ActorFlags.Player;
+        */
         _player.Name = crawlerName;
-        _player.Flags |= ActorFlags.Player;
         currentLocation.GetEncounter().AddActor(_player);
     }
     void Construct(SaveGameData saveData) {

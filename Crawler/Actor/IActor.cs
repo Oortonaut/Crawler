@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Diagnostics;
+using System.Numerics;
 using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 
@@ -48,6 +49,7 @@ public enum ActorFlags: ulong {
 }
 public delegate void HostilityChangedHandler(IActor other, bool hostile);
 public delegate void ReceivingFireHandler(IActor source, List<HitRecord> fire);
+public delegate void InitializedHandler();
 /// <summary>
 /// Common interface for all interactive entities (Crawlers, Settlements, Resources).
 /// See: docs/DATA-MODEL.md#iactor-interface
@@ -142,6 +144,7 @@ public interface IActor {
     /// <summary>Number of domes (for settlements)</summary>
     int Domes { get; }
 
+    event InitializedHandler? ActorInitialized;
     event HostilityChangedHandler? HostilityChanged;
     /// <summary>
     /// Event fired when this crawler receives fire from another actor.
@@ -158,7 +161,7 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
     public Faction Faction { get; set; } = faction;
     public Inventory Supplies { get; } = supplies;
     public Inventory Cargo { get; } = cargo;
-    public ActorFlags Flags { get; set; } = ActorFlags.None;
+    public ActorFlags Flags { get; set; } = ActorFlags.Loading;
     public Location Location { get; set; } = Location;
     public bool HasEncounter => Location.HasEncounter;
     public Encounter Encounter => Location.GetEncounter();
@@ -175,39 +178,62 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
 
     // Component system
     List<IActorComponent> _components = new();
+    List<IActorComponent> _newComponents = new();
     bool _componentsDirty = false;
 
     public IEnumerable<IActorComponent> Components => _components;
 
+    protected void CleanComponents(bool notify) {
+        if (_componentsDirty) {
+            _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+            _componentsDirty = false;
+            if (notify) {
+                foreach (var component in _components) {
+                    component.OnComponentsDirty();
+                }
+            }
+        }
+    }
     /// <summary>
     /// Get components sorted by priority (highest first), using lazy sorting.
     /// </summary>
     protected List<IActorComponent> ComponentsByPriority() {
-        if (_componentsDirty) {
-            _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-            _componentsDirty = false;
-            foreach (var component in _components) {
-                component.OnComponentsDirty();
-            }
-        }
+        CleanComponents(true);
         return _components;
     }
 
     public void AddComponent(IActorComponent component) {
         component.Attach(this);
-        _components.Add(component);
+        _newComponents.Add(component);
         _componentsDirty = true; // Mark for re-sort
     }
 
     public void RemoveComponent(IActorComponent component) {
         if (_components.Remove(component)) {
             _componentsDirty = true; // Mark for re-sort (though not strictly necessary)
+        } else if (_newComponents.Remove(component)) {
+            Debug.Assert(_componentsDirty);
         }
+    }
+
+    public virtual void Initialized() {
+        if (!Flags.HasFlag(ActorFlags.Loading))
+            throw new InvalidOperationException($"Double Initialize");
+        Flags &= ~ActorFlags.Loading;
+        ActorInitialized?.Invoke();
+        foreach (var component in _newComponents) {
+            component.Enter(Encounter);
+            _components.Add(component);
+        }
+        _newComponents.Clear();
+        CleanComponents(false);
     }
 
     internal long SimulationTime = 0;
     // Returns elapsed, >= 0
     public virtual int SimulateTo(long time) {
+        if (Flags.HasFlag(ActorFlags.Loading))
+            throw new InvalidOperationException($"Tried to simulate {Name} during loading.");
         int elapsed = (int)(time - SimulationTime);
         SimulationTime = time;
         if (elapsed < 0) {
@@ -224,16 +250,15 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
     public int Domes { get; set; } = 0;
 
     public void Arrived(Encounter encounter) {
-        // Subscribe all actor components to encounter events
-        ComponentsByPriority();
-        foreach (var component in Components) {
-            component.SubscribeToEncounter(encounter);
+        foreach (var component in _newComponents) {
+            component.Enter(encounter);
         }
+        CleanComponents(true);
     }
 
     public void Left(Encounter encounter) {
         foreach (var component in Components) {
-            component.UnsubscribeFromEncounter(encounter);
+            component.Leave(encounter);
         }
     }
 
@@ -255,10 +280,7 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
     public EArraySparse<Faction, ActorFaction> FactionRelations { get; } = new();
     public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
 
-    /// <summary>
-    /// Event fired when hostility state changes between this crawler and another actor.
-    /// Parameters: (other actor, new hostile state)
-    /// </summary>
+    public event InitializedHandler? ActorInitialized;
     public event HostilityChangedHandler? HostilityChanged;
     public event ReceivingFireHandler? ReceivingFire;
 
