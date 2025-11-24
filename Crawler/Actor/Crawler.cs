@@ -221,15 +221,15 @@ public class Crawler: IActor {
     public int EvilPoints { get; set; } = 0;
 
     // Component system
-    List<ICrawlerComponent> _components = new();
+    List<IActorComponent> _components = new();
     bool _componentsDirty = false;
 
-    public IEnumerable<ICrawlerComponent> Components => _components;
+    public IEnumerable<IActorComponent> Components => _components;
 
     /// <summary>
     /// Get components sorted by priority (highest first), using lazy sorting.
     /// </summary>
-    List<ICrawlerComponent> ComponentsByPriority() {
+    List<IActorComponent> ComponentsByPriority() {
         if (_componentsDirty) {
             _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
             _componentsDirty = false;
@@ -240,16 +240,10 @@ public class Crawler: IActor {
         return _components;
     }
 
-    public void AddComponent(ICrawlerComponent component) {
+    public void AddComponent(IActorComponent component) {
         component.Attach(this);
         _components.Add(component);
         _componentsDirty = true; // Mark for re-sort
-
-        // Subscribe component to encounter events if we're in an encounter
-        if (Location?.HasEncounter == true) {
-            var encounter = Location.GetEncounter();
-            component.SubscribeToEncounter(encounter);
-        }
     }
 
     /// <summary>
@@ -322,15 +316,9 @@ public class Crawler: IActor {
         }
     }
 
-    public void RemoveComponent(ICrawlerComponent component) {
+    public void RemoveComponent(IActorComponent component) {
         if (_components.Remove(component)) {
             _componentsDirty = true; // Mark for re-sort (though not strictly necessary)
-
-            // Unsubscribe component from encounter events
-            if (Location?.HasEncounter == true) {
-                var encounter = Location.GetEncounter();
-                component.UnsubscribeFromEncounter(encounter);
-            }
         }
     }
 

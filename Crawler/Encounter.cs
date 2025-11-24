@@ -399,7 +399,7 @@ public sealed class Encounter {
         var Inv = new Inventory();
         Inv.Add(resource, amt);
 
-        var resourceActor = new StaticActor(name, giftDesc, Faction.Independent, Inv, Location);
+        var resourceActor = new ActorBase(name, giftDesc, Faction.Independent, Inv, Location);
         resourceActor.AddComponent(new HarvestComponent(Inv, verb, "H"));
         AddActor(resourceActor);
     }
@@ -481,7 +481,7 @@ public sealed class Encounter {
         var Risked = new Inventory();
         Risked.Add(penaltyType, penaltyAmt);
 
-        var hazardActor = new StaticActor(Name, hazardDesc, Faction.Independent, Promised, Location);
+        var hazardActor = new ActorBase(Name, hazardDesc, Faction.Independent, Promised, Location);
         hazardActor.AddComponent(new HazardComponent(
             Rng.Seed(),
             Risked,

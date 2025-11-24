@@ -5,7 +5,7 @@ namespace Crawler;
 /// Actors with this component scan for prohibited goods and create ultimatums to seize them or turn hostile.
 /// Can be added to Owners, customs officers, or other enforcement actors.
 /// </summary>
-public class CustomsComponent : CrawlerComponentBase {
+public class CustomsComponent : ActorComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
@@ -208,7 +208,7 @@ public class CustomsComponent : CrawlerComponentBase {
 /// Component that generates trade interactions on-demand.
 /// Trade offers are generated once and cached, interactions are enumerated fresh each time.
 /// </summary>
-public class TradeOfferComponent : CrawlerComponentBase {
+public class TradeOfferComponent : ActorComponentBase {
     float _wealthFraction;
     ulong _seed;
     List<TradeOffer>? _offers;
@@ -330,7 +330,7 @@ public class TradeOfferComponent : CrawlerComponentBase {
 // TODO: Change this so the player can "Engage" or "Disengage" from a certain target.
 // The player can only be engaged with ont target at once. Probably should change to inherit
 // from combat component base.
-public class AttackComponent : CrawlerComponentBase {
+public class AttackComponent : ActorComponentBase {
     string _optionCode;
 
     public AttackComponent(string optionCode = "A") {
@@ -375,7 +375,7 @@ public class AttackComponent : CrawlerComponentBase {
 /// <summary>
 /// Component that provides repair services at Owners
 /// </summary>
-public class RepairComponent : CrawlerComponentBase {
+public class RepairComponent : ActorComponentBase {
     string _optionCode;
     float _markup;
 
@@ -481,7 +481,7 @@ public class RepairComponent : CrawlerComponentBase {
 /// <summary>
 /// Component that provides license purchases at Owners
 /// </summary>
-public class LicenseComponent : CrawlerComponentBase {
+public class LicenseComponent : ActorComponentBase {
     string _optionCode;
 
     public LicenseComponent(string optionCode = "I") {
@@ -578,7 +578,7 @@ public class LicenseComponent : CrawlerComponentBase {
 /// <summary>
 /// Component that allows player to accept surrender from vulnerable enemies
 /// </summary>
-public class SurrenderComponent : CrawlerComponentBase {
+public class SurrenderComponent : ActorComponentBase {
     XorShift _rng;
     string _optionCode;
 
@@ -770,7 +770,7 @@ public static class ExtortionInteractions {
 /// <summary>
 /// Component that allows player to threaten vulnerable NPCs for cargo
 /// </summary>
-public class PlayerDemandComponent : CrawlerComponentBase {
+public class PlayerDemandComponent : ActorComponentBase {
     XorShift _rng;
     float _demandFraction;
     string _optionCode;
@@ -810,7 +810,7 @@ public class PlayerDemandComponent : CrawlerComponentBase {
 /// <summary>
 /// Component for harvesting specific resources from static actors
 /// </summary>
-public class HarvestComponent : CrawlerComponentBase {
+public class HarvestComponent : ActorComponentBase {
     Inventory _amount;
     string _optionCode;
     string _verb;
@@ -863,7 +863,7 @@ public class HarvestComponent : CrawlerComponentBase {
 /// <summary>
 /// Component for hazardous exploration with risk/reward
 /// </summary>
-public class HazardComponent : CrawlerComponentBase {
+public class HazardComponent : ActorComponentBase {
     XorShift _rng;
     Inventory _risk;
     float _riskChance;
@@ -931,7 +931,7 @@ public class HazardComponent : CrawlerComponentBase {
 /// <summary>
 /// Component that displays arrival/departure messages.
 /// </summary>
-public class EncounterMessengerComponent : CrawlerComponentBase {
+public class EncounterMessengerComponent : ActorComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeaving += OnActorLeaving;
@@ -998,7 +998,7 @@ public class EncounterMessengerComponent : CrawlerComponentBase {
 /// Component that prunes relations when leaving encounters.
 /// Keeps only hostile relationships and relationships with Owners.
 /// </summary>
-public class RelationPrunerComponent : CrawlerComponentBase {
+public class RelationPrunerComponent : ActorComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.ActorLeaving += OnActorLeaving;
     }
@@ -1031,7 +1031,7 @@ public class RelationPrunerComponent : CrawlerComponentBase {
 /// Component that handles life support resource consumption and crew survival.
 /// Manages fuel, rations, water, and air consumption, as well as crew death from deprivation.
 /// </summary>
-public class LifeSupportComponent : CrawlerComponentBase {
+public class LifeSupportComponent : ActorComponentBase {
     public override void SubscribeToEncounter(Encounter encounter) {
         encounter.EncounterTick += OnEncounterTick;
     }
@@ -1106,7 +1106,7 @@ public class LifeSupportComponent : CrawlerComponentBase {
 /// <summary>
 /// Component that automatically repairs damaged segments using excess power, crew, and scrap.
 /// </summary>
-public class AutoRepairComponent : CrawlerComponentBase {
+public class AutoRepairComponent : ActorComponentBase {
     float _repairProgress = 0;
     RepairMode _repairMode;
 
@@ -1179,7 +1179,7 @@ public class AutoRepairComponent : CrawlerComponentBase {
 /// High-priority survival component that makes crawlers flee when vulnerable.
 /// Overrides other AI behaviors to prioritize survival.
 /// </summary>
-public class RetreatComponent : CrawlerComponentBase {
+public class RetreatComponent : ActorComponentBase {
     public override int Priority => 1000; // Highest priority - survival first
 
     public override int ThinkAction() {
@@ -1206,7 +1206,7 @@ public class RetreatComponent : CrawlerComponentBase {
 /// Base class for combat components that provides shared combat functionality.
 /// Handles target tracking and provides helper methods for combat behavior.
 /// </summary>
-public abstract class CombatComponentBase : CrawlerComponentBase {
+public abstract class CombatComponentBase : ActorComponentBase {
     protected XorShift _rng;
 
     public CombatComponentBase(ulong seed) {
@@ -1297,7 +1297,7 @@ public abstract class CombatComponentBase : CrawlerComponentBase {
 /// Bandit AI component that handles extortion and ultimatum management.
 /// Does not handle combat - use with CombatComponentAdvanced for that.
 /// </summary>
-public class BanditComponent : CrawlerComponentBase {
+public class BanditComponent : ActorComponentBase {
     XorShift _rng;
     float _demandFraction;
 

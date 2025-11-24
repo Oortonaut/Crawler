@@ -24,9 +24,9 @@ public delegate void EncounterTickEventHandler(long time);
 /// Component-based behavior system for actors.
 /// Components can subscribe to encounter events and enumerate interactions directly.
 /// </summary>
-public interface ICrawlerComponent {
+public interface IActorComponent {
     /// <summary>The actor that owns this component</summary>
-    Crawler Owner { get; }
+    IActor Owner { get; }
 
     /// <summary>
     /// Priority for ThinkAction evaluation. Higher priority = evaluated first.
@@ -67,8 +67,9 @@ public interface ICrawlerComponent {
 /// <summary>
 /// Base class for actor components providing common functionality
 /// </summary>
-public abstract class CrawlerComponentBase : ICrawlerComponent {
-    public Crawler Owner { get; private set; } = null!;
+public abstract class ActorComponentBase : IActorComponent {
+    public IActor Owner { get; private set; } = null!;
+    public Crawler Crawler => Owner as Crawler ?? throw new NullReferenceException();
 
     /// <summary>Default priority for components. Override to set specific priority.</summary>
     public virtual int Priority => 500;

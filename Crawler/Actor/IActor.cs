@@ -63,6 +63,10 @@ public interface IActor {
     /// <summary>Current location in the world</summary>
     Location Location { get; set; }
 
+    // ===== Construction =====
+    void AddComponent(IActorComponent component);
+    void RemoveComponent(IActorComponent component);
+
     // ===== Resources =====
     /// <summary>Commodities and segments this actor is willing to trade</summary>
     Inventory Cargo { get; }
@@ -139,10 +143,16 @@ public interface IActor {
     void Left(Encounter encounter);
 }
 
-public class StaticActor(string name, string brief, Faction faction, Inventory inv, Location location): IActor {
+public class ActorBase(string name, string brief, Faction faction, Inventory inv, Location location): IActor {
     public string Name => name;
     public Faction Faction => faction;
     public Inventory Supplies { get; } = new Inventory().SetOverdraft(inv);
+    public void AddComponent(IActorComponent component) {
+        throw new NotImplementedException();
+    }
+    public void RemoveComponent(IActorComponent component) {
+        throw new NotImplementedException();
+    }
     public Inventory Cargo { get; } = inv;
     public ActorFlags Flags { get; set; } = ActorFlags.None;
     public Location Location { get; set; } = location;
@@ -153,8 +163,8 @@ public class StaticActor(string name, string brief, Faction faction, Inventory i
     }
 
     // Component system
-    List<ICrawlerComponent> _components = new();
-    public IEnumerable<ICrawlerComponent> Components => _components;
+    List<IActorComponent> _components = new();
+    public IEnumerable<IActorComponent> Components => _components;
     public int SimulateTo(long time) => 0;
     public void ThinkFor(int elapsed) { }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
