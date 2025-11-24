@@ -86,8 +86,7 @@ public class SurrenderComponent : ActorComponentBase {
             if (Loser is Crawler loser) {
                 float totalHits = loser.Segments.Sum(s => s.Hits);
                 float totalMaxHits = loser.Segments.Sum(s => s.MaxHits);
-                ratio = Math.Min(totalHits, 1) / Math.Min(totalMaxHits, 1);
-                ratio = (float)Math.Pow(ratio, 0.8);
+                ratio = totalHits / (totalMaxHits + 1e-8f);
             }
             surrenderInv.Add(Loser.Supplies.Loot(Rng/1, ratio));
             if (Loser.Supplies != Loser.Cargo) {
@@ -98,16 +97,18 @@ public class SurrenderComponent : ActorComponentBase {
 
         public override int Perform(string args = "") {
             var surrenderInv = MakeSurrenderInv();
-            float value = surrenderInv.ValueAt(Winner.Location);
 
-            var acceptOffer = new AcceptSurrenderOffer(value, Description);
-            var inventoryOffer = new InventoryOffer(false, surrenderInv);
+            Winner.Message($"{Loser.Name} has surrendered to you . {Tuning.Crawler.MoraleSurrenderedTo} Morale");
+            Loser.Message($"You have surrendered to {Winner.Name}. {Tuning.Crawler.MoraleSurrendered} Morale");
+            Loser.To(Winner).Surrendered = true;
+            Winner.To(Loser).Spared = true;
+            if (Loser is Crawler loserCrawler) loserCrawler.SetHostileTo(Winner, false);
+            if (Winner is Crawler winnerCrawler) winnerCrawler.SetHostileTo(Loser, false);
+            Winner.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
+            Loser.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
 
-            Winner.Message($"{Loser.Name} surrenders and gives you {inventoryOffer.Description}");
-            Loser.Message($"You surrender to {Winner.Name} and give {inventoryOffer.Description}");
-
-            acceptOffer.PerformOn(Winner, Loser);
-            inventoryOffer.PerformOn(Loser, Winner);
+            Winner.Message($"{Loser.Name} surrenders and gives you {surrenderInv}");
+            Loser.Message($"You surrender to {Winner.Name} and give {surrenderInv}");
 
             return 1;
         }

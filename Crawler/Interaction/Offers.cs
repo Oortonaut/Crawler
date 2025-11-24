@@ -82,23 +82,6 @@ public record LicenseOffer(
     public float ValueFor(IActor Agent) => price;
 }
 
-public record AcceptSurrenderOffer(float value, string _description): IOffer {
-    public string Description => _description;
-    public string? DisabledFor(IActor Agent, IActor Subject) =>
-        Agent.Ended() ? "Agent Dead" : Subject.Ended() ? "Subject Dead" : null;
-    public void PerformOn(IActor Winner, IActor Loser) {
-        Winner.Message($"{Loser.Name} has surrendered to you . {Tuning.Crawler.MoraleSurrenderedTo} Morale");
-        Loser.Message($"You have surrendered to {Winner.Name}. {Tuning.Crawler.MoraleSurrendered} Morale");
-        Loser.To(Winner).Surrendered = true;
-        Winner.To(Loser).Spared = true;
-        if (Loser is Crawler loserCrawler) loserCrawler.SetHostileTo(Winner, false);
-        if (Winner is Crawler winnerCrawler) winnerCrawler.SetHostileTo(Loser, false);
-        Winner.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
-        Loser.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
-    }
-    public float ValueFor(IActor Agent) => value;
-}
-
 // An offer that does nothing.
 public record EmptyOffer(): IOffer {
     public string Description => "Nothing";
