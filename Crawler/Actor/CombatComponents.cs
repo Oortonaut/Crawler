@@ -102,8 +102,8 @@ public class SurrenderComponent : ActorComponentBase {
             Loser.Message($"You have surrendered to {Winner.Name}. {Tuning.Crawler.MoraleSurrendered} Morale");
             Loser.To(Winner).Surrendered = true;
             Winner.To(Loser).Spared = true;
-            if (Loser is Crawler loserCrawler) loserCrawler.SetHostileTo(Winner, false);
-            if (Winner is Crawler winnerCrawler) winnerCrawler.SetHostileTo(Loser, false);
+            if (Loser is ActorBase loserCrawler) loserCrawler.SetHostileTo(Winner, false);
+            if (Winner is ActorBase winnerCrawler) winnerCrawler.SetHostileTo(Loser, false);
             Winner.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
             Loser.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
 

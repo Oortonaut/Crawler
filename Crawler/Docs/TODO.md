@@ -3,12 +3,16 @@
 ## Big Ol' Bugs
 
 * [ ] Wait function needs to wait for any messages and then reschedule the player
-* [ ] Sometimes I'll enter an encounter and a combat will have been resolved already, with damaged bandits or settlements. 
-
+* [ ] Ultimatum Data - just use object? or make more typesafe. 
+* [ ] Add ActorToActor.StateValues { Hostile, Wary, Neutral, Friendly } instead of Hostile flag
 ## Missing Features
 
 ## Wish List
                                                                       
+* [ ] Move Menus and UI to component
+* [ ] Quests
+* [ ] Faction Standing
+* [ ] Improved save/load
 * [ ] Market views
 * [ ] Better WeakReference - struct Weak<T>, forward object identity for utility
 * [ ] Precalculate and cache more of the filtered segments lists (like ReactorSegments etc.)

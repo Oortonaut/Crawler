@@ -34,13 +34,11 @@ public class CustomsComponent : ActorComponentBase {
             return;
         }
 
-        var contraband = Scan(target);
         if (!Owner.Fighting(target)) {
             // Set ultimatum with timeout
             Owner.To(target).Ultimatum = new ActorToActor.UltimatumState {
                 ExpirationTime = time + 300,
                 Type = "ContrabandSeizure",
-                Data = contraband,
             };
         }
     }
@@ -91,10 +89,9 @@ public class CustomsComponent : ActorComponentBase {
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         var relation = Owner.To(subject);
         if (relation.Ultimatum?.Type != "ContrabandSeizure") yield break;
-        if (relation.Ultimatum.Data is not Inventory contraband) yield break;
 
         // Rescan to update the interaction text
-        contraband = Scan(subject);
+        var contraband = Scan(subject);
         long expirationTime = relation.Ultimatum.ExpirationTime;
         bool expired = expirationTime > 0 && Game.SafeTime > expirationTime;
 
