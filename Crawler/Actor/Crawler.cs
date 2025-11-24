@@ -145,7 +145,8 @@ public class Crawler: ActorBase {
     }
     public Crawler(ulong seed, Faction faction, Location location, Inventory inventory)
         : base(Names.HumanName(seed), "", faction, inventory, new Inventory(), location) {
-        Flags = ActorFlags.Loading;
+        Flags |= ActorFlags.Mobile;
+        Flags |= ActorFlags.Loading;
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Supplies.Overdraft = Cargo;
@@ -154,13 +155,8 @@ public class Crawler: ActorBase {
         Spread = Tuning.Trade.TradeSpread(Gaussian);
         UpdateSegmentCache();
     }
-    public new string Name {
-        get => base.Name;
-        set => throw new NotSupportedException("Cannot change Crawler name after creation");
-    }
-    public string Brief(IActor viewer) {
+    public override string Brief(IActor viewer) {
         var C = CrawlerDisplay(viewer).Split('\n').ToList();
-        var hitRepairTime =
 
         C[1] += $" Power: {TotalCharge:F1} + {TotalGeneration:F1}/t  Drain: Off:{OffenseDrain:F1}  Def:{DefenseDrain:F1}  Move:{MovementDrain:F1}";
         C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h  Repair: {RepairMode}";
@@ -175,10 +171,6 @@ public class Crawler: ActorBase {
             C = C.Take(3).ToList();
         }
         return string.Join("\n", C);
-    }
-    public new ActorFlags Flags { get; set; } = ActorFlags.Mobile;
-
-    static Crawler() {
     }
     // Hourly fuel, wages, and rations are the primary timers.
     // Fuel use keeps the crawler size down
@@ -215,11 +207,6 @@ public class Crawler: ActorBase {
         return (fuel, time);
     }
 
-    public new Faction Faction {
-        get => base.Faction;
-        set => throw new NotSupportedException("Cannot change Crawler faction after creation");
-    }
-    public CrawlerRole Role { get; set; } = CrawlerRole.None;
     public int EvilPoints { get; set; } = 0;
 
     /// <summary>
@@ -296,7 +283,6 @@ public class Crawler: ActorBase {
         return Rng.NextSingle() > this.EscapeChance();
     }
 
-    internal long SimulationTime = 0;
     // Simulate
     // run action or think
     public void TickTo(long time) {
@@ -336,14 +322,9 @@ public class Crawler: ActorBase {
         }
         PostTick(time);
     }
-    public ILogger Log => LogCat.Log;
     // Returns elapsed, >= 0
-    public int SimulateTo(long time) {
-        int elapsed = (int)(time - SimulationTime);
-        SimulationTime = time;
-        if (elapsed < 0) {
-            throw new InvalidOperationException("TODO: Time Travel");
-        }
+    public override int SimulateTo(long time) {
+        int elapsed = base.SimulateTo(time);
 
         if (EndState != null || elapsed == 0) {
             return elapsed;
@@ -365,7 +346,7 @@ public class Crawler: ActorBase {
     void PostTick(long time) {
         TestEnded();
     }
-    public void Travel(Location loc) {
+    public override void Travel(Location loc) {
         var (fuel, time) = FuelTimeTo(loc);
         if (fuel < 0) {
             Message("Not enough fuel.");
@@ -416,7 +397,7 @@ public class Crawler: ActorBase {
         // If we reach here, no component took action (idle/waiting)
     }
 
-    public void Message(string message) {
+    public override void Message(string message) {
         // TODO: Message history for other actors
         if (this == Game.Instance?.Player) {
             CrawlerEx.Message(Game.TimeString(SimulationTime) + ": " + message);
@@ -603,7 +584,7 @@ public class Crawler: ActorBase {
         }
         return commodityTable.ToString();
     }
-    public string Report() {
+    public override string Report() {
         // Header with crawler name and location
         string result = Style.Name.Format($"[{Name}]");
         result += $" Evil: {EvilPoints}\n";
@@ -712,22 +693,12 @@ public class Crawler: ActorBase {
         get => Supplies[Commodity.Nanomaterials];
         set => Supplies[Commodity.Nanomaterials] = value;
     }
-    public void End(EEndState state, string message = "") {
-        EndMessage = $"{state}: {message}";
-        EndState = state;
-        Message($"Game Over: {message} ({state})");
-        Location.GetEncounter()[this].ExitAfter(36000);
-    }
-    public string EndMessage { get; set; } = string.Empty;
-    public EEndState? EndState { get; set; }
     public bool IsDepowered => !PowerSegments.Any() || FuelInv <= 0;
     public bool IsImmobile => EvaluateMove(Location.Terrain).Speed == 0;
     public bool IsDisarmed => !OffenseSegments.Any() || IsDepowered;
     public bool IsDefenseless => !DefenseSegments.Any();
 
-    public bool IsDestroyed => EndState is not null;
     public bool IsVulnerable => IsDefenseless || IsImmobile || IsDisarmed || IsDepowered;
-    public bool IsSettlement => Flags.HasFlag(ActorFlags.Settlement);
 
     public string About => ToString() + StateString();
     public override string ToString() => $"{Name} ({Faction})";
@@ -957,19 +928,13 @@ public class Crawler: ActorBase {
         }
     }
 
-    /// <summary>
-    /// Event fired when this crawler receives fire from another actor.
-    /// Invoked before damage is processed, allowing components to react to incoming attacks.
-    /// </summary>
-    public event Action<IActor, List<HitRecord>>? ReceivingFire;
 
-    public void ReceiveFire(IActor from, List<HitRecord> fire) {
+    public override void ReceiveFire(IActor from, List<HitRecord> fire) {
+        base.ReceiveFire(from, fire);
+
         if (!Supplies.Segments.Any() || !fire.Any()) {
             return;
         }
-
-        // Notify components that we're receiving fire
-        ReceivingFire?.Invoke(from, fire);
 
         var rngRecvFire = new XorShift(Rng.Seed());
 
@@ -1077,59 +1042,9 @@ public class Crawler: ActorBase {
         return (remaining, $" killing {CrewInv} crew and {moraleLoss} morale");
     }
 
-    public EArraySparse<Faction, ActorFaction> FactionRelations { get; } = new();
-    public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
-
-    /// <summary>
-    /// Event fired when hostility state changes between this crawler and another actor.
-    /// Parameters: (other actor, new hostile state)
-    /// </summary>
-    public event Action<IActor, bool>? HostilityChanged;
-
-    /// <summary>
-    /// Internal method to set hostility state and fire OnHostilityChanged event.
-    /// Components should use this instead of directly setting relation.Hostile.
-    /// </summary>
-    internal void SetHostileTo(IActor other, bool hostile) {
-        var relation = To(other);
-        if (relation.Hostile != hostile) {
-            relation.Hostile = hostile;
-            HostilityChanged?.Invoke(other, hostile);
-        }
-    }
-
-    Dictionary<IActor, ActorToActor> _relations = new();
-    public bool Knows(IActor other) => _relations.ContainsKey(other);
-    public ActorToActor To(IActor other) => _relations.GetOrAddNew(other, () => NewRelation(other));
-    public ActorToActor NewRelation(IActor other) {
-        var relation = new ActorToActor();
-        var actorFaction = To(other.Faction);
-
-        if (actorFaction.ActorStanding < 0) {
-            bool hostile = true;
-            relation.Hostile = hostile;
-            HostilityChanged?.Invoke(other, hostile);
-        }
-        return relation;
-    }
-
-    Dictionary<Location, LocationActor> _locations = new();
-    public bool Knows(Location location) => _locations.ContainsKey(location);
-    public LocationActor To(Location location) {
-        return _locations.GetOrAddNew(location, () => NewRelation(location));
-    }
-    public LocationActor NewRelation(Location to) {
-        var result = new LocationActor();
-        return result;
-    }
-
     // Accessor methods for save/load
-    public Dictionary<IActor, ActorToActor> GetRelations() => _relations;
-    public Dictionary<Location, LocationActor> GetVisitedLocations() => _locations;
     public float Markup { get; set; }
     public float Spread { get; set; }
-    public void SetVisitedLocations(Dictionary<Location, LocationActor> locations) => _locations = locations;
-    public void SetRelations(Dictionary<IActor, ActorToActor> relations) => _relations = relations;
     public XorShift GetRng() => Rng;
     public ulong GetRngState() => Rng.GetState();
     public void SetRngState(ulong state) => Rng.SetState(state);
@@ -1139,7 +1054,6 @@ public class Crawler: ActorBase {
     public void SetGaussianPrimed(bool primed) => Gaussian.SetPrimed(primed);
     public double GetGaussianZSin() => Gaussian.GetZSin();
     public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
-    public int Domes { get; set; } = 0;
 
     RepairMode _repairMode = RepairMode.Off;
     public RepairMode RepairMode {

@@ -1,4 +1,6 @@
 ﻿using System.Numerics;
+using Crawler.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
@@ -44,7 +46,8 @@ public enum ActorFlags: ulong {
     Capital = 1 << 4,
     Loading = 1ul << 63,
 }
-
+public delegate void HostilityChangedHandler(IActor other, bool hostile);
+public delegate void ReceivingFireHandler(IActor source, List<HitRecord> fire);
 /// <summary>
 /// Common interface for all interactive entities (Crawlers, Settlements, Resources).
 /// See: docs/DATA-MODEL.md#iactor-interface
@@ -139,22 +142,36 @@ public interface IActor {
     /// <summary>Number of domes (for settlements)</summary>
     int Domes { get; }
 
+    event HostilityChangedHandler? HostilityChanged;
+    /// <summary>
+    /// Event fired when this crawler receives fire from another actor.
+    /// Invoked before damage is processed, allowing components to react to incoming attacks.
+    /// </summary>
+    event ReceivingFireHandler? ReceivingFire;
+
     void Arrived(Encounter encounter);
     void Left(Encounter encounter);
 }
 
-public class ActorBase(string name, string brief, Faction faction, Inventory supplies, Inventory cargo, Location location): IActor {
-    public string Name => name;
-    public Faction Faction => faction;
+public class ActorBase(string name, string brief, Faction faction, Inventory supplies, Inventory cargo, Location Location): IActor {
+    public string Name { get; set; } = name;
+    public Faction Faction { get; set; } = faction;
     public Inventory Supplies { get; } = supplies;
     public Inventory Cargo { get; } = cargo;
     public ActorFlags Flags { get; set; } = ActorFlags.None;
-    public Location Location { get; set; } = location;
+    public Location Location { get; set; } = Location;
+    public bool HasEncounter => Location.HasEncounter;
+    public Encounter Encounter => Location.GetEncounter();
+    public CrawlerRole Role { get; set; } = CrawlerRole.None;
     public bool Harvested => EndState == EEndState.Looted;
-    public string Brief(IActor viewer) => brief + (Harvested ? " (Harvested)" : "") + "\n";
-    public string Report() {
+    public virtual string Brief(IActor viewer) => brief + (Harvested ? " (Harvested)" : "") + "\n";
+    public virtual string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";
     }
+    public ILogger Log => LogCat.Log;
+
+    public bool IsDestroyed => EndState is not null;
+    public bool IsSettlement => Flags.HasFlag(ActorFlags.Settlement);
 
     // Component system
     List<IActorComponent> _components = new();
@@ -188,14 +205,23 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
         }
     }
 
-    public int SimulateTo(long time) => 0;
-    public virtual void ThinkFor(int elapsed) { }
-    public void ReceiveFire(IActor from, List<HitRecord> fire) {
-        Message($"{from.Name} fired uselessly at you");
-        from.Message($"You fired uselessly at {Name}");
+    internal long SimulationTime = 0;
+    // Returns elapsed, >= 0
+    public virtual int SimulateTo(long time) {
+        int elapsed = (int)(time - SimulationTime);
+        SimulationTime = time;
+        if (elapsed < 0) {
+            throw new InvalidOperationException("TODO: Time Travel");
+        }
+        return elapsed;
     }
-    public void Message(string message) {}
-    public int Domes => 0;
+    public virtual void ThinkFor(int elapsed) { }
+    public virtual void ReceiveFire(IActor from, List<HitRecord> fire) {
+        // Notify components that we're receiving fire
+        ReceivingFire?.Invoke(from, fire);
+    }
+    public virtual void Message(string message) {}
+    public int Domes { get; set; } = 0;
 
     public void Arrived(Encounter encounter) {
         // Subscribe all actor components to encounter events
@@ -210,20 +236,68 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
             component.UnsubscribeFromEncounter(encounter);
         }
     }
-    public bool Knows(Location loc) => false;
-    public LocationActor To(Location loc) => new();
-
-    EEndState? _endState;
-    string _endMessage = string.Empty;
 
     public void End(EEndState state, string message = "") {
-        _endState = state;
-        _endMessage = message;
+        EndMessage = $"{state}: {message}";
+        EndState = state;
+        Message($"Game Over: {message} ({state})");
+        Encounter[this].ExitAfter(36000);
     }
-    public string EndMessage => _endMessage;
-    public EEndState? EndState => _endState;
-    public bool Knows(IActor other) => false;
-    public ActorToActor To(IActor other) => new();
-    public ActorToActor NewRelation(IActor other) => new();
-    public LocationActor NewRelation(Location other) => new();
+    public string EndMessage { get; set; } = string.Empty;
+    public EEndState? EndState { get; set; }
+
+    public virtual void Travel(Location loc) {
+        Encounter.RemoveActor(this);
+        Location = loc;
+        Encounter.AddActor(this);
+    }
+
+    public EArraySparse<Faction, ActorFaction> FactionRelations { get; } = new();
+    public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
+
+    /// <summary>
+    /// Event fired when hostility state changes between this crawler and another actor.
+    /// Parameters: (other actor, new hostile state)
+    /// </summary>
+    public event HostilityChangedHandler? HostilityChanged;
+    public event ReceivingFireHandler? ReceivingFire;
+
+    /// <summary>
+    /// Internal method to set hostility state and fire OnHostilityChanged event.
+    /// Components should use this instead of directly setting relation.Hostile.
+    /// </summary>
+    internal void SetHostileTo(IActor other, bool hostile) {
+        var relation = To(other);
+        if (relation.Hostile != hostile) {
+            relation.Hostile = hostile;
+            HostilityChanged?.Invoke(other, hostile);
+        }
+    }
+
+    Dictionary<IActor, ActorToActor> _relations = new();
+    public bool Knows(IActor other) => _relations.ContainsKey(other);
+    public ActorToActor To(IActor other) => _relations.GetOrAddNew(other, () => NewRelation(other));
+    public ActorToActor NewRelation(IActor other) {
+        var relation = new ActorToActor();
+        var actorFaction = To(other.Faction);
+
+        if (actorFaction.ActorStanding < 0) {
+            bool hostile = true;
+            relation.Hostile = hostile;
+            HostilityChanged?.Invoke(other, hostile);
+        }
+        return relation;
+    }
+    public Dictionary<IActor, ActorToActor> GetRelations() => _relations;
+    public void SetRelations(Dictionary<IActor, ActorToActor> relations) => _relations = relations;
+
+    Dictionary<Location, LocationActor> _locations = new();
+    public bool Knows(Location location) => _locations.ContainsKey(location);
+    public LocationActor To(Location location) => _locations.GetOrAddNew(location, () => NewRelation(location));
+    public LocationActor NewRelation(Location to) => new();
+    public Dictionary<Location, LocationActor> GetVisitedLocations() => _locations;
+    public void SetVisitedLocations(Dictionary<Location, LocationActor> locations) => _locations = locations;
+
+
+
 }

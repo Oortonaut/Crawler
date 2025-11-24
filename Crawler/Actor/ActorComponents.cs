@@ -108,15 +108,15 @@ public class CustomsComponent : ActorComponentBase {
             // Offer accept option (allow search and seizure)
             yield return new ContrabandAcceptInteraction(Owner, subject, contraband, "CY");
             // Offer refuse option (go hostile)
-            yield return new ContrabandRefuseInteraction(Owner, subject, "");
+            yield return new ContrabandRefuseInteraction(Crawler, subject, "");
         } else {
             // Time expired - turn hostile
-            yield return new ContrabandExpiredInteraction(Owner, subject, "");
+            yield return new ContrabandExpiredInteraction(Crawler, subject, "");
         }
     }
 
     public record ContrabandAcceptInteraction(
-        Crawler Owner,
+        IActor Owner,
         IActor Target,
         Inventory Contraband,
         string MenuOption
@@ -341,7 +341,7 @@ public class AttackComponent : ActorComponentBase {
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: only player can attack, target must be alive crawler
         if (Owner != Game.Instance?.Player) yield break;
-        if (subject is not Crawler) yield break;
+        //if (subject is not Crawler) yield break;
         if (!subject.Lives()) yield break;
 
         yield return new AttackInteraction(Owner, subject, _optionCode);
@@ -350,8 +350,8 @@ public class AttackComponent : ActorComponentBase {
     /// <summary>
     /// Attack interaction - initiates combat
     /// </summary>
-    public record AttackInteraction(Crawler Crawler, IActor Subject, string MenuOption)
-        : Interaction(Crawler, Subject, MenuOption) {
+    public record AttackInteraction(IActor Attacker, IActor Defender, string MenuOption)
+        : Interaction(Attacker, Defender, MenuOption) {
 
         public override string Description => $"Attack {Subject.Name}";
 
@@ -491,7 +491,7 @@ public class LicenseComponent : ActorComponentBase {
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: owner must be Owner, subject must be crawler, not hostile
-        if (!Owner.IsSettlement) yield break;
+        if (!Owner.HasFlag(ActorFlags.Settlement)) yield break;
         if (subject is not Crawler buyer) yield break;
         if (Owner.To(subject).Hostile || subject.To(Owner).Hostile) yield break;
 
@@ -946,7 +946,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         encounter.EncounterTick -=  OnEncounterTick;
     }
 
-    public override void Attach(Crawler owner) {
+    public override void Attach(IActor owner) {
         base.Attach(owner);
         Owner.HostilityChanged += HostilityChanged;
         Owner.ReceivingFire += ReceivingFire;
