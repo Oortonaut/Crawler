@@ -173,9 +173,9 @@ public sealed class Encounter {
         // Raise ActorArrived event
         ActorArrived?.Invoke(actor, arrivalTime);
 
-        if (actor is Crawler crawler) {
-            crawler.SimulationTime = arrivalTime;
-            Schedule(crawler);
+        if (actor is ActorScheduled scheduled) {
+            scheduled.SimulationTime = arrivalTime;
+            Schedule(scheduled);
         }
     }
     // Is this subverting C# idiom to automatically insert using this[]
@@ -549,8 +549,8 @@ public sealed class Encounter {
     );
 
     // Replaced SortedDictionary with PriorityQueue + Lazy Deletion for O(log N) performance
-    PriorityQueue<Crawler, long> eventQueue = new();
-    Dictionary<Crawler, long> scheduledTimes = new();
+    PriorityQueue<ActorScheduled, long> eventQueue = new();
+    Dictionary<ActorScheduled, long> scheduledTimes = new();
 
     public long LastEncounterEvent { get; set; }
 
@@ -589,37 +589,37 @@ public sealed class Encounter {
     // Re-entrancy guard
     bool isTicking = false;
 
-    public void Schedule(Crawler crawler) {
-        long eventTime = crawler.NextEvent;
+    public void Schedule(ActorScheduled actor) {
+        long eventTime = actor.NextEvent;
         if (eventTime == 0) {
-            eventTime = crawler.SimulationTime + Tuning.MaxDelay;
+            eventTime = actor.SimulationTime + Tuning.MaxDelay;
         } else if (eventTime < LastEncounterEvent) {
-            throw new InvalidOperationException($"Encounter {Name} has a crawler with a negative NextEvent: {crawler.Name} {crawler.NextEvent}");
+            throw new InvalidOperationException($"Encounter {Name} has an actor with a negative NextEvent: {actor.Name} {actor.NextEvent}");
         }
-        Schedule(crawler, eventTime);
+        Schedule(actor, eventTime);
     }
 
-    void Schedule(Crawler crawler, long nextTurn) {
+    void Schedule(ActorScheduled actor, long nextTurn) {
         // Lazy Deletion: If already scheduled later/same, ignore. If earlier, mark old time stale.
-        if (scheduledTimes.TryGetValue(crawler, out var scheduledTurn)) {
+        if (scheduledTimes.TryGetValue(actor, out var scheduledTurn)) {
             if (nextTurn >= scheduledTurn) {
-                Log.LogTrace($"{Name}: {crawler.Name} has already scheduled earlier: turn {nextTurn} scheduled {scheduledTurn}");
+                Log.LogTrace($"{Name}: {actor.Name} has already scheduled earlier: turn {nextTurn} scheduled {scheduledTurn}");
                 return;
             } else {
                 // Implicitly unschedule by overwriting the authoritative time in scheduledTimes
-                Log.LogTrace($"{Name}: {crawler.Name} was previously scheduled later: turn {nextTurn} scheduled {scheduledTurn}");
+                Log.LogTrace($"{Name}: {actor.Name} was previously scheduled later: turn {nextTurn} scheduled {scheduledTurn}");
             }
         }
 
-        Log.LogTrace($"{Name}: {crawler.Name} scheduled for {nextTurn}");
-        scheduledTimes[crawler] = nextTurn;
-        eventQueue.Enqueue(crawler, nextTurn);
+        Log.LogTrace($"{Name}: {actor.Name} scheduled for {nextTurn}");
+        scheduledTimes[actor] = nextTurn;
+        eventQueue.Enqueue(actor, nextTurn);
 
         UpdateGlobalSchedule();
     }
 
-    void Unschedule(Crawler crawler) {
-        if (scheduledTimes.Remove(crawler)) {
+    void Unschedule(ActorScheduled actor) {
+        if (scheduledTimes.Remove(actor)) {
             // Removing from scheduledTimes makes the entry in PriorityQueue "stale" (ignored on pop)
         }
         UpdateGlobalSchedule();
@@ -650,36 +650,36 @@ public sealed class Encounter {
             UpdateDynamicCrawlers(time);
 
             while (eventQueue.Count > 0) {
-                if (!eventQueue.TryPeek(out var crawler, out var eventTime)) break;
-                
+                if (!eventQueue.TryPeek(out var actor, out var eventTime)) break;
+
                 // Stop if we've reached the target time
                 if (eventTime > time) break;
 
                 eventQueue.Dequeue();
 
                 // Lazy Deletion: Check if this event is stale
-                if (!scheduledTimes.TryGetValue(crawler, out var validTime) || validTime != eventTime) {
+                if (!scheduledTimes.TryGetValue(actor, out var validTime) || validTime != eventTime) {
                     continue;
                 }
-                scheduledTimes.Remove(crawler);
+                scheduledTimes.Remove(actor);
 
-                // Process Crawler
-                var crawlerStopwatch = System.Diagnostics.Stopwatch.StartNew();
-                crawler.TickTo(eventTime);
-                
-                if (crawler.Flags.HasFlag(ActorFlags.Player)) {
+                // Process Actor
+                var actorStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                actor.TickTo(eventTime);
+
+                if (actor.Flags.HasFlag(ActorFlags.Player)) {
                     Game.Instance!.GameMenu();
                 }
 
-                crawlerStopwatch.Stop();
-                CrawlerTickCount.Add(1, new KeyValuePair<string, object?>("crawler.faction", crawler.Faction));
-                CrawlerTickDuration.Record(crawlerStopwatch.ElapsedMilliseconds,
-                    new KeyValuePair<string, object?>("crawler.name", crawler.Name),
-                    new KeyValuePair<string, object?>("crawler.faction", crawler.Faction)
+                actorStopwatch.Stop();
+                CrawlerTickCount.Add(1, new KeyValuePair<string, object?>("crawler.faction", actor.Faction));
+                CrawlerTickDuration.Record(actorStopwatch.ElapsedMilliseconds,
+                    new KeyValuePair<string, object?>("crawler.name", actor.Name),
+                    new KeyValuePair<string, object?>("crawler.faction", actor.Faction)
                 );
 
                 LastEncounterEvent = eventTime;
-                Schedule(crawler);
+                Schedule(actor);
             }
             
             // Ensure we update our LastEvent to the tick time, even if no events processed

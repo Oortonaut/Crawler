@@ -129,7 +129,7 @@ public class ActorFaction {
     public int FactionStanding { get; set; } // How the faction feels about the actor
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
-public class Crawler: ActorBase {
+public class Crawler: ActorScheduled {
     XorShift Rng;
     GaussianSampler Gaussian;
 
@@ -283,45 +283,6 @@ public class Crawler: ActorBase {
         return Rng.NextSingle() > this.EscapeChance();
     }
 
-    // Simulate
-    // run action or think
-    public void TickTo(long time) {
-        if (NextEvent == 0) {
-            _nextEventAction = null; // to be sure, should be already
-            _TickTo(time);
-            return;
-        }
-        while (time <= NextEvent) {
-            _TickTo(NextEvent);
-        }
-        if (SimulationTime < time) {
-            // _nextEventAction might not be null but it won't get called
-            _TickTo(time);
-        }
-    }
-    void _TickTo(long time) {
-        int elapsed = SimulateTo(time);
-        if (time == NextEvent) {
-            NextEvent = 0;
-            if (_nextEventAction != null) {
-                var action = _nextEventAction;
-                _nextEventAction = null;
-                action.Invoke(this);
-            } else {
-                if (elapsed == 0) {
-                    ThinkFor(elapsed);
-                } else {
-                    ThinkFor(elapsed);
-                }
-            }
-        } else if (elapsed > 0) {
-            ThinkFor(elapsed);
-        } else  {
-            // throw new InvalidOperationException($"Elapsed time should only be zero for scheduled events.");
-            ThinkFor(elapsed);
-        }
-        PostTick(time);
-    }
     // Returns elapsed, >= 0
     public override int SimulateTo(long time) {
         int elapsed = base.SimulateTo(time);
@@ -343,7 +304,7 @@ public class Crawler: ActorBase {
         UpdateSegmentCache();
         return elapsed;
     }
-    void PostTick(long time) {
+    protected override void PostTick(long time) {
         TestEnded();
     }
     public override void Travel(Location loc) {
@@ -402,23 +363,6 @@ public class Crawler: ActorBase {
         if (this == Game.Instance?.Player) {
             CrawlerEx.Message(Game.TimeString(SimulationTime) + ": " + message);
         }
-    }
-    public long NextEvent { get; private set; } = 0;
-
-    Action<Crawler>? _nextEventAction;
-
-    public void ConsumeTime(long delay, Action<Crawler>? action = null) {
-        if (delay < 0) throw new ArgumentOutOfRangeException(nameof(delay));
-
-        if (NextEvent == 0) {
-            NextEvent = SimulationTime + delay;
-            _nextEventAction = action;
-        } else {
-            Log.LogWarning($"Double scheduled {NextEvent} vs {SimulationTime + delay}");
-        }
-
-        // Ensure the encounter reschedules this crawler for the new time
-        Location?.GetEncounter()?.Schedule(this);
     }
     public int? WeaponDelay() {
         int minDelay = Tuning.MaxDelay;

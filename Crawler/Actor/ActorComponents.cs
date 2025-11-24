@@ -435,7 +435,7 @@ public class RepairComponent : ActorComponentBase {
             };
 
             // Lock both actors for the duration
-            (Subject as Crawler)?.ConsumeTime(duration, customer => {
+            (Subject as ActorScheduled)?.ConsumeTime(duration, customer => {
                 // Complete the repair
                 SegmentToRepair.Hits = 0;
                 customer.Message($"Repair of {SegmentToRepair.Name} completed");
@@ -444,7 +444,7 @@ public class RepairComponent : ActorComponentBase {
                 Attacker.To(customer).Ultimatum = null;
             });
 
-            (Attacker as Crawler)?.ConsumeTime(duration, mechanic => {
+            (Attacker as ActorScheduled)?.ConsumeTime(duration, mechanic => {
                 mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
             });
 
