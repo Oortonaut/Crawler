@@ -39,7 +39,7 @@ public interface IActorComponent {
     int Priority { get; }
 
     /// <summary>Initialize the component with its owner</summary>
-    void Attach(Crawler owner);
+    void Attach(IActor owner);
 
     void Detach();
 
@@ -74,7 +74,7 @@ public abstract class ActorComponentBase : IActorComponent {
     /// <summary>Default priority for components. Override to set specific priority.</summary>
     public virtual int Priority => 500;
 
-    public virtual void Attach(Crawler owner) {
+    public virtual void Attach(IActor owner) {
         Owner = owner;
     }
     public virtual void Detach() {

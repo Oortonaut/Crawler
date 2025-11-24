@@ -129,7 +129,7 @@ public class ActorFaction {
     public int FactionStanding { get; set; } // How the faction feels about the actor
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
-public class Crawler: IActor {
+public class Crawler: ActorBase {
     XorShift Rng;
     GaussianSampler Gaussian;
 
@@ -143,21 +143,21 @@ public class Crawler: IActor {
 
         return crawler;
     }
-    public Crawler(ulong seed, Faction faction, Location location, Inventory inventory) {
+    public Crawler(ulong seed, Faction faction, Location location, Inventory inventory)
+        : base(Names.HumanName(seed), "", faction, inventory, new Inventory(), location) {
         Flags = ActorFlags.Loading;
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
-        Faction = faction;
-        Supplies = inventory;
         Supplies.Overdraft = Cargo;
-        Location = location;
-        Name = Names.HumanName(Rng.Seed());
         // Default markup/spread - will be updated based on Role if needed
         Markup = Tuning.Trade.TradeMarkup(Gaussian);
         Spread = Tuning.Trade.TradeSpread(Gaussian);
         UpdateSegmentCache();
     }
-    public string Name { get; set; }
+    public new string Name {
+        get => base.Name;
+        set => throw new NotSupportedException("Cannot change Crawler name after creation");
+    }
     public string Brief(IActor viewer) {
         var C = CrawlerDisplay(viewer).Split('\n').ToList();
         var hitRepairTime =
@@ -176,8 +176,7 @@ public class Crawler: IActor {
         }
         return string.Join("\n", C);
     }
-    public ActorFlags Flags { get; set; } = ActorFlags.Mobile;
-    public Location Location { get; set; }
+    public new ActorFlags Flags { get; set; } = ActorFlags.Mobile;
 
     static Crawler() {
     }
@@ -216,35 +215,12 @@ public class Crawler: IActor {
         return (fuel, time);
     }
 
-    public Faction Faction { get; set; }
+    public new Faction Faction {
+        get => base.Faction;
+        set => throw new NotSupportedException("Cannot change Crawler faction after creation");
+    }
     public CrawlerRole Role { get; set; } = CrawlerRole.None;
     public int EvilPoints { get; set; } = 0;
-
-    // Component system
-    List<IActorComponent> _components = new();
-    bool _componentsDirty = false;
-
-    public IEnumerable<IActorComponent> Components => _components;
-
-    /// <summary>
-    /// Get components sorted by priority (highest first), using lazy sorting.
-    /// </summary>
-    List<IActorComponent> ComponentsByPriority() {
-        if (_componentsDirty) {
-            _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-            _componentsDirty = false;
-            foreach (var component in _components) {
-                component.OnComponentsDirty();
-            }
-        }
-        return _components;
-    }
-
-    public void AddComponent(IActorComponent component) {
-        component.Attach(this);
-        _components.Add(component);
-        _componentsDirty = true; // Mark for re-sort
-    }
 
     /// <summary>
     /// Initialize components based on the crawler's role.
@@ -313,12 +289,6 @@ public class Crawler: IActor {
         default:
             // No role-specific components
             break;
-        }
-    }
-
-    public void RemoveComponent(IActorComponent component) {
-        if (_components.Remove(component)) {
-            _componentsDirty = true; // Mark for re-sort (though not strictly necessary)
         }
     }
 
@@ -415,19 +385,8 @@ public class Crawler: IActor {
             Location.GetEncounter().AddActor(this);
         });
     }
-    public void Arrived(Encounter encounter) {
-        // Unsubscribe all actor components from encounter events
-        ComponentsByPriority();
-        foreach (var component in Components) {
-            component.SubscribeToEncounter(encounter);
-        }
-    }
-    public void Left(Encounter encounter) {
-        foreach (var component in Components) {
-            component.UnsubscribeFromEncounter(encounter);
-        }
-    }
-    public void ThinkFor(int elapsed) {
+
+    public override void ThinkFor(int elapsed) {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
         if (Flags.HasFlag(ActorFlags.Player)) {
             return;
@@ -494,15 +453,13 @@ public class Crawler: IActor {
         }
     }
 
-    Inventory _inventory = new Inventory();
-    public Inventory Supplies {
-        get => _inventory;
+    public new Inventory Supplies {
+        get => base.Supplies;
         set {
-            _inventory = value;
-            UpdateSegmentCache();
+            throw new NotSupportedException("Cannot replace Crawler supplies inventory");
         }
     }
-    public Inventory Cargo { get; } = new Inventory();
+
     public void UpdateSegmentCache() {
         _allSegments = Supplies.Segments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
 
@@ -815,7 +772,7 @@ public class Crawler: IActor {
         float excessPower = FeedPower(overflowPower);
 
         // Use AutoRepairComponent if available, otherwise use old method
-        var autoRepair = _components.OfType<AutoRepairComponent>().FirstOrDefault();
+        var autoRepair = Components.OfType<AutoRepairComponent>().FirstOrDefault();
         if (autoRepair != null) {
             excessPower = autoRepair.PerformRepair(this, excessPower, elapsed);
         } else {
@@ -823,7 +780,7 @@ public class Crawler: IActor {
         }
 
         // Use LifeSupportComponent if available, otherwise use old method
-        var lifeSupport = _components.OfType<LifeSupportComponent>().FirstOrDefault();
+        var lifeSupport = Components.OfType<LifeSupportComponent>().FirstOrDefault();
         if (lifeSupport != null) {
             lifeSupport.ConsumeResources(this, elapsed);
         } else {
@@ -935,7 +892,7 @@ public class Crawler: IActor {
 
     void Decay(int elapsed) {
         // Use LifeSupportComponent if available, otherwise use old method
-        var lifeSupport = _components.OfType<LifeSupportComponent>().FirstOrDefault();
+        var lifeSupport = Components.OfType<LifeSupportComponent>().FirstOrDefault();
         if (lifeSupport != null) {
             lifeSupport.ProcessSurvival(this, elapsed);
         } else {
@@ -1188,7 +1145,7 @@ public class Crawler: IActor {
     public RepairMode RepairMode {
         get {
             // If AutoRepairComponent exists, use its mode
-            var autoRepair = _components.OfType<AutoRepairComponent>().FirstOrDefault();
+            var autoRepair = Components.OfType<AutoRepairComponent>().FirstOrDefault();
             if (autoRepair != null) {
                 return autoRepair.RepairMode;
             }
@@ -1197,7 +1154,7 @@ public class Crawler: IActor {
         set {
             _repairMode = value;
             // If AutoRepairComponent exists, update its mode
-            var autoRepair = _components.OfType<AutoRepairComponent>().FirstOrDefault();
+            var autoRepair = Components.OfType<AutoRepairComponent>().FirstOrDefault();
             if (autoRepair != null) {
                 autoRepair.RepairMode = value;
             }

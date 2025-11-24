@@ -143,17 +143,11 @@ public interface IActor {
     void Left(Encounter encounter);
 }
 
-public class ActorBase(string name, string brief, Faction faction, Inventory inv, Location location): IActor {
+public class ActorBase(string name, string brief, Faction faction, Inventory supplies, Inventory cargo, Location location): IActor {
     public string Name => name;
     public Faction Faction => faction;
-    public Inventory Supplies { get; } = new Inventory().SetOverdraft(inv);
-    public void AddComponent(IActorComponent component) {
-        throw new NotImplementedException();
-    }
-    public void RemoveComponent(IActorComponent component) {
-        throw new NotImplementedException();
-    }
-    public Inventory Cargo { get; } = inv;
+    public Inventory Supplies { get; } = supplies;
+    public Inventory Cargo { get; } = cargo;
     public ActorFlags Flags { get; set; } = ActorFlags.None;
     public Location Location { get; set; } = location;
     public bool Harvested => EndState == EEndState.Looted;
@@ -164,17 +158,58 @@ public class ActorBase(string name, string brief, Faction faction, Inventory inv
 
     // Component system
     List<IActorComponent> _components = new();
+    bool _componentsDirty = false;
+
     public IEnumerable<IActorComponent> Components => _components;
+
+    /// <summary>
+    /// Get components sorted by priority (highest first), using lazy sorting.
+    /// </summary>
+    protected List<IActorComponent> ComponentsByPriority() {
+        if (_componentsDirty) {
+            _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+            _componentsDirty = false;
+            foreach (var component in _components) {
+                component.OnComponentsDirty();
+            }
+        }
+        return _components;
+    }
+
+    public void AddComponent(IActorComponent component) {
+        component.Attach(this);
+        _components.Add(component);
+        _componentsDirty = true; // Mark for re-sort
+    }
+
+    public void RemoveComponent(IActorComponent component) {
+        if (_components.Remove(component)) {
+            _componentsDirty = true; // Mark for re-sort (though not strictly necessary)
+        }
+    }
+
     public int SimulateTo(long time) => 0;
-    public void ThinkFor(int elapsed) { }
+    public virtual void ThinkFor(int elapsed) { }
     public void ReceiveFire(IActor from, List<HitRecord> fire) {
         Message($"{from.Name} fired uselessly at you");
         from.Message($"You fired uselessly at {Name}");
     }
     public void Message(string message) {}
     public int Domes => 0;
-    public void Arrived(Encounter encounter) { }
-    public void Left(Encounter encounter) { }
+
+    public void Arrived(Encounter encounter) {
+        // Subscribe all actor components to encounter events
+        ComponentsByPriority();
+        foreach (var component in Components) {
+            component.SubscribeToEncounter(encounter);
+        }
+    }
+
+    public void Left(Encounter encounter) {
+        foreach (var component in Components) {
+            component.UnsubscribeFromEncounter(encounter);
+        }
+    }
     public bool Knows(Location loc) => false;
     public LocationActor To(Location loc) => new();
 
