@@ -6,12 +6,12 @@ namespace Crawler;
 /// Can be added to Owners, customs officers, or other enforcement actors.
 /// </summary>
 public class CustomsComponent : ActorComponentBase {
-    public override void SubscribeToEncounter(Encounter encounter) {
+    public override void Enter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
     }
 
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
+    public override void Leave(Encounter encounter) {
         encounter.ActorArrived -= OnActorArrived;
         encounter.ActorLeft -= OnActorLeft;
     }
@@ -93,7 +93,7 @@ public class CustomsComponent : ActorComponentBase {
         if (relation.Ultimatum?.Type != "ContrabandSeizure") yield break;
         if (relation.Ultimatum.Data is not Inventory contraband) yield break;
 
-        // Rescan for contraband at enforcement time
+        // Rescan to update the interaction text
         contraband = Scan(subject);
         if (contraband.IsEmpty) {
             // No contraband found, clear ultimatum
@@ -708,9 +708,28 @@ public class EncounterMessengerComponent : ActorComponentBase {
         Owner.Message($"{from.Name} fired {fire.Count} shots.");
     }
 
-    void OnEncounterTick(long time) {
-        // TODO: Add message levels
-        Owner.Message($"Encounter ticked to {time}");
+    public override void Leave(Encounter encounter) {
+        encounter.ActorArrived -= OnActorArrived;
+        encounter.ActorLeaving -= OnActorLeaving;
+        encounter.ActorLeft -= OnActorLeft;
+        encounter.EncounterTick -=  OnEncounterTick;
+        base.Leave(encounter);
+    }
+
+    public override void Detach() {
+        Owner.ActorInitialized -= ActorInitialized;
+        Owner.HostilityChanged -= HostilityChanged;
+        Owner.ReceivingFire -= ReceivingFire;
+        base.Detach();
+    }
+    public override void OnComponentsDirty() {
+        Owner.Message($"{Owner.Name} component list changed.");
+        base.OnComponentsDirty();
+    }
+
+    public override int ThinkAction() {
+        Owner.Message($"{Owner.Name} think action");
+        return base.ThinkAction();
     }
 }
 
@@ -719,11 +738,11 @@ public class EncounterMessengerComponent : ActorComponentBase {
 /// Keeps only hostile relationships and relationships with Owners.
 /// </summary>
 public class RelationPrunerComponent : ActorComponentBase {
-    public override void SubscribeToEncounter(Encounter encounter) {
+    public override void Enter(Encounter encounter) {
         encounter.ActorLeaving += OnActorLeaving;
     }
 
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
+    public override void Leave(Encounter encounter) {
         encounter.ActorLeaving -= OnActorLeaving;
     }
 
@@ -752,11 +771,11 @@ public class RelationPrunerComponent : ActorComponentBase {
 /// Manages fuel, rations, water, and air consumption, as well as crew death from deprivation.
 /// </summary>
 public class LifeSupportComponent : ActorComponentBase {
-    public override void SubscribeToEncounter(Encounter encounter) {
+    public override void Enter(Encounter encounter) {
         encounter.EncounterTick += OnEncounterTick;
     }
 
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
+    public override void Leave(Encounter encounter) {
         encounter.EncounterTick -= OnEncounterTick;
     }
 

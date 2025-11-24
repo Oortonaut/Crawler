@@ -42,12 +42,12 @@ public class BanditComponent : ActorComponentBase {
 
     public override int Priority => 600; // Faction-specific behavior
 
-    public override void SubscribeToEncounter(Encounter encounter) {
+    public override void Enter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
     }
 
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
+    public override void Leave(Encounter encounter) {
         encounter.ActorArrived -= OnActorArrived;
         encounter.ActorLeft -= OnActorLeft;
     }

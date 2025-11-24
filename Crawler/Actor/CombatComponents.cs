@@ -333,12 +333,12 @@ public abstract class CombatComponentBase : ActorComponentBase {
         return null;
     }
 
-    public override void SubscribeToEncounter(Encounter encounter) {
+    public override void Enter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
     }
 
-    public override void UnsubscribeFromEncounter(Encounter encounter) {
+    public override void Leave(Encounter encounter) {
         encounter.ActorArrived -= OnActorArrived;
         encounter.ActorLeft -= OnActorLeft;
     }

@@ -51,10 +51,10 @@ public interface IActorComponent {
     void OnComponentsDirty();
 
     /// <summary>Subscribe this component's event handlers to an encounter</summary>
-    void SubscribeToEncounter(Encounter encounter);
+    void Enter(Encounter encounter);
 
     /// <summary>Unsubscribe this component's event handlers from an encounter</summary>
-    void UnsubscribeFromEncounter(Encounter encounter);
+    void Leave(Encounter encounter);
 
     /// <summary>
     /// Called during Think() to allow proactive component behaviors.
@@ -85,9 +85,9 @@ public abstract class ActorComponentBase : IActorComponent {
 
     public virtual void OnComponentsDirty() { }
 
-    public virtual void SubscribeToEncounter(Encounter encounter) { }
+    public virtual void Enter(Encounter encounter) { }
 
-    public virtual void UnsubscribeFromEncounter(Encounter encounter) { }
+    public virtual void Leave(Encounter encounter) { }
 
     public virtual int ThinkAction() => 0;
 }
