@@ -39,7 +39,7 @@ public sealed class Encounter {
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Faction = faction;
-        LastEncounterEvent = Game.SafeTime;
+        EncounterTime = Game.SafeTime;
         lastDynamicEvent = Game.SafeTime - CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f);
         Game.Instance!.RegisterEncounter(this);
     }
@@ -103,10 +103,15 @@ public sealed class Encounter {
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
         var crawler = GenerateFactionActor(seed, faction, arrivalTime, lifetime);
-        crawler.SimulationTime = arrivalTime;
+        crawler.PassTime(arrivalTime);
+
+        // Add LeaveEncounterComponent to manage automatic departure
+        long exitTime = arrivalTime + lifetime;
+        crawler.AddComponent(new LeaveEncounterComponent(exitTime));
+
         return crawler;
     }
-    void UpdateDynamicCrawlers(long currentTime) {
+    void SpawnDynamicCrawlers(long currentTime) {
         int elapsed = (int)(currentTime - lastDynamicEvent);
         if (elapsed < 0) {
             throw new InvalidOperationException($"TODO: Retrocausality");
@@ -137,14 +142,6 @@ public sealed class Encounter {
             }
         }
         lastDynamicEvent = currentTime;
-        // Remove actors whose exit time has been reached
-        var expiredActors = actors
-            .Select(a => (a.Key, a.Value))
-            .Where(actorRelation => actorRelation.Value.ShouldExit(currentTime))
-            .Select(a => a.Key).ToList();
-        foreach (var actor in expiredActors) {
-            RemoveActor(actor);
-        }
     }
 
     Location location;
@@ -158,8 +155,9 @@ public sealed class Encounter {
             throw new ArgumentException("Actor is already in encounter");
         }
 
-        if (actor.HasFlag(ActorFlags.Loading))
-            throw new InvalidOperationException($"Tried to add loading actor {actor.Name}");
+        if (actor.HasFlag(ActorFlags.Loading)) {
+            actor.Begin();
+        }
 
         // Update caching when actors join
         if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
@@ -177,7 +175,8 @@ public sealed class Encounter {
         ActorArrived?.Invoke(actor, arrivalTime);
 
         if (actor is ActorScheduled scheduled) {
-            scheduled.SimulationTime = arrivalTime;
+            //scheduled.Time = arrivalTime;
+            scheduled.PassTime(arrivalTime);
             Schedule(scheduled);
         }
     }
@@ -191,13 +190,13 @@ public sealed class Encounter {
         }
 
         // Raise ActorLeaving event
-        ActorLeaving?.Invoke(actor, LastEncounterEvent);
+        ActorLeaving?.Invoke(actor, EncounterTime);
 
         actors.Remove(actor);
         actor.Left(this);
 
         // Raise ActorLeft event
-        ActorLeft?.Invoke(actor, LastEncounterEvent);
+        ActorLeft?.Invoke(actor, EncounterTime);
 
         // Update caching when actors leave
         if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
@@ -219,7 +218,6 @@ public sealed class Encounter {
 
         // Initialize role-specific components
         trader.InitializeComponents(actorRng.Seed());
-        trader.Initialized();
         return trader;
     }
     public Crawler GeneratePlayerActor(ulong seed) {
@@ -236,8 +234,6 @@ public sealed class Encounter {
         // Add player-specific components
         var actorRng = new XorShift(seed);
         player.InitializeComponents(actorRng.Seed());
-        player.Initialized();
-
         return player;
     }
     public Crawler GenerateBanditActor(ulong seed) {
@@ -253,8 +249,6 @@ public sealed class Encounter {
 
         // Initialize role-specific components
         enemy.InitializeComponents(actorRng.Seed());
-        enemy.Initialized();
-
         return enemy;
     }
 
@@ -279,7 +273,6 @@ public sealed class Encounter {
 
         // Initialize role-specific components
         civilian.InitializeComponents(actorRng.Seed());
-        civilian.Initialized();
         return civilian;
     }
 
@@ -330,8 +323,6 @@ public sealed class Encounter {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.NightSettlementNames];
         }
         Name = settlementRng.ChooseRandom(EncounterNames)!;
-        settlement.Initialized();
-
         AddActor(settlement);
         return settlement;
     }
@@ -481,7 +472,6 @@ public sealed class Encounter {
             Tuning.Game.hazardNegativePayoffChance,
             description,
             "H"));
-        hazardActor.Initialized();
         AddActor(hazardActor);
     }
     public Encounter Generate() {
@@ -546,7 +536,7 @@ public sealed class Encounter {
     PriorityQueue<ActorScheduled, long> eventQueue = new();
     Dictionary<ActorScheduled, long> scheduledTimes = new();
 
-    public long LastEncounterEvent { get; set; }
+    public long EncounterTime { get; set; }
 
     // Tracks if the player is present to toggle between High Precision and Batched modes
     bool _hasPlayer = false;
@@ -556,7 +546,7 @@ public sealed class Encounter {
 
     public long NextEncounterEvent {
         get {
-            if (eventQueue.Count == 0) return LastEncounterEvent + Tuning.MaxDelay;
+            if (eventQueue.Count == 0) return EncounterTime + Tuning.MaxDelay;
             
             eventQueue.TryPeek(out _, out long nextCrawlerEvent);
 
@@ -568,7 +558,7 @@ public sealed class Encounter {
             // Batch Mode: For background encounters, only wake up the Game loop hourly.
             // This prevents thousands of micro-updates from clogging the global scheduler.
             long batchInterval = Tuning.MaxDelay;
-            long batchTarget = LastEncounterEvent + batchInterval;
+            long batchTarget = EncounterTime + batchInterval;
 
             // If the next event is within the current batch window, wait until the window closes.
             if (nextCrawlerEvent < batchTarget) {
@@ -584,29 +574,21 @@ public sealed class Encounter {
     bool isTicking = false;
 
     public void Schedule(ActorScheduled actor) {
-        long eventTime = actor.NextEvent;
-        if (eventTime == 0) {
-            eventTime = actor.SimulationTime + Tuning.MaxDelay;
-        } else if (eventTime < LastEncounterEvent) {
-            throw new InvalidOperationException($"Encounter {Name} has an actor with a negative NextEvent: {actor.Name} {actor.NextEvent}");
+        if (actor.NextEvent == null) {
+            return;
         }
-        Schedule(actor, eventTime);
-    }
-
-    void Schedule(ActorScheduled actor, long nextTurn) {
+        long nextTurn = actor.Time;
         // Lazy Deletion: If already scheduled later/same, ignore. If earlier, mark old time stale.
-        if (scheduledTimes.TryGetValue(actor, out var scheduledTurn)) {
-            if (nextTurn >= scheduledTurn) {
-                Log.LogTrace($"{Name}: {actor.Name} has already scheduled earlier: turn {nextTurn} scheduled {scheduledTurn}");
-                return;
-            } else {
-                // Implicitly unschedule by overwriting the authoritative time in scheduledTimes
-                Log.LogTrace($"{Name}: {actor.Name} was previously scheduled later: turn {nextTurn} scheduled {scheduledTurn}");
-            }
+        var scheduledTurn = actor.NextScheduledTime;
+        if (nextTurn >= scheduledTurn) {
+            Log.LogTrace($"{Name}: {actor.Name} has already scheduled earlier: turn {nextTurn} scheduled {scheduledTurn}");
+            return;
+        } else {
+            // Implicitly unschedule by overwriting the authoritative time in scheduledTimes
+            Log.LogTrace($"{Name}: {actor.Name} was previously scheduled later: turn {nextTurn} scheduled {scheduledTurn}");
         }
 
         Log.LogTrace($"{Name}: {actor.Name} scheduled for {nextTurn}");
-        scheduledTimes[actor] = nextTurn;
         eventQueue.Enqueue(actor, nextTurn);
 
         UpdateGlobalSchedule();
@@ -629,9 +611,9 @@ public sealed class Encounter {
     public void Tick(long time) {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        if (time < LastEncounterEvent) {
-            Log.LogError($"Encounter {Name} ticked backwards from {LastEncounterEvent} to {time}");
-            LastEncounterEvent = time;
+        if (time < EncounterTime) {
+            Log.LogError($"Encounter {Name} ticked backwards from {EncounterTime} to {time}");
+            EncounterTime = time;
             return;
         }
         
@@ -640,20 +622,20 @@ public sealed class Encounter {
         try {
             using var activity = Scope($"Tick {nameof(Encounter)} {this} to {time}");
 
-            UpdateDynamicCrawlers(time);
-
-
             while (eventQueue.TryPeek(out var actor, out var eventTime)) {
                 // exit and keep the event if it should still be pending
                 if (eventTime > time) break;
 
                 eventQueue.Dequeue();
+                SpawnDynamicCrawlers(eventTime);
                 // Ignore events that have been unscheduled
-                if (!scheduledTimes.Remove(actor, out var validTime)) continue;
+                if (actor.NextScheduledTime == 0) continue;
                 // Ignore events that have been rescheduled
-                if (validTime != eventTime) continue;
+                if (actor.NextScheduledTime != eventTime) continue;
 
+                Debug.Assert(EncounterTime <= eventTime);
                 var actorStopwatch = Stopwatch.StartNew();
+                (long encounterStartTime, EncounterTime) = (EncounterTime, eventTime);
                 actor.TickTo(eventTime);
                 actorStopwatch.Stop();
 
@@ -668,14 +650,13 @@ public sealed class Encounter {
                     new KeyValuePair<string, object?>("crawler.faction", actor.Faction)
                 );
 
-                EncounterTicked?.Invoke(LastEncounterEvent, time);
-                LastEncounterEvent = eventTime;
+                EncounterTicked?.Invoke(encounterStartTime, EncounterTime);
                 Schedule(actor);
             }
             
             // Ensure we update our LastEvent to the tick time, even if no events processed
             // (This prevents falling behind if we just waited for a batch window)
-            if (LastEncounterEvent < time) LastEncounterEvent = time;
+            if (EncounterTime < time) EncounterTime = time;
 
         } finally {
             isTicking = false;
@@ -683,7 +664,7 @@ public sealed class Encounter {
         }
 
         stopwatch.Stop();
-        Log.LogInformation($"Finished ticking Encounter {this} at time {time}, last event {LastEncounterEvent}, next event {NextEncounterEvent}");
+        Log.LogInformation($"Finished ticking Encounter {this} at time {time}, last event {EncounterTime}, next event {NextEncounterEvent}");
 
         EncounterTickCount.Add(1,
             new KeyValuePair<string, object?>("encounter.name", Name),

@@ -79,12 +79,19 @@ public interface IActor {
     /// <summary>Commodities and segments owned by this actor</summary>
     Inventory Supplies { get; }
 
-    // ===== State =====
+    // ===== Lifetime State =====
+    void Begin();
+
     /// <summary>Game over message if actor is destroyed/ended</summary>
     string EndMessage { get; }
 
     /// <summary>End condition (Destroyed, Revolt, etc.) or null if still active</summary>
     EEndState? EndState { get; }
+
+    // ===== Simulation ====
+    long LastTime { get; }
+    long Time { get; }
+    int Elapsed { get; }
 
     // ===== Knowledge & Relations =====
     /// <summary>Has met this actor before?</summary>
@@ -121,10 +128,10 @@ public interface IActor {
     /// <summary>Update this actor (called every game second)</summary>
     /// <param name="time"></param>
     /// <returns>Elapsed time</returns>
-    int SimulateTo(long time);
+    void SimulateTo(long time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
-    void ThinkFor(int elapsed);
+    void Think();
 
     /// <summary>Receive combat damage from another actor</summary>
     void ReceiveFire(IActor from, List<HitRecord> fire);
@@ -198,13 +205,6 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
             }
         }
     }
-    /// <summary>
-    /// Get components sorted by priority (highest first), using lazy sorting.
-    /// </summary>
-    protected List<IActorComponent> ComponentsByPriority() {
-        CleanComponents(true);
-        return _components;
-    }
 
     public void AddComponent(IActorComponent component) {
         component.Attach(this);
@@ -234,7 +234,7 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
         return newComponent;
     }
 
-    public virtual void Initialized() {
+    public virtual void Begin() {
         if (!Flags.HasFlag(ActorFlags.Loading))
             throw new InvalidOperationException($"Double Initialize");
         Flags &= ~ActorFlags.Loading;
@@ -247,19 +247,16 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
         CleanComponents(false);
     }
 
-    internal long SimulationTime = 0;
     // Returns elapsed, >= 0
-    public virtual int SimulateTo(long time) {
+    public long LastTime { get; protected set; }
+    public long Time { get; protected set; } = 0;
+    public int Elapsed => (int)(LastTime > 0 ? Time - LastTime : 0);
+    public virtual void SimulateTo(long time) {
         if (Flags.HasFlag(ActorFlags.Loading))
             throw new InvalidOperationException($"Tried to simulate {Name} during loading.");
-        int elapsed = (int)(time - SimulationTime);
-        SimulationTime = time;
-        if (elapsed < 0) {
-            throw new InvalidOperationException("TODO: Time Travel");
-        }
-        return elapsed;
+        (LastTime, Time) = (Time, time);
     }
-    public virtual void ThinkFor(int elapsed) { }
+    public virtual void Think() { }
     public virtual void ReceiveFire(IActor from, List<HitRecord> fire) {
         // Notify components that we're receiving fire
         ReceivingFire?.Invoke(from, fire);
@@ -284,7 +281,7 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
         EndMessage = $"{state}: {message}";
         EndState = state;
         Message($"Game Over: {message} ({state})");
-        Encounter[this].ExitAfter(36000);
+        GetOrAddComponent<LeaveEncounterComponent>().ExitAfter(36000);
     }
     public string EndMessage { get; set; } = string.Empty;
     public EEndState? EndState { get; set; }

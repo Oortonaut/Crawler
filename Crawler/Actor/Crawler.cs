@@ -209,8 +209,8 @@ public class Crawler: ActorScheduled {
 
     public int EvilPoints { get; set; } = 0;
 
-    public override void Initialized() {
-        base.Initialized();
+    public override void Begin() {
+        base.Begin();
         UpdateSegmentCache();
     }
     /// <summary>
@@ -288,11 +288,12 @@ public class Crawler: ActorScheduled {
     }
 
     // Returns elapsed, >= 0
-    public override int SimulateTo(long time) {
-        int elapsed = base.SimulateTo(time);
+    public override void SimulateTo(long time) {
+        base.SimulateTo(time);
+        int elapsed = Elapsed;
 
         if (EndState != null || elapsed == 0) {
-            return elapsed;
+            return;
         }
 
         //using var activity = LogCat.Game.StartActivity(
@@ -306,7 +307,6 @@ public class Crawler: ActorScheduled {
         Decay(elapsed);
 
         UpdateSegmentCache();
-        return elapsed;
     }
     protected override void PostTick(long time) {
         TestEnded();
@@ -322,23 +322,23 @@ public class Crawler: ActorScheduled {
 
         FuelInv -= fuel;
         int delay = (int)(time * 3600);
-        var arrivalTime = SimulationTime + delay;
+        var arrivalTime = Time + delay;
 
         // Schedule this crawler in the game's traveling crawlers queue
         Game.Instance!.ScheduleCrawler(this, arrivalTime);
-        ConsumeTime(delay, _ => {
+        ConsumeTime(delay, () => {
             Location = loc;
             Location.GetEncounter().AddActor(this);
         });
     }
 
-    public override void ThinkFor(int elapsed) {
+    public override void Think() {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
         if (Flags.HasFlag(ActorFlags.Player)) {
             return;
         }
-        if (NextEvent != 0) {
-            Log.LogError($"Next event should be null, but it's {NextEvent} and elapsed {elapsed}");
+        if (NextEvent != null) {
+            Log.LogError($"Next event should be null, but it's {NextEvent} and elapsed {Elapsed}");
             return;
         }
 
@@ -351,8 +351,8 @@ public class Crawler: ActorScheduled {
         // - HostileAIComponent (priority 400): generic combat fallback
         CleanComponents(true);
         foreach (var component in Components) {
-            component.ThinkAction();
-            if (NextEvent != 0) {
+            component.GetNextEvent();
+            if (NextEvent != null) {
                 // Component scheduled an action, we're done
                 break;
             }
@@ -365,7 +365,7 @@ public class Crawler: ActorScheduled {
     public override void Message(string message) {
         // TODO: Message history for other actors
         if (this == Game.Instance?.Player) {
-            CrawlerEx.Message(Game.TimeString(SimulationTime) + ": " + message);
+            CrawlerEx.Message(Game.TimeString(Time) + ": " + message);
         }
     }
     public int? WeaponDelay() {
@@ -641,8 +641,8 @@ public class Crawler: ActorScheduled {
 
     public bool IsVulnerable => IsDefenseless || IsImmobile || IsDisarmed || IsDepowered;
 
-    public string About => ToString() + StateString();
-    public override string ToString() => $"{Name} ({Faction}/{Role})";
+    public string About => ToString();
+    public override string ToString() => $"{base.ToString()} {StateString()}";
 
     public List<HitRecord> CreateFire() {
         var rng = new XorShift(Rng.Seed());

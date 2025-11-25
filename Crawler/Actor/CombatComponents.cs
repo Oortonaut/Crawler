@@ -341,6 +341,11 @@ public abstract class CombatComponentBase : ActorComponentBase {
 
     void OnReceivingFire(IActor actor, List<HitRecord> fire) {
         Owner.SetHostileTo(actor, true);
+        if (actor is ActorScheduled scheduled &&
+            Owner is ActorScheduled ownerScheduled) {
+            var elapsed = scheduled.Time - ownerScheduled.Time;
+            (Owner as ActorScheduled)?.ConsumeTime((int)elapsed);
+        }
     }
 
     public override void Enter(Encounter encounter) {
