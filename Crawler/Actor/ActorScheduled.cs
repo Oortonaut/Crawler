@@ -80,4 +80,5 @@ public class ActorScheduled : ActorBase {
     /// Post-tick hook for derived classes to perform cleanup or additional processing.
     /// </summary>
     protected virtual void PostTick(long time) { }
+    public override string ToString() => $"{base.ToString()} [{Game.DateString(Time)} {Game.TimeString(Time)}]";
 }

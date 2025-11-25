@@ -11,7 +11,7 @@ public enum Immediacy {
 /// <summary>
 /// Concrete action that can be performed.
 /// </summary>
-public abstract record Interaction(IActor Attacker, IActor Subject, string MenuOption) {
+public abstract record Interaction(IActor Mechanic, IActor Subject, string MenuOption) {
     /// <summary>Can this interaction be performed right now?</summary>
     public abstract Immediacy GetImmediacy(string args = "");
 
@@ -32,10 +32,10 @@ public abstract record Interaction(IActor Attacker, IActor Subject, string MenuO
 public record HostilityInteraction(IActor Attacker, IActor Subject, string Reason): Interaction(Attacker, Subject, "H") {
     public override Immediacy GetImmediacy(string args = "") => global::Crawler.Immediacy.Menu;
     public override int Perform(string args = "") {
-        Attacker.SetHostileTo(Subject, true);
-        Subject.SetHostileTo(Attacker, true);
-        Attacker.Message($"{Subject.Name} {Reason}. You are now hostile.");
-        Subject.Message($"{Attacker.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
+        Mechanic.SetHostileTo(Subject, true);
+        Subject.SetHostileTo(Mechanic, true);
+        Mechanic.Message($"{Subject.Name} {Reason}. You are now hostile.");
+        Subject.Message($"{Mechanic.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
         Subject.Supplies[Commodity.Morale] -= 2;
         return 1;
     }
@@ -58,12 +58,12 @@ public record ExchangeInteraction: Interaction {
     readonly Immediacy _mode;
 
     public override Immediacy GetImmediacy(string args = "") {
-        string? aoe = AgentOffer.DisabledFor(Attacker, Subject);
-        string? soe = SubjectOffer.DisabledFor(Subject, Attacker);
+        string? aoe = AgentOffer.DisabledFor(Mechanic, Subject);
+        string? soe = SubjectOffer.DisabledFor(Subject, Mechanic);
 
         using var activity = LogCat.Interaction.StartActivity(nameof(GetImmediacy));
         activity?.SetTag("interaction.description", Description);
-        activity?.SetTag("agent.name", Attacker.Name);
+        activity?.SetTag("agent.name", Mechanic.Name);
         activity?.SetTag("subject.name", Subject.Name);
         activity?.SetTag("agent.offer.enabled", aoe == null);
         activity?.SetTag("subject.offer.enabled", soe == null);
@@ -86,13 +86,13 @@ public record ExchangeInteraction: Interaction {
         if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args, out int parsed)) {
             count = Math.Max(1, parsed);
         }
-        Attacker.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
-        Subject.Message($"You gave {Attacker.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
+        Mechanic.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
+        Subject.Message($"You gave {Mechanic.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
 
         int performed = 0;
         for (int i = 0; i < count; i++) {
-            AgentOffer.PerformOn(Attacker, Subject);
-            SubjectOffer.PerformOn(Subject, Attacker);
+            AgentOffer.PerformOn(Mechanic, Subject);
+            SubjectOffer.PerformOn(Subject, Mechanic);
             performed++;
         }
 
@@ -119,9 +119,9 @@ public record ExchangeInteraction: Interaction {
     }
 
     public string? FailureReason() {
-        string? aoe = AgentOffer.DisabledFor(Attacker, Subject);
-        string? soe = SubjectOffer.DisabledFor(Subject, Attacker);
-        string result = aoe == null ? "" :  $"{Attacker.Name} {aoe}" ;
+        string? aoe = AgentOffer.DisabledFor(Mechanic, Subject);
+        string? soe = SubjectOffer.DisabledFor(Subject, Mechanic);
+        string result = aoe == null ? "" :  $"{Mechanic.Name} {aoe}" ;
         if (soe != null) {
             if (aoe != null) {
                 result += ", ";

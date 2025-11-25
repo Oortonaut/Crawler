@@ -32,16 +32,16 @@ public class AttackComponent : ActorComponentBase {
         public override string Description => $"Attack {Subject.Name}";
 
         public override int Perform(string args = "") {
-            if (Attacker is Crawler attacker) {
+            if (Mechanic is Crawler attacker) {
                 return attacker.Attack(Subject);
             }
             return 0;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
-            if (Attacker.Ended()) return Immediacy.Failed;
+            if (Mechanic.Ended()) return Immediacy.Failed;
             if (Subject.Ended()) return Immediacy.Failed;
-            if (Attacker is not Crawler attacker) return Immediacy.Failed;
+            if (Mechanic is not Crawler attacker) return Immediacy.Failed;
             if (attacker.IsDisarmed) return Immediacy.Failed;
             return Immediacy.Menu;
         }
@@ -321,18 +321,12 @@ public abstract class CombatComponentBase : ActorComponentBase {
     /// Attempt to attack the current or selected target.
     /// Returns AP cost if attack was performed, null otherwise.
     /// </summary>
-    protected int? AttackTarget() {
-        if (Owner is not Crawler attacker) return null;
-        if (attacker.IsDisarmed) return null;
-        if (CurrentTarget is null) return null;
+    protected int AttackTarget(IActor target) {
+        if (Owner is not Crawler attacker) return 0;
+        if (attacker.IsDisarmed) return 0;
 
         // Try to attack current target if still valid
-        int ap = attacker.Attack(CurrentTarget);
-        if (ap > 0) {
-            //attacker.ConsumeTime(ap, null);
-            return ap;
-        }
-        return null;
+        return attacker.Attack(target);
     }
 
     public override void Attach(IActor owner) {
@@ -372,15 +366,20 @@ public abstract class CombatComponentBase : ActorComponentBase {
         bandit.To(actor).Ultimatum = null;
     }
 
-    public override int ThinkAction() {
+    protected IActor? ChooseTarget() {
         if (!IsValidTarget(CurrentTarget)) {
             CurrentTarget = SelectTarget();
             if (CurrentTarget != null && !IsValidTarget(CurrentTarget)) {
                 throw new InvalidOperationException($"Chose an invalid target: {CurrentTarget?.Name}");
             }
         }
-        if (CurrentTarget != null) {
-            return AttackTarget() ?? 60;
+        return CurrentTarget;
+    }
+
+    public override int GetNextEvent() {
+        var target = ChooseTarget();
+        if (target is not null) {
+            return AttackTarget(target);
         }
         return 0;
     }

@@ -90,4 +90,5 @@ public abstract class ActorComponentBase : IActorComponent {
     public virtual void Leave(Encounter encounter) { }
 
     public virtual int ThinkAction() => 0;
+    public override string ToString() => $"{GetType().Name} on {Owner?.Name}";
 }

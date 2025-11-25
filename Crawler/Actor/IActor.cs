@@ -169,7 +169,8 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
     public Encounter Encounter => Location.GetEncounter();
     public CrawlerRole Role { get; set; } = CrawlerRole.None;
     public bool Harvested => EndState == EEndState.Looted;
-    public virtual string Brief(IActor viewer) => brief + (Harvested ? " (Harvested)" : "") + "\n";
+    public virtual string Brief(IActor viewer) => brief;
+    public override string ToString() => $"{Name} ({Faction}/{Role})";
     public virtual string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";
     }
@@ -177,6 +178,7 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
 
     public bool IsDestroyed => EndState is not null;
     public bool IsSettlement => Flags.HasFlag(ActorFlags.Settlement);
+    public bool IsLoading => Flags.HasFlag(ActorFlags.Loading);
 
     // Component system
     List<IActorComponent> _components = new();
@@ -216,6 +218,20 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
         } else if (_newComponents.Remove(component)) {
             Debug.Assert(_componentsDirty);
         }
+    }
+
+    /// <summary>
+    /// Get an existing component of the specified type, or create and add a new one if it doesn't exist.
+    /// </summary>
+    public TComponent GetOrAddComponent<TComponent>(Func<TComponent>? factory = null) where TComponent : IActorComponent, new() {
+        var existing = Components.OfType<TComponent>().FirstOrDefault();
+        if (existing != null) {
+            return existing;
+        }
+
+        var newComponent = factory != null ? factory() : new TComponent();
+        AddComponent(newComponent);
+        return newComponent;
     }
 
     public virtual void Initialized() {

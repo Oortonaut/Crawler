@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Crawler;
 
 /// <summary>
@@ -290,16 +292,16 @@ public class TradeOfferComponent : ActorComponentBase {
                 count = Math.Max(1, parsed);
             }
 
-            Attacker.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
-            Subject.Message($"You gave {Attacker.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
+            Mechanic.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
+            Subject.Message($"You gave {Mechanic.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
 
             int performed = 0;
             for (int i = 0; i < count; i++) {
-                if (AgentOffer.DisabledFor(Attacker, Subject) != null || SubjectOffer.DisabledFor(Subject, Attacker) != null) {
+                if (AgentOffer.DisabledFor(Mechanic, Subject) != null || SubjectOffer.DisabledFor(Subject, Mechanic) != null) {
                     break;
                 }
-                AgentOffer.PerformOn(Attacker, Subject);
-                SubjectOffer.PerformOn(Subject, Attacker);
+                AgentOffer.PerformOn(Mechanic, Subject);
+                SubjectOffer.PerformOn(Subject, Mechanic);
                 performed++;
             }
 
@@ -307,7 +309,7 @@ public class TradeOfferComponent : ActorComponentBase {
         }
 
         public override Immediacy GetImmediacy(string args = "") {
-            if (AgentOffer.DisabledFor(Attacker, Subject) == null && SubjectOffer.DisabledFor(Subject, Attacker) == null) {
+            if (AgentOffer.DisabledFor(Mechanic, Subject) == null && SubjectOffer.DisabledFor(Subject, Mechanic) == null) {
                 return Immediacy.Menu;
             }
             return Immediacy.Failed;
@@ -363,46 +365,46 @@ public class RepairComponent : ActorComponentBase {
             long endTime = Game.SafeTime + duration;
 
             // Create bidirectional Ultimatums to track the repair relationship
-            Subject.To(Attacker).Ultimatum = new ActorToActor.UltimatumState {
+            Subject.To(Mechanic).Ultimatum = new ActorToActor.UltimatumState {
                 ExpirationTime = endTime,
                 Type = "RepairCustomer",
                 Data = SegmentToRepair
             };
 
-            Attacker.To(Subject).Ultimatum = new ActorToActor.UltimatumState {
+            Mechanic.To(Subject).Ultimatum = new ActorToActor.UltimatumState {
                 ExpirationTime = endTime,
                 Type = "RepairMechanic",
                 Data = SegmentToRepair
             };
 
             // Lock both actors for the duration
-            (Subject as ActorScheduled)?.ConsumeTime(duration, customer => {
+            (Subject as ActorScheduled)?.ConsumeTime(duration, () => {
                 // Complete the repair
                 SegmentToRepair.Hits = 0;
-                customer.Message($"Repair of {SegmentToRepair.Name} completed");
+                Subject.Message($"Repair of {SegmentToRepair.Name} completed");
                 // Clear the Ultimatums
-                customer.To(Attacker).Ultimatum = null;
-                Attacker.To(customer).Ultimatum = null;
+                Subject.To(Mechanic).Ultimatum = null;
+                Mechanic.To(Subject).Ultimatum = null;
             });
 
-            (Attacker as ActorScheduled)?.ConsumeTime(duration, mechanic => {
-                mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
+            (Mechanic as ActorScheduled)?.ConsumeTime(duration, () => {
+                Mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
             });
 
             // Pay for the repair upfront
             var scrapOffer = new ScrapOffer(Price);
-            scrapOffer.PerformOn(Subject, Attacker);
+            scrapOffer.PerformOn(Subject, Mechanic);
 
-            Attacker.Message($"Starting repair of {Subject.Name}'s {SegmentToRepair.Name}...");
-            Subject.Message($"{Attacker.Name} begins repairing your {SegmentToRepair.Name}");
+            Mechanic.Message($"Starting repair of {Subject.Name}'s {SegmentToRepair.Name}...");
+            Subject.Message($"{Mechanic.Name} begins repairing your {SegmentToRepair.Name}");
 
             return (int)duration;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
             // Check if there's already an active repair relationship
-            var subjectToAgent = Subject.To(Attacker).Ultimatum;
-            var agentToSubject = Attacker.To(Subject).Ultimatum;
+            var subjectToAgent = Subject.To(Mechanic).Ultimatum;
+            var agentToSubject = Mechanic.To(Subject).Ultimatum;
 
             // Check if this specific segment is being repaired
             bool segmentBeingRepaired =
@@ -498,11 +500,11 @@ public class LicenseComponent : ActorComponentBase {
             var licenseOffer = new LicenseOffer(LicenseFaction, Category, Tier, Price);
             var scrapOffer = new ScrapOffer(Price);
 
-            Attacker.Message($"You sold {Subject.Name} a {licenseOffer.Description} for {Price}¢¢");
-            Subject.Message($"{Attacker.Name} sold you a {licenseOffer.Description} for {Price}¢¢");
+            Mechanic.Message($"You sold {Subject.Name} a {licenseOffer.Description} for {Price}¢¢");
+            Subject.Message($"{Mechanic.Name} sold you a {licenseOffer.Description} for {Price}¢¢");
 
-            licenseOffer.PerformOn(Attacker, Subject);
-            scrapOffer.PerformOn(Subject, Attacker);
+            licenseOffer.PerformOn(Mechanic, Subject);
+            scrapOffer.PerformOn(Subject, Mechanic);
 
             return 1;
         }
@@ -660,7 +662,9 @@ public class EncounterMessengerComponent : ActorComponentBase {
 
     void OnEncounterTicked(long then, long now) {
         // TODO: Add message levels
-        Owner.Message($"Encounter ticked to {now}");
+        var thenString = Game.TimeString(then);
+        var nowString = Game.TimeString(now);
+        Owner.Message($"Encounter ticked {thenString}->{nowString}");
     }
 
     void OnActorArrived(IActor actor, long time) {
@@ -696,7 +700,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
     }
 
     void ReceivingFire(IActor from, List<HitRecord> fire) {
-        Owner.Message($"{from.Name} fired {fire.Count} shots.");
+        Owner.Message($"{from.Name} fired {fire.Count} shots at you.");
     }
 
     public override void Leave(Encounter encounter) {
@@ -718,9 +722,9 @@ public class EncounterMessengerComponent : ActorComponentBase {
         base.OnComponentsDirty();
     }
 
-    public override int ThinkAction() {
+    public override int GetNextEvent() {
         Owner.Message($"{Owner.Name} think action");
-        return base.ThinkAction();
+        return base.GetNextEvent();
     }
 }
 
@@ -755,6 +759,46 @@ public class RelationPrunerComponent : ActorComponentBase {
         crawler.SetRelations(pruned);
     }
 
+}
+
+/// <summary>
+/// Component that manages automatic departure from encounters.
+/// Used by dynamic actors to leave after their scheduled time.
+/// </summary>
+public class LeaveEncounterComponent : ActorComponentBase {
+    long _exitTime;
+    Encounter? _encounter;
+
+    public LeaveEncounterComponent() {
+        _exitTime = 0;
+    }
+
+    public LeaveEncounterComponent(long exitTime) {
+        _exitTime = exitTime;
+    }
+
+    public long ExitTime { get; set; }
+
+    public override void Enter(Encounter encounter) {
+        _encounter = encounter;
+        encounter.EncounterTicked += OnEncounterTicked;
+    }
+
+    public override void Leave(Encounter encounter) {
+        encounter.EncounterTicked -= OnEncounterTicked;
+        _encounter = null;
+    }
+
+    void OnEncounterTicked(long then, long now) {
+        if (now >= _exitTime) {
+            Debug.Assert(_encounter != null);
+            _encounter!.RemoveActor(Owner);
+        }
+    }
+
+    public void ExitAfter(int duration) {
+        _exitTime = Math.Min(_exitTime, Owner.Time + duration);
+    }
 }
 
 /// <summary>
