@@ -13,11 +13,15 @@ public class RetreatComponent : ActorComponentBase {
         // Check if depowered first
         if (crawler.IsDepowered) {
             crawler.Message($"{crawler.Name} has no power.");
-            return 0; // Can't act, but don't let other components try either
+            return 0;
         }
 
+        float hits = crawler.Segments.Sum(s  => s.Hits);
+        float maxHits = crawler.Segments.Sum(s  => s.MaxHits);
+        float ratio =  hits / maxHits;
+
         // Flee if vulnerable and not pinned
-        if (crawler.IsVulnerable && !crawler.Pinned()) {
+        if (crawler.IsVulnerable && !crawler.Pinned() && ratio > 0.75f) {
             crawler.Message($"{crawler.Name} flees the encounter.");
             crawler.Location.GetEncounter().RemoveActor(crawler);
             return 1; // Consumed time to flee

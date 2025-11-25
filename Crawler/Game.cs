@@ -580,15 +580,25 @@ public class Game {
     }
 
     IEnumerable<MenuItem> RepairMenuItems(ShowArg show = ShowArg.Show) {
-        yield return new ActionMenuItem("PR0", $"Repair Off {(Player.RepairMode == RepairMode.Off ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.Off), EnableArg.Enabled, show);
-        yield return new ActionMenuItem("PR1", $"Repair Lowest {(Player.RepairMode == RepairMode.RepairLowest ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.RepairLowest), EnableArg.Enabled, show);
-        yield return new ActionMenuItem("PR2", $"Repair Highest {(Player.RepairMode == RepairMode.RepairHighest ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.RepairHighest), EnableArg.Enabled, show);
+        var repairMode = Player.Components.OfType<AutoRepairComponent>().FirstOrDefault()?.RepairMode ?? RepairMode.Off;
+        yield return new ActionMenuItem("PR0", $"Repair Off {(repairMode == RepairMode.Off ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.Off), EnableArg.Enabled, show);
+        yield return new ActionMenuItem("PR1", $"Repair Lowest {(repairMode == RepairMode.RepairLowest ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.RepairLowest), EnableArg.Enabled, show);
+        yield return new ActionMenuItem("PR2", $"Repair Highest {(repairMode == RepairMode.RepairHighest ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.RepairHighest), EnableArg.Enabled, show);
     }
 
     int SetRepairMode(RepairMode mode) {
-        Player.RepairMode = mode;
-        Player.Message($"Repair mode set to: {mode}");
-        return 0;
+        var repairComponent = Player.Components.OfType<AutoRepairComponent>().FirstOrDefault();
+        if (repairComponent == null) {
+            Player.Message($"No self repair system.");
+            return 0;
+        } else if (repairComponent.RepairMode == mode) {
+            Player.Message($"Repair mode unchanged: {mode}");
+            return 2;
+        } else {
+            repairComponent.RepairMode = mode;
+            Player.Message($"Repair mode set to: {mode}");
+            return 5;
+        }
     }
 
     int PackagingMenu() {

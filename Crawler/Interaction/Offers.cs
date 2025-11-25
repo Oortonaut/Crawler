@@ -134,8 +134,8 @@ public record HostilityOffer(string Reason): IOffer {
         null;
 
     public void PerformOn(IActor Agent, IActor Subject) {
-        if (Agent is Crawler agentCrawler) agentCrawler.SetHostileTo(Subject, true);
-        if (Subject is Crawler subjectCrawler) subjectCrawler.SetHostileTo(Agent, true);
+        Agent.SetHostileTo(Subject, true);
+        Subject.SetHostileTo(Agent, true);
         Agent.Message($"{Subject.Name} {Reason}. You are now hostile.");
         Subject.Message($"{Agent.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
         Subject.Supplies[Commodity.Morale] -= 2;

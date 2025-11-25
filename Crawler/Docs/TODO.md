@@ -10,6 +10,7 @@
 ## Wish List
                                                                       
 * [ ] Move Menus and UI to component
+* [ ] Move segments out of inventory
 * [ ] Quests
 * [ ] Faction Standing
 * [ ] Improved save/load
@@ -25,7 +26,7 @@
                                             
 * [ ] Add component flags 
   * [ ] Thinking - keep a separate list of thinking components for speed.
-
+* [ ] Encounter scheduling just keep the scheduled time on the ActorScheduled
 ## Finished
 
 * [x] Use deterministic seeding like I should have from the start (2025-11-08)

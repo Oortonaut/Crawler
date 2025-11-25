@@ -50,7 +50,7 @@ public sealed class Encounter {
     public event ActorArrivedEventHandler? ActorArrived;
     public event ActorLeavingEventHandler? ActorLeaving;
     public event ActorLeftEventHandler? ActorLeft;
-    public event EncounterTickEventHandler? EncounterTick;
+    public event EncounterTickEventHandler? EncounterTicked;
 
     public string Name { get; set; } = "Encounter";
     public string Description { get; set; } = "";
@@ -493,7 +493,7 @@ public sealed class Encounter {
             Name = $"{Faction} Crossroads";
             GenerateFactionActor(seed, Faction, Game.SafeTime, null);
         }
-            break;
+        break;
         case EncounterType.Settlement: GenerateSettlement(seed); break;
         case EncounterType.Resource: GenerateResource(seed); break;
         case EncounterType.Hazard: GenerateHazard(seed); break;
@@ -628,7 +628,6 @@ public sealed class Encounter {
 
     public void Tick(long time) {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        EncounterTick?.Invoke(time);
 
         if (time < LastEncounterEvent) {
             Log.LogError($"Encounter {Name} ticked backwards from {LastEncounterEvent} to {time}");
@@ -643,35 +642,33 @@ public sealed class Encounter {
 
             UpdateDynamicCrawlers(time);
 
-            while (eventQueue.Count > 0) {
-                if (!eventQueue.TryPeek(out var actor, out var eventTime)) break;
 
-                // Stop if we've reached the target time
+            while (eventQueue.TryPeek(out var actor, out var eventTime)) {
+                // exit and keep the event if it should still be pending
                 if (eventTime > time) break;
 
                 eventQueue.Dequeue();
+                // Ignore events that have been unscheduled
+                if (!scheduledTimes.Remove(actor, out var validTime)) continue;
+                // Ignore events that have been rescheduled
+                if (validTime != eventTime) continue;
 
-                // Lazy Deletion: Check if this event is stale
-                if (!scheduledTimes.TryGetValue(actor, out var validTime) || validTime != eventTime) {
-                    continue;
-                }
-                scheduledTimes.Remove(actor);
-
-                // Process Actor
-                var actorStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var actorStopwatch = Stopwatch.StartNew();
                 actor.TickTo(eventTime);
+                actorStopwatch.Stop();
 
+                // TODO: Move this into a component
                 if (actor.Flags.HasFlag(ActorFlags.Player)) {
                     Game.Instance!.GameMenu();
                 }
 
-                actorStopwatch.Stop();
                 CrawlerTickCount.Add(1, new KeyValuePair<string, object?>("crawler.faction", actor.Faction));
                 CrawlerTickDuration.Record(actorStopwatch.ElapsedMilliseconds,
                     new KeyValuePair<string, object?>("crawler.name", actor.Name),
                     new KeyValuePair<string, object?>("crawler.faction", actor.Faction)
                 );
 
+                EncounterTicked?.Invoke(LastEncounterEvent, time);
                 LastEncounterEvent = eventTime;
                 Schedule(actor);
             }

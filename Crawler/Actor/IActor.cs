@@ -102,6 +102,8 @@ public interface IActor {
     /// <summary>Get visit tracking for a location</summary>
     LocationActor To(Location loc);
 
+    void SetHostileTo(IActor other, bool hostile);
+
     /// <summary>
     /// Initialize relationship when actors first meet (called once per side per actor pair).
     /// Creates ActorToActor relation and sets initial faction-based state and proposals.
@@ -284,18 +286,6 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
     public event HostilityChangedHandler? HostilityChanged;
     public event ReceivingFireHandler? ReceivingFire;
 
-    /// <summary>
-    /// Internal method to set hostility state and fire OnHostilityChanged event.
-    /// Components should use this instead of directly setting relation.Hostile.
-    /// </summary>
-    internal void SetHostileTo(IActor other, bool hostile) {
-        var relation = To(other);
-        if (relation.Hostile != hostile) {
-            relation.Hostile = hostile;
-            HostilityChanged?.Invoke(other, hostile);
-        }
-    }
-
     Dictionary<IActor, ActorToActor> _relations = new();
     public bool Knows(IActor other) => _relations.ContainsKey(other);
     public ActorToActor To(IActor other) => _relations.GetOrAddNew(other, () => NewRelation(other));
@@ -319,7 +309,11 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
     public LocationActor NewRelation(Location to) => new();
     public Dictionary<Location, LocationActor> GetVisitedLocations() => _locations;
     public void SetVisitedLocations(Dictionary<Location, LocationActor> locations) => _locations = locations;
-
-
-
+    public void SetHostileTo(IActor other, bool hostile) {
+        var relation = To(other);
+        if (relation.Hostile != hostile) {
+            relation.Hostile = hostile;
+            HostilityChanged?.Invoke(other, hostile);
+        }
+    }
 }

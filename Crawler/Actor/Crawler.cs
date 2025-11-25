@@ -157,8 +157,9 @@ public class Crawler: ActorScheduled {
     public override string Brief(IActor viewer) {
         var C = CrawlerDisplay(viewer).Split('\n').ToList();
 
+        var repairMode = Components.OfType<AutoRepairComponent>().FirstOrDefault()?.RepairMode ?? RepairMode.Off;
         C[1] += $" Power: {TotalCharge:F1} + {TotalGeneration:F1}/t  Drain: Off:{OffenseDrain:F1}  Def:{DefenseDrain:F1}  Move:{MovementDrain:F1}";
-        C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h  Repair: {RepairMode}";
+        C[2] += $" Weight: {Mass:F0} / {Lift:F0}T, {Speed:F0}km/h  Repair: {repairMode}";
         if (this == viewer) {
             float RationsPerDay = TotalPeople * Tuning.Crawler.RationsPerCrewDay;
             float WaterPerDay = WaterRecyclingLossPerHr * 24;
@@ -220,7 +221,7 @@ public class Crawler: ActorScheduled {
         var rng = new XorShift(seed);
 
         AddComponent(new LifeSupportComponent());
-        AddComponent(new AutoRepairComponent(RepairMode.Off)); // Civilians don't auto-repair
+        AddComponent(new AutoRepairComponent());
         if (Role is not CrawlerRole.Player) {
             AddComponent(new RelationPrunerComponent());
         }
@@ -378,13 +379,6 @@ public class Crawler: ActorScheduled {
             return minDelay;
         } else {
             return null;
-        }
-    }
-
-    public new Inventory Supplies {
-        get => base.Supplies;
-        set {
-            throw new NotSupportedException("Cannot replace Crawler supplies inventory");
         }
     }
 
@@ -690,75 +684,17 @@ public class Crawler: ActorScheduled {
         float excessPower = FeedPower(overflowPower);
 
         // Use AutoRepairComponent if available, otherwise use old method
+        // TODO: FeedPower on component
         var autoRepair = Components.OfType<AutoRepairComponent>().FirstOrDefault();
         if (autoRepair != null) {
-            excessPower = autoRepair.PerformRepair(this, excessPower, elapsed);
-        } else {
-            excessPower = Repair(excessPower, elapsed);
+            excessPower = autoRepair.PerformRepair(excessPower, elapsed);
         }
 
         // Use LifeSupportComponent if available, otherwise use old method
         var lifeSupport = Components.OfType<LifeSupportComponent>().FirstOrDefault();
         if (lifeSupport != null) {
             lifeSupport.ConsumeResources(this, elapsed);
-        } else {
-            ScrapInv -= WagesPerHr * hours;
-            RationsInv -= RationsPerHr * hours;
-            WaterInv -= WaterRecyclingLossPerHr * hours;
-            AirInv -= AirLeakagePerHr * hours;
-            FuelInv -= FuelPerHr * hours;
         }
-    }
-    float repairProgress = 0;
-    // Self-repair system: use excess power to repair damaged segments
-    float Repair(float power, int elapsed) {
-        // TODO: We should consume the energy if we have undestroyed segments and are adding repair progress
-        // At the moment the energy is only consumed when we do the repair
-        // Not a problem because nothing follows this to use it.
-
-        float maxRepairsCrew = CrewInv / Tuning.Crawler.RepairCrewPerHp;
-        float maxRepairsPower = power / Tuning.Crawler.RepairPowerPerHp;
-        float maxRepairsScrap =  ScrapInv / Tuning.Crawler.RepairScrapPerHp;
-        float maxRepairs = Math.Min(Math.Min(maxRepairsCrew, maxRepairsPower), maxRepairsScrap);
-        float maxRepairsHr = maxRepairs * elapsed / Tuning.Crawler.RepairTime;
-        float repairHitsFloat = maxRepairsHr + repairProgress;
-        int repairHits = (int)repairHitsFloat;
-        repairProgress = repairHitsFloat - repairHits;
-        var candidates = UndestroyedSegments.Where(s => s.Hits > 0);
-        if (RepairMode is RepairMode.Off || !candidates.Any()) {
-            repairProgress = 0;
-            return power;
-        } else if (RepairMode is RepairMode.RepairHighest) {
-            var damagedSegments = candidates.OrderByDescending(s => s.Hits).ToStack();
-            while (repairHits > 0 && damagedSegments.Count > 0) {
-                var segment = damagedSegments.Pop();
-                --repairHits;
-                --segment.Hits;
-            }
-        } else if (RepairMode is RepairMode.RepairLowest) {
-            var damagedSegments = candidates.OrderBy(s => s.Health).ToList();
-            while (repairHits > 0 && damagedSegments.Count > 0) {
-                int health = damagedSegments[0].Health;
-                foreach (var segment in damagedSegments.TakeWhile(s => s.Health <= health).Where(s => s.Hits > 0)) {
-                    if (repairHits <= 0) {
-                        break;
-                    }
-                    --repairHits;
-                    --segment.Hits;
-                }
-            }
-        }
-        int repaired = (int)repairHitsFloat - repairHits;
-
-        float repairScrap = Tuning.Crawler.RepairScrapPerHp * repaired;
-        float repairPower = Tuning.Crawler.RepairPowerPerHp * repaired;
-        Message($"Repaired {repaired} Hits for {repairScrap:F1}¢¢.");
-
-        power -= repairPower;
-        ScrapInv -= repairScrap;
-
-
-        return power;
     }
     // Returns excess (wasted) power
     float FeedPower(float energy) {
@@ -1001,24 +937,4 @@ public class Crawler: ActorScheduled {
     public void SetGaussianPrimed(bool primed) => Gaussian.SetPrimed(primed);
     public double GetGaussianZSin() => Gaussian.GetZSin();
     public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
-
-    RepairMode _repairMode = RepairMode.Off;
-    public RepairMode RepairMode {
-        get {
-            // If AutoRepairComponent exists, use its mode
-            var autoRepair = Components.OfType<AutoRepairComponent>().FirstOrDefault();
-            if (autoRepair != null) {
-                return autoRepair.RepairMode;
-            }
-            return _repairMode;
-        }
-        set {
-            _repairMode = value;
-            // If AutoRepairComponent exists, update its mode
-            var autoRepair = Components.OfType<AutoRepairComponent>().FirstOrDefault();
-            if (autoRepair != null) {
-                autoRepair.RepairMode = value;
-            }
-        }
-    }
 }

@@ -3,22 +3,22 @@ namespace Crawler;
 /// <summary>
 /// Event handler for when an actor arrives at an encounter
 /// </summary>
-public delegate void ActorArrivedEventHandler(IActor actor, long time);
+public delegate void ActorArrivedEventHandler(IActor actor, long now);
 
 /// <summary>
 /// Event handler for when an actor is about to leave an encounter
 /// </summary>
-public delegate void ActorLeavingEventHandler(IActor actor, long time);
+public delegate void ActorLeavingEventHandler(IActor actor, long now);
 
 /// <summary>
 /// Event handler for when an actor has left an encounter
 /// </summary>
-public delegate void ActorLeftEventHandler(IActor actor, long time);
+public delegate void ActorLeftEventHandler(IActor actor, long now);
 
 /// <summary>
 /// Event handler for when time advances in an encounter
 /// </summary>
-public delegate void EncounterTickEventHandler(long time);
+public delegate void EncounterTickEventHandler(long then, long now);
 
 /// <summary>
 /// Component-based behavior system for actors.

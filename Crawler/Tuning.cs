@@ -263,9 +263,9 @@ public static partial class Tuning {
         public static PowerScaling MaxHitsTiers = new PowerScaling(10.0f, (12, 2.0f), "decrepit", "hardened");
 
         // Weapon parameters
-        public static PowerScaling DamageTiers = new PowerScaling(10f, (15, 1.4f), "weak", "strong");
+        public static PowerScaling DamageTiers = new PowerScaling(6f, (15, 1.4f), "weak", "strong");
         public static PowerScaling RateTiers = new PowerScaling(3f, (0.65f, 1.4f), "slow", "fast");
-        public static PowerScaling ShotsTiers = new PowerScaling(1.0f, (1.0f, 4f), "limited", "repeating");
+        public static PowerScaling ShotsTiers = new PowerScaling(1.0f, (1.0f, 4f), "limited", "salvo");
         public static PowerScaling AimTiers = new PowerScaling(0.75f, (0.65f, 1.5f), "inaccurate", "accurate");
 
         // Power parameters

@@ -32,8 +32,8 @@ public abstract record Interaction(IActor Attacker, IActor Subject, string MenuO
 public record HostilityInteraction(IActor Attacker, IActor Subject, string Reason): Interaction(Attacker, Subject, "H") {
     public override Immediacy GetImmediacy(string args = "") => global::Crawler.Immediacy.Menu;
     public override int Perform(string args = "") {
-        if (Attacker is Crawler agentCrawler) agentCrawler.SetHostileTo(Subject, true);
-        if (Subject is Crawler subjectCrawler) subjectCrawler.SetHostileTo(Attacker, true);
+        Attacker.SetHostileTo(Subject, true);
+        Subject.SetHostileTo(Attacker, true);
         Attacker.Message($"{Subject.Name} {Reason}. You are now hostile.");
         Subject.Message($"{Attacker.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
         Subject.Supplies[Commodity.Morale] -= 2;

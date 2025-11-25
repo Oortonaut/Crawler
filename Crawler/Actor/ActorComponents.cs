@@ -97,9 +97,9 @@ public class CustomsComponent : ActorComponentBase {
 
         if (!expired) {
             // Offer accept option (allow search and seizure)
-            yield return new ContrabandAcceptInteraction(Owner, subject, contraband, "CY");
+            yield return new ContrabandAcceptInteraction(Owner, subject, contraband, "Y");
             // Offer refuse option (go hostile)
-            yield return new ContrabandRefuseInteraction(Crawler, subject, "");
+            yield return new ContrabandRefuseInteraction(Crawler, subject, "N");
         } else {
             // Time expired - turn hostile
             yield return new ContrabandExpiredInteraction(Crawler, subject, "");
@@ -655,12 +655,12 @@ public class EncounterMessengerComponent : ActorComponentBase {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeaving += OnActorLeaving;
         encounter.ActorLeft += OnActorLeft;
-        encounter.EncounterTick += OnEncounterTick;
+        encounter.EncounterTicked += OnEncounterTicked;
     }
 
-    void OnEncounterTick(long time) {
+    void OnEncounterTicked(long then, long now) {
         // TODO: Add message levels
-        Owner.Message($"Encounter ticked to {time}");
+        Owner.Message($"Encounter ticked to {now}");
     }
 
     void OnActorArrived(IActor actor, long time) {
@@ -703,7 +703,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         encounter.ActorArrived -= OnActorArrived;
         encounter.ActorLeaving -= OnActorLeaving;
         encounter.ActorLeft -= OnActorLeft;
-        encounter.EncounterTick -=  OnEncounterTick;
+        encounter.EncounterTicked -=  OnEncounterTicked;
         base.Leave(encounter);
     }
 
@@ -763,14 +763,14 @@ public class RelationPrunerComponent : ActorComponentBase {
 /// </summary>
 public class LifeSupportComponent : ActorComponentBase {
     public override void Enter(Encounter encounter) {
-        encounter.EncounterTick += OnEncounterTick;
+        encounter.EncounterTicked += OnEncounterTicked;
     }
 
     public override void Leave(Encounter encounter) {
-        encounter.EncounterTick -= OnEncounterTick;
+        encounter.EncounterTicked -= OnEncounterTicked;
     }
 
-    void OnEncounterTick(long time) {
+    void OnEncounterTicked(long then, long now) {
         if (Owner is not Crawler crawler) return;
 
         // This runs during Tick, which already calculates elapsed
@@ -840,25 +840,25 @@ public class AutoRepairComponent : ActorComponentBase {
     float _repairProgress = 0;
     RepairMode _repairMode;
 
-    public AutoRepairComponent(RepairMode repairMode = RepairMode.Off) {
+    public AutoRepairComponent(RepairMode repairMode = RepairMode.RepairLowest) {
         _repairMode = repairMode;
     }
 
-    public RepairMode RepairMode {
-        get => _repairMode;
-        set => _repairMode = value;
-    }
+    public RepairMode RepairMode { get; set; }
 
     /// <summary>
     /// Attempt to repair damaged segments using excess power
     /// </summary>
-    public float PerformRepair(Crawler crawler, float power, int elapsed) {
+    public float PerformRepair(float power, int elapsed) {
+        if (Owner is not Crawler crawler)
+            return power;
+
         // TODO: We should consume the energy if we have undestroyed segments and are adding repair progress
         // At the moment the energy is only consumed when we do the repair
         // Not a problem because nothing follows this to use it.
 
         float maxRepairsCrew = crawler.CrewInv / Tuning.Crawler.RepairCrewPerHp;
-        float maxRepairsPower = power / Tuning.Crawler.RepairPowerPerHp;
+        float maxRepairsPower = power / Tuning.Crawler.RepairPowerPerHp + 0.25f; // Some repairs possible without power
         float maxRepairsScrap = crawler.ScrapInv / Tuning.Crawler.RepairScrapPerHp;
         float maxRepairs = Math.Min(Math.Min(maxRepairsCrew, maxRepairsPower), maxRepairsScrap);
         float maxRepairsHr = maxRepairs * elapsed / Tuning.Crawler.RepairTime;

@@ -102,8 +102,8 @@ public class SurrenderComponent : ActorComponentBase {
             Loser.Message($"You have surrendered to {Winner.Name}. {Tuning.Crawler.MoraleSurrendered} Morale");
             Loser.To(Winner).Surrendered = true;
             Winner.To(Loser).Spared = true;
-            if (Loser is ActorBase loserCrawler) loserCrawler.SetHostileTo(Winner, false);
-            if (Winner is ActorBase winnerCrawler) winnerCrawler.SetHostileTo(Loser, false);
+            Loser.SetHostileTo(Winner, false);
+            Winner.SetHostileTo(Loser, false);
             Winner.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
             Loser.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
 
@@ -198,8 +198,8 @@ public static class ExtortionInteractions {
         }
 
         public override int Perform(string args = "") {
-            if (Extortioner is Crawler extortionerCrawler) extortionerCrawler.SetHostileTo(Target, true);
-            if (Target is Crawler targetCrawler) targetCrawler.SetHostileTo(Extortioner, true);
+            Extortioner.SetHostileTo(Target, true);
+            Target.SetHostileTo(Extortioner, true);
 
             Extortioner.Message($"{Target.Name} refuses your demand!");
             Target.Message($"You refuse {Extortioner.Name}'s demand - now hostile!");
@@ -303,17 +303,18 @@ public abstract class CombatComponentBase : ActorComponentBase {
     /// </summary>
     protected virtual IActor? SelectTarget() {
         // TODO: Rank based on faction scores, after we have faction scores
-        var actors = Owner.Location.GetEncounter().ActorsExcept(Owner);
+        var actors = PotentialTargets();
         return _rng.ChooseRandom(actors.Where(a => Owner.To(a).Hostile));
     }
     protected IEnumerable<IActor> PotentialTargets() {
         return Owner.Location.GetEncounter().ActorsExcept(Owner).Where(IsValidTarget);
     }
 
-    protected bool IsValidTarget(IActor? target) {
+    protected virtual bool IsValidTarget(IActor? target) {
         return target is not null &&
                target.Lives() &&
-               Owner.Location == target.Location;
+               Owner.Location == target.Location &&
+               Owner.HostileTo(target);
     }
 
     /// <summary>
@@ -332,6 +333,20 @@ public abstract class CombatComponentBase : ActorComponentBase {
             return ap;
         }
         return null;
+    }
+
+    public override void Attach(IActor owner) {
+        base.Attach(owner);
+        Owner.ReceivingFire += OnReceivingFire;
+    }
+
+    public override void Detach() {
+        Owner.ReceivingFire -= OnReceivingFire;
+        base.Detach();
+    }
+
+    void OnReceivingFire(IActor actor, List<HitRecord> fire) {
+        Owner.SetHostileTo(actor, true);
     }
 
     public override void Enter(Encounter encounter) {
@@ -358,10 +373,9 @@ public abstract class CombatComponentBase : ActorComponentBase {
     }
 
     public override int ThinkAction() {
-        if (Owner is not Crawler bandit) return 0;
-        if (IsValidTarget(CurrentTarget)) {
+        if (!IsValidTarget(CurrentTarget)) {
             CurrentTarget = SelectTarget();
-            if (!IsValidTarget(CurrentTarget)) {
+            if (CurrentTarget != null && !IsValidTarget(CurrentTarget)) {
                 throw new InvalidOperationException($"Chose an invalid target: {CurrentTarget?.Name}");
             }
         }
