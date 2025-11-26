@@ -183,6 +183,10 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
     }
     public ILogger Log => LogCat.Log;
 
+    // RNG state - initialized by derived classes or builders
+    protected XorShift Rng = new XorShift(0);
+    protected GaussianSampler Gaussian = new GaussianSampler(0);
+
     public bool IsDestroyed => EndState is not null;
     public bool IsSettlement => Flags.HasFlag(ActorFlags.Settlement);
     public bool IsLoading => Flags.HasFlag(ActorFlags.Loading);

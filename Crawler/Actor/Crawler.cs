@@ -129,29 +129,34 @@ public class ActorFaction {
     public int FactionStanding { get; set; } // How the faction feels about the actor
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
-public class Crawler: ActorScheduled {
-    XorShift Rng;
-    GaussianSampler Gaussian;
-
+public partial class Crawler: ActorScheduled {
     public static Crawler NewRandom(ulong seed, Faction faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
         var rng = new XorShift(seed);
         var crawlerSeed = rng.Seed();
         var invSeed = rng.Seed();
         var newInv = new Inventory();
         newInv.AddRandomInventory(invSeed, here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
-        var crawler = new Crawler(crawlerSeed, faction, here, newInv);
+        
+        var crawler = new Builder()
+            .WithSeed(crawlerSeed)
+            .WithFaction(faction)
+            .WithLocation(here)
+            .WithSupplies(newInv)
+            .Build();
 
         return crawler;
     }
-    public Crawler(ulong seed, Faction faction, Location location, Inventory inventory)
-        : base(Names.HumanName(seed), "", faction, inventory, new Inventory(), location) {
+
+    private Crawler(Builder builder)
+        : base(builder._name, builder._brief, builder._faction, builder._supplies, builder._cargo, builder._location) {
         Flags |= ActorFlags.Mobile;
-        Rng = new XorShift(seed);
+        Rng = new XorShift(builder._seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Supplies.Overdraft = Cargo;
+        Role = builder._role;
         // Default markup/spread - will be updated based on Role if needed
-        Markup = Tuning.Trade.TradeMarkup(Gaussian);
-        Spread = Tuning.Trade.TradeSpread(Gaussian);
+        Markup = builder._markup ?? Tuning.Trade.TradeMarkup(Gaussian);
+        Spread = builder._spread ?? Tuning.Trade.TradeSpread(Gaussian);
         UpdateSegmentCache();
     }
     public override string Brief(IActor viewer) {
