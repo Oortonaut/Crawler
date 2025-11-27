@@ -10,8 +10,6 @@ public partial class Crawler {
         internal Inventory _supplies = new();
         internal Inventory _cargo = new();
         internal Roles _role = Roles.None;
-        internal float? _markup;
-        internal float? _spread;
         internal bool _initializeComponents = true;
 
         public Builder() { }
@@ -56,16 +54,6 @@ public partial class Crawler {
             return this;
         }
 
-        public Builder WithMarkup(float markup) {
-            _markup = markup;
-            return this;
-        }
-
-        public Builder WithSpread(float spread) {
-            _spread = spread;
-            return this;
-        }
-
         public Builder WithComponentInitialization(bool initialize) {
             _initializeComponents = initialize;
             return this;
@@ -83,13 +71,6 @@ public partial class Crawler {
             if (_initializeComponents && _role != Roles.None) {
                 var rng = new XorShift(_seed);
                 crawler.InitializeComponents(rng.Seed());
-
-                // Apply role-specific markup/spread for bandits if not explicitly set
-                if (_role == Roles.Bandit && !_markup.HasValue && !_spread.HasValue) {
-                    var gaussian = new GaussianSampler(rng.Seed());
-                    crawler.Markup = Tuning.Trade.BanditMarkup(gaussian);
-                    crawler.Spread = Tuning.Trade.BanditSpread(gaussian);
-                }
             }
 
             return crawler;

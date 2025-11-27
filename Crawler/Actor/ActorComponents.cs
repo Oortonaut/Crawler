@@ -206,9 +206,14 @@ public class TradeOfferComponent : ActorComponentBase {
     ulong _seed;
     List<TradeOffer>? _offers;
 
-    public TradeOfferComponent(ulong seed, float wealthFraction = 0.25f) {
+    public float Markup { get; set; } = 1.0f;
+    public float Spread { get; set; } = 1.0f;
+
+    public TradeOfferComponent(ulong seed, float wealthFraction = 0.25f, float? markup = null, float? spread = null) {
         _seed = seed;
         _wealthFraction = wealthFraction;
+        if (markup.HasValue) Markup = markup.Value;
+        if (spread.HasValue) Spread = spread.Value;
     }
 
     List<TradeOffer> GetOrCreateOffers() {

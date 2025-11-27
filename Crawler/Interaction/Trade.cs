@@ -49,8 +49,8 @@ public static class TradeEx {
         var Location = Seller.Location;
         var wealth = Location.Wealth * wealthFraction;
 
-        Crawler? seller = Seller as Crawler;
-        float merchantMarkup = seller?.Markup ?? 1.0f;
+        var tradeComponent = (Seller as ActorBase)?.Components.OfType<TradeOfferComponent>().FirstOrDefault();
+        float merchantMarkup = tradeComponent?.Markup ?? 1.0f;
 
         var commodities = Enum.GetValues<Commodity>()
             .Where(s => s != Commodity.Scrap)
@@ -73,7 +73,7 @@ public static class TradeEx {
             float midPrice = commodity.CostAt(Location) * scarcityPremium * policyMultiplier;
 
             float bidAskSpread = Tuning.Trade.baseBidAskSpread;
-            bidAskSpread *= seller?.Spread ?? 1.0f;
+            bidAskSpread *= tradeComponent?.Spread ?? 1.0f;
             float spreadAmount = midPrice * bidAskSpread;
 
             float askPrice = midPrice + spreadAmount / 2;
@@ -102,7 +102,7 @@ public static class TradeEx {
         }
 
         // Offer segments from trade inventory
-        foreach (var segment in seller?.Cargo.Segments.ToList() ?? []) {
+        foreach (var segment in Seller.Cargo.Segments.ToList()) {
             var policy = faction.GetPolicy(segment.SegmentKind);
 
             if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {

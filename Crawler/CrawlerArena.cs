@@ -293,6 +293,23 @@ public class CrawlerArena {
         }
 
         int win = 0;
+        long currentTime = 0;
+
+        // Determine attack order based on design1First parameter
+        var (firstAttacker, secondAttacker) = design1First ? (crawler1, crawler2) : (crawler2, crawler1);
+
+        // Initial attack from first attacker
+        if (firstAttacker.WeaponDelay().HasValue) {
+            var delay = firstAttacker.Attack(secondAttacker);
+            firstAttacker.ConsumeTime(delay);
+        }
+
+        // Initial attack from second attacker with slight offset
+        if (secondAttacker.WeaponDelay().HasValue) {
+            var delay = secondAttacker.Attack(firstAttacker);
+            secondAttacker.ConsumeTime(delay);
+        }
+
         while (rounds < maxRounds) {
             if (crawler1.IsDestroyed && crawler2.IsDestroyed ||
                 crawler1.IsDisarmed && crawler2.IsDisarmed) {
@@ -308,20 +325,24 @@ public class CrawlerArena {
             }
             rounds++;
 
-            // TODO: Implement scheduling into CrawlerArena match
-            int time = 0;
+            // Determine who attacks next based on scheduled times
+            var nextAttacker = crawler1.NextScheduledTime <= crawler2.NextScheduledTime ? crawler1 : crawler2;
+            var nextDefender = nextAttacker == crawler1 ? crawler2 : crawler1;
 
-            // Determine attack order based on design1First parameter
-            var (firstAttacker, secondAttacker) = design1First ? (crawler1, crawler2) : (crawler2, crawler1);
+            currentTime = nextAttacker.NextScheduledTime;
 
-            var fire1 = firstAttacker.CreateFire();
-            secondAttacker.ReceiveFire(firstAttacker, fire1);
-            var fire2 = secondAttacker.CreateFire();
-            firstAttacker.ReceiveFire(secondAttacker, fire2);
+            // Simulate both crawlers to current time
+            crawler1.SimulateTo(currentTime);
+            crawler2.SimulateTo(currentTime);
 
-            // Recharge both crawlers
-            crawler1.SimulateTo(time);
-            crawler2.SimulateTo(time);
+            // Perform attack if attacker is still capable
+            if (!nextAttacker.IsDestroyed && !nextAttacker.IsDisarmed && nextAttacker.WeaponDelay().HasValue) {
+                var delay = nextAttacker.Attack(nextDefender);
+                nextAttacker.ConsumeTime(delay);
+            } else {
+                // If can't attack, just advance time
+                break;
+            }
         }
 
         // Determine winner
@@ -343,11 +364,14 @@ public class CrawlerArena {
 
     private Crawler CreateInitializedCrawler(CrawlerDesign design, string name, Factions faction) {
         var inventory = design.Inventory.Clone();
-        var crawler = new Crawler((ulong)(name.GetHashCode() + faction.GetHashCode()), faction, arenaLocation, inventory);
-
-        // Set up basic properties
-        crawler.Name = name;
-        crawler.Faction = faction;
+        var crawler = new Crawler.Builder()
+            .WithSeed((ulong)(name.GetHashCode() + faction.GetHashCode()))
+            .WithFaction(faction)
+            .WithLocation(arenaLocation)
+            .WithSupplies(inventory)
+            .WithName(name)
+            .WithComponentInitialization(false)
+            .Build();
 
         // Assign the crawler as owner to all segments
         foreach (var segment in crawler.Supplies.Segments) {

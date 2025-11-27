@@ -154,9 +154,6 @@ public partial class Crawler: ActorScheduled {
         Gaussian = new GaussianSampler(Rng.Seed());
         Supplies.Overdraft = Cargo;
         Role = builder._role;
-        // Default markup/spread - will be updated based on Role if needed
-        Markup = builder._markup ?? Tuning.Trade.TradeMarkup(Gaussian);
-        Spread = builder._spread ?? Tuning.Trade.TradeSpread(Gaussian);
         UpdateSegmentCache();
     }
     public override string Brief(IActor viewer) {
@@ -250,14 +247,20 @@ public partial class Crawler: ActorScheduled {
         case Roles.Settlement:
             // Settlements: trade, repair, licensing, contraband enforcement
             AddComponent(new CustomsComponent());
-            AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f));
+            var settlementGaussian = new GaussianSampler(rng.Seed());
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f,
+                Tuning.Trade.TradeMarkup(settlementGaussian),
+                Tuning.Trade.TradeSpread(settlementGaussian)));
             AddComponent(new RepairComponent());
             AddComponent(new LicenseComponent());
             break;
 
         case Roles.Trader:
             // Mobile merchants: primarily trade-focused
-            AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f));
+            var traderGaussian = new GaussianSampler(rng.Seed());
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f,
+                Tuning.Trade.TradeMarkup(traderGaussian),
+                Tuning.Trade.TradeSpread(traderGaussian)));
             AddComponent(new CombatComponentDefense(rng.Seed())); // Can defend themselves
             break;
 
@@ -270,15 +273,19 @@ public partial class Crawler: ActorScheduled {
             // Bandits: extortion, robbery, combat
             AddComponent(new BanditComponent(rng.Seed(), 0.5f)); // Extortion/ultimatums
             // Bandits have higher markup/spread for goods they steal/trade
-            var gaussian = new GaussianSampler(rng.Seed());
-            Markup = Tuning.Trade.BanditMarkup(gaussian);
-            Spread = Tuning.Trade.BanditSpread(gaussian);
+            var banditGaussian = new GaussianSampler(rng.Seed());
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.20f,
+                Tuning.Trade.BanditMarkup(banditGaussian),
+                Tuning.Trade.BanditSpread(banditGaussian)));
             break;
 
         case Roles.Traveler:
             // Travelers: quest givers, general interactions
             // TODO: Add quest-related components when quest system is implemented
-            AddComponent(new TradeOfferComponent(rng.Seed(), 0.15f)); // Limited trading
+            var travelerGaussian = new GaussianSampler(rng.Seed());
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.15f,
+                Tuning.Trade.TradeMarkup(travelerGaussian),
+                Tuning.Trade.TradeSpread(travelerGaussian))); // Limited trading
             break;
 
         case Roles.None:
@@ -931,8 +938,6 @@ public partial class Crawler: ActorScheduled {
     }
 
     // Accessor methods for save/load
-    public float Markup { get; set; }
-    public float Spread { get; set; }
     public XorShift GetRng() => Rng;
     public ulong GetRngState() => Rng.GetState();
     public void SetRngState(ulong state) => Rng.SetState(state);

@@ -30,6 +30,7 @@ public class SavedCrawler {
     public SavedInventory Supplies { get; set; } = new();
     public SavedInventory Cargo { get; set; } = new();
     public float Markup { get; set; } = 1.0f;
+    public float Spread { get; set; } = 1.0f;
     public Dictionary<string, SavedActorRelation> Relations { get; set; } = new();
     public Dictionary<string, SavedActorLocation> VisitedLocations { get; set; } = new();
     public int EvilPoints { get; set; } = 0;
@@ -201,13 +202,15 @@ public static class SaveLoadExtensions {
     }
 
     public static SavedCrawler ToSaveData(this Crawler crawler) {
+        var tradeComponent = crawler.Components.OfType<TradeOfferComponent>().FirstOrDefault();
         return new SavedCrawler {
             Name = crawler.Name,
             Faction = crawler.Faction,
             LocationPos = crawler.Location.Position,
             Supplies = crawler.Supplies.ToSaveData(),
             Cargo = crawler.Cargo.ToSaveData(),
-            Markup = crawler.Markup,
+            Markup = tradeComponent?.Markup ?? 1.0f,
+            Spread = tradeComponent?.Spread ?? 1.0f,
             Relations = crawler.GetRelations().ToDictionary(
                 kvp => kvp.Key.Name,
                 kvp => kvp.Value.ToSaveData()
@@ -518,12 +521,18 @@ public static class SaveLoadExtensions {
         var inventory = savedCrawler.Supplies.ToGameInventory();
 
         // Use a temporary seed for construction, will be replaced by saved RNG state
-        var crawler = new Crawler(0x123456789ABCDEF0UL, savedCrawler.Faction, location, inventory) {
-            Name = savedCrawler.Name,
-            EvilPoints = savedCrawler.EvilPoints,
-            EndState = savedCrawler.EndState,
-            EndMessage = savedCrawler.EndMessage
-        };
+        var crawler = new Crawler.Builder()
+            .WithSeed(0x123456789ABCDEF0UL)
+            .WithFaction(savedCrawler.Faction)
+            .WithLocation(location)
+            .WithSupplies(inventory)
+            .WithName(savedCrawler.Name)
+            .WithComponentInitialization(false)
+            .Build();
+
+        crawler.EvilPoints = savedCrawler.EvilPoints;
+        crawler.EndState = savedCrawler.EndState;
+        crawler.EndMessage = savedCrawler.EndMessage;
 
         // Restore RNG state
         crawler.SetRngState(savedCrawler.RngState);
@@ -536,8 +545,12 @@ public static class SaveLoadExtensions {
         crawler.Cargo.Clear();
         crawler.Cargo.Add(tradeInventory);
 
-        // Restore markup
-        crawler.Markup = savedCrawler.Markup;
+        // Restore markup/spread to TradeOfferComponent if it exists
+        var tradeComponent = crawler.Components.OfType<TradeOfferComponent>().FirstOrDefault();
+        if (tradeComponent != null) {
+            tradeComponent.Markup = savedCrawler.Markup;
+            tradeComponent.Spread = savedCrawler.Spread;
+        }
 
         // Restore visited locations
         var visitedLocations = new Dictionary<Location, LocationActor>();
