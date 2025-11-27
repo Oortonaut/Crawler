@@ -71,7 +71,7 @@ public class BanditComponent : ActorComponentBase {
         if (Owner == target) return;
         if (Owner is not Crawler bandit) return;
 
-        if (bandit.Role != CrawlerRole.Bandit || target.Faction != Faction.Player) return;
+        if (bandit.Role != Roles.Bandit || target.Faction != Factions.Player) return;
 
         float cargoValue = target.Supplies.ValueAt(bandit.Location);
         if (cargoValue >= Tuning.Bandit.minValueThreshold &&

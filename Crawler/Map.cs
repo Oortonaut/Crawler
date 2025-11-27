@@ -66,20 +66,20 @@ public record Location {
     public ulong Seed { get; init; }
     public Func<Location, Encounter> NewEncounter { get; set; }
 
-    public Faction ChooseRandomFaction() {
+    public Factions ChooseRandomFaction() {
         // Get base weights for this terrain type
         var baseWeights = Tuning.Encounter.crawlerSpawnWeight[Terrain];
-        var adjustedWeights = new EArray<Faction, float>();
+        var adjustedWeights = new EArray<Factions, float>();
         foreach (var (faction, weight) in baseWeights.Pairs()) {
             adjustedWeights[faction] = weight;
-            if (faction == Faction.Player) {
+            if (faction == Factions.Player) {
                 adjustedWeights[faction] = 0;
-            } else if (faction == Faction.Independent) {
-            } else if (faction == Faction.Bandit) {
+            } else if (faction == Factions.Independent) {
+            } else if (faction == Factions.Bandit) {
                 // Adjust bandit weight by dividing by population (more pop = fewer bandits)
                 adjustedWeights[faction] /= Math.Min(1.0f, Population / 100.0f);
             } else if (faction < Map.FactionEnd) {
-                adjustedWeights[faction] = baseWeights[Faction.Independent]; // zero in data, code controlled
+                adjustedWeights[faction] = baseWeights[Factions.Independent]; // zero in data, code controlled
                 if (faction == Sector.ControllingFaction) {
                     adjustedWeights[faction] *= 3.5f;
                 } else {
@@ -94,7 +94,7 @@ public record Location {
         if (result < Game.Instance?.Map.FactionEnd) {
             return result;
         }
-        return Faction.Independent;
+        return Factions.Independent;
     }
 
     public float Distance(Location other) {
@@ -144,7 +144,7 @@ public class Sector {
     GaussianSampler Gaussian;
     public Point Position => new(X, Y);
     public TerrainType Terrain;
-    public Faction ControllingFaction = Faction.Independent; // Default to Trade for unassigned
+    public Factions ControllingFaction = Factions.Independent; // Default to Trade for unassigned
     public readonly List<Sector> Neighbors = new();
     public readonly List<Location> Locations = new();
     public IEnumerable<Location> Settlements => Locations.Where(loc => loc.Type == EncounterType.Settlement);
@@ -210,7 +210,7 @@ public class Map {
         AssignSectorFactions();
     }
     public int NumFactions { get; protected set; }
-    public Faction FactionEnd { get; protected set; }
+    public Factions FactionEnd { get; protected set; }
     void CreateSectors(out Sector[,] sectors) {
         sectors = new Sector[Height, Width];
         foreach (var (X, Y) in sectors.Index()) {
@@ -294,20 +294,20 @@ public class Map {
 
         NumFactions = Math.Min(Height * 3 / 4, 20);
         NumFactions = Math.Min(NumFactions, settlementLocations.Count);
-        FactionEnd = Faction.Civilian0 + NumFactions;
+        FactionEnd = Factions.Civilian0 + NumFactions;
 
-        FactionData[Faction.Player] = new ("Player", Color.White, null);
-        FactionData[Faction.Independent] = new ("Independent", Color.Blue, null);
-        FactionData[Faction.Bandit] = new ("Bandit", Color.Red, null);
+        FactionData[Factions.Player] = new ("Player", Color.White, null);
+        FactionData[Factions.Independent] = new ("Independent", Color.Blue, null);
+        FactionData[Factions.Bandit] = new ("Bandit", Color.Red, null);
 
         var policies = FactionEx.GenerateFactionPolicies(NumFactions, Rng.Seed()).ToArray();
         for (int j = 0; j < NumFactions; ++j) {
-            var faction = Faction.Civilian0 + j;
+            var faction = Factions.Civilian0 + j;
             faction.SetPolicy(policies[j]);
         }
 
-        for (Faction faction = Faction.Civilian0; faction < FactionEnd; faction++) {
-            var setLocation = settlementLocations[faction - Faction.Civilian0];
+        for (Factions faction = Factions.Civilian0; faction < FactionEnd; faction++) {
+            var setLocation = settlementLocations[faction - Factions.Civilian0];
             var sector = setLocation.Sector;
             sector.ControllingFaction = faction;
             var encounter = new Encounter(Rng.Seed(), setLocation, faction);
@@ -330,7 +330,7 @@ public class Map {
 
             // Calculate weighted distance to each capital
             float minWeightedDistance = float.MaxValue;
-            Faction closestFaction = Faction.Independent;
+            Factions closestFaction = Factions.Independent;
 
             foreach (var (faction, data) in FactionData.Pairs()) {
                 if (data?.Capital is { } capital) {
@@ -356,7 +356,7 @@ public class Map {
                 var sector = Sectors[Y, X2];
                 var locs = sector.Locations
                     .Where(loc => loc.Type == EncounterType.Settlement)
-                    .Where(loc => loc.Sector.ControllingFaction != Faction.Bandit)
+                    .Where(loc => loc.Sector.ControllingFaction != Factions.Bandit)
                     .Where(loc => loc.Terrain <= TerrainType.Rough)
                     .ToList();
                 if (locs.Count > 0) {
@@ -416,7 +416,7 @@ public class Map {
     public readonly int Height;
     public readonly int Width;
     Sector[,] Sectors;
-    public EArray<Faction, FactionData?> FactionData { get; } = new();
+    public EArray<Factions, FactionData?> FactionData { get; } = new();
 
     public Sector GetSector(int x, int y) => Sectors[y, x];
     public IEnumerable<Location> FindLocationsInRadius(Vector2 center, float radius) {
@@ -489,7 +489,7 @@ public class Map {
         var worldMapWidth = Width * 3 + 2;
         var header = defaultStyle + "┌[" + titleStyle + "Global Map" + defaultStyle + "]";
         header += new string('─', Math.Max(0, worldMapWidth - 12)) + "╖";
-        header += Faction1(Faction.Independent) + "\n";
+        header += Faction1(Factions.Independent) + "\n";
         var footer = defaultStyle + $"╘{new string('═', worldMapWidth)}╝\n";
 
         string result = header;
@@ -499,7 +499,7 @@ public class Map {
             result += $"{x,3}";
         }
         result += defaultStyle + "║";
-        result += Faction2(Faction.Independent) + "\n";
+        result += Faction2(Factions.Independent) + "\n";
         for (int y = 0; y < Height; y++) {
             string map = defaultStyle + "│" + titleStyle + (char)('A' + y) + defaultStyle + ":";
             string map2 = defaultStyle + "│ :";
@@ -533,7 +533,7 @@ public class Map {
             map2 += defaultStyle + "║";
 
             // Add civilian faction info for this row
-            var faction = Faction.Civilian0 + y;
+            var faction = Factions.Civilian0 + y;
             if (faction < FactionEnd) {
                 var data = FactionData[faction]!;
                 var option = Style.MenuOption.Format($"{y + 1}");
@@ -548,7 +548,7 @@ public class Map {
         result += footer;
         return result;
     }
-    string Faction1(Faction faction) {
+    string Faction1(Factions faction) {
         var data = FactionData[faction]!;
         var index = faction.CivilianIndex();
         var option = Style.MenuOption.Format($"{index + 1}");
@@ -560,7 +560,7 @@ public class Map {
             return $" [{option}] {data.Name} {policy}";
         }
     }
-    string Faction2(Faction faction) {
+    string Faction2(Factions faction) {
         string result = " ";
         var policy = faction.GetPolicy();
 

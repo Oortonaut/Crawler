@@ -60,7 +60,7 @@ public interface IActor {
     string Name { get; }
 
     /// <summary>Political allegiance</summary>
-    Faction Faction { get; }
+    Factions Faction { get; }
 
     /// <summary>Type flags (Mobile, Settlement, Creature)</summary>
     ActorFlags Flags { get; set; }
@@ -165,16 +165,16 @@ public interface IActor {
     void Left(Encounter encounter);
 }
 
-public class ActorBase(string name, string brief, Faction faction, Inventory supplies, Inventory cargo, Location Location): IActor {
+public class ActorBase(string name, string brief, Factions faction, Inventory supplies, Inventory cargo, Location Location): IActor {
     public string Name { get; set; } = name;
-    public Faction Faction { get; set; } = faction;
+    public Factions Faction { get; set; } = faction;
     public Inventory Supplies { get; } = supplies;
     public Inventory Cargo { get; } = cargo;
     public ActorFlags Flags { get; set; } = ActorFlags.Loading;
     public Location Location { get; set; } = Location;
     public bool HasEncounter => Location.HasEncounter;
     public Encounter Encounter => Location.GetEncounter();
-    public CrawlerRole Role { get; set; } = CrawlerRole.None;
+    public Roles Role { get; set; } = Roles.None;
     public bool Harvested => EndState == EEndState.Looted;
     public virtual string Brief(IActor viewer) => brief;
     public override string ToString() => $"{Name} ({Faction}/{Role})";
@@ -296,8 +296,8 @@ public class ActorBase(string name, string brief, Faction faction, Inventory sup
         Encounter.AddActor(this);
     }
 
-    public EArraySparse<Faction, ActorFaction> FactionRelations { get; } = new();
-    public ActorFaction To(Faction faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
+    public EArraySparse<Factions, ActorFaction> FactionRelations { get; } = new();
+    public ActorFaction To(Factions faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
 
     public event InitializedHandler? ActorInitialized;
     public event HostilityChangedHandler? HostilityChanged;

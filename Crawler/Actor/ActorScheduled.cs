@@ -11,7 +11,7 @@ public record ScheduleEvent(long StartTime, bool Busy, long EndTime, Action? Act
 /// Provides NextEvent scheduling and ConsumeTime functionality.
 /// </summary>
 public class ActorScheduled : ActorBase {
-    public ActorScheduled(string name, string brief, Faction faction, Inventory supplies, Inventory cargo, Location location)
+    public ActorScheduled(string name, string brief, Factions faction, Inventory supplies, Inventory cargo, Location location)
         : base(name, brief, faction, supplies, cargo, location) {
     }
 

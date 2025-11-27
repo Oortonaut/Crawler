@@ -258,10 +258,10 @@ public class PlayerDemandComponent : ActorComponentBase {
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: player only, subject is vulnerable non-player, not hostile, not surrendered
-        if (Owner.Faction != Faction.Player) yield break;
+        if (Owner.Faction != Factions.Player) yield break;
         if (Owner is not Crawler { IsDisarmed: false }) yield break;
         if (subject is not Crawler { IsVulnerable: true }) yield break;
-        if (subject.Faction == Faction.Player) yield break;
+        if (subject.Faction == Factions.Player) yield break;
         if (Owner.To(subject).Hostile) yield break;
         if (subject.To(Owner).Surrendered) yield break;
 

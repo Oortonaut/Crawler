@@ -25,7 +25,7 @@ public class SaveGameData {
 [YamlSerializable]
 public class SavedCrawler {
     public string Name { get; set; } = "";
-    public Faction Faction { get; set; }
+    public Factions Faction { get; set; }
     public Vector2 LocationPos { get; set; }
     public SavedInventory Supplies { get; set; } = new();
     public SavedInventory Cargo { get; set; } = new();
@@ -135,7 +135,7 @@ public class SavedMap {
 
 [YamlSerializable]
 public class SavedFactionData {
-    public Faction Faction { get; set; }
+    public Factions Faction { get; set; }
     public required string Name { get; set; }
     public required Color Color { get; set; }
     public SavedCapital? Capital { get; set; }
@@ -154,7 +154,7 @@ public class SavedSector {
     public int Y { get; set; }
     public TerrainType Terrain { get; set; }
     public float Wealth { get; set; }
-    public Faction ControllingFaction { get; set; } = Faction.Independent;
+    public Factions ControllingFaction { get; set; } = Factions.Independent;
     public Dictionary<Commodity, float> LocalMarkup { get; set; } = new();
     public Dictionary<SegmentKind, float> LocalSegmentRates { get; set; } = new();
     public List<SavedLocation> Locations { get; set; } = new();
@@ -179,7 +179,7 @@ public class SavedLocation {
 public class SavedEncounter {
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
-    public Faction Faction { get; set; }
+    public Factions Faction { get; set; }
     public List<SavedCrawler> Actors { get; set; } = new();
 }
 
@@ -340,7 +340,7 @@ public static class SaveLoadExtensions {
         };
     }
 
-    public static SavedFactionData ToSaveData(this FactionData data, Faction faction) {
+    public static SavedFactionData ToSaveData(this FactionData data, Factions faction) {
         return new SavedFactionData {
             Faction = faction,
             Name = data.Name,

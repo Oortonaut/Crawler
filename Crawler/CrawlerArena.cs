@@ -28,7 +28,7 @@ public class CrawlerArena {
 
         // Create arena location with EncounterType.None to prevent default generation
         arenaLocation = new Location(Rng.Seed(),
-            sector, new System.Numerics.Vector2(0.5f, 0.5f), EncounterType.None, 1000.0f, loc => new Encounter(Rng.Seed(), loc, Faction.Independent));
+            sector, new System.Numerics.Vector2(0.5f, 0.5f), EncounterType.None, 1000.0f, loc => new Encounter(Rng.Seed(), loc, Factions.Independent));
 
         sector.Locations.Add(arenaLocation);
     }
@@ -274,8 +274,8 @@ public class CrawlerArena {
 
     MatchResult RunMatch(CrawlerDesign design1, CrawlerDesign design2, bool design1First = true) {
         // Create crawler instances
-        var crawler1 = CreateInitializedCrawler(design1, design1.Name + " A", Faction.Bandit);
-        var crawler2 = CreateInitializedCrawler(design2, design2.Name + " B", Faction.Player);
+        var crawler1 = CreateInitializedCrawler(design1, design1.Name + " A", Factions.Bandit);
+        var crawler2 = CreateInitializedCrawler(design2, design2.Name + " B", Factions.Player);
 
         // Set up hostility between the crawlers
         crawler1.To(crawler2).Hostile = true;
@@ -341,7 +341,7 @@ public class CrawlerArena {
         return new MatchResult(winner, loser, design1.Name, design2.Name, rounds);
     }
 
-    private Crawler CreateInitializedCrawler(CrawlerDesign design, string name, Faction faction) {
+    private Crawler CreateInitializedCrawler(CrawlerDesign design, string name, Factions faction) {
         var inventory = design.Inventory.Clone();
         var crawler = new Crawler((ulong)(name.GetHashCode() + faction.GetHashCode()), faction, arenaLocation, inventory);
 

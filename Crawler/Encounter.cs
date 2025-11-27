@@ -32,7 +32,7 @@ public sealed class Encounter {
             location.Sector.ControllingFaction :
             location.ChooseRandomFaction()) {
     }
-    public Encounter(ulong seed, Location location, Faction faction) {
+    public Encounter(ulong seed, Location location, Factions faction) {
         this.location = location;
         location.SetEncounter(this);
         var wealth = location.Wealth;
@@ -204,7 +204,7 @@ public sealed class Encounter {
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
     public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(ActorFlags.Settlement));
     public Location Location => location;
-    public Faction Faction { get; }
+    public Factions Faction { get; }
 
     public Crawler GenerateTradeActor(ulong seed) {
         var actorRng = new XorShift(seed);
@@ -212,9 +212,9 @@ public sealed class Encounter {
         int crew = (int)Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var trader = Crawler.NewRandom(actorRng.Seed(), Faction.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
-        trader.Faction = Faction.Independent;
-        trader.Role = CrawlerRole.Trader;
+        var trader = Crawler.NewRandom(actorRng.Seed(), Factions.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
+        trader.Faction = Factions.Independent;
+        trader.Role = Roles.Trader;
 
         // Initialize role-specific components
         trader.InitializeComponents(actorRng.Seed());
@@ -226,10 +226,10 @@ public sealed class Encounter {
         int crew = (int)Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.65f;
         float segmentWealth = wealth * 0.5f;
-        var player = Crawler.NewRandom(seed, Faction.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
+        var player = Crawler.NewRandom(seed, Factions.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
         player.Flags |= ActorFlags.Player;
-        player.Faction = Faction.Player;
-        player.Role = CrawlerRole.Player;
+        player.Faction = Factions.Player;
+        player.Role = Roles.Player;
 
         // Add player-specific components
         var actorRng = new XorShift(seed);
@@ -243,16 +243,16 @@ public sealed class Encounter {
         int crew = (int)Math.Sqrt(wealth) / 3;
         float goodsWealth = wealth * 0.6f;
         float segmentWealth = wealth * 0.5f;
-        var enemy = Crawler.NewRandom(actorRng.Seed(), Faction.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
-        enemy.Faction = Faction.Bandit;
-        enemy.Role = CrawlerRole.Bandit;
+        var enemy = Crawler.NewRandom(actorRng.Seed(), Factions.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
+        enemy.Faction = Factions.Bandit;
+        enemy.Role = Roles.Bandit;
 
         // Initialize role-specific components
         enemy.InitializeComponents(actorRng.Seed());
         return enemy;
     }
 
-    public Crawler GenerateCivilianActor(ulong seed, Faction civilianFaction) {
+    public Crawler GenerateCivilianActor(ulong seed, Factions civilianFaction) {
         using var activity = Scope($"GenerateCivilian {nameof(Encounter)}");
         var actorRng = new XorShift(seed);
         // Similar to Trade but with faction-specific policies
@@ -266,9 +266,9 @@ public sealed class Encounter {
         // Randomly assign a civilian role
         var roleRoll = actorRng.NextSingle();
         civilian.Role = roleRoll switch {
-            < 0.6f => CrawlerRole.Trader,    // 60% traders
-            < 0.8f => CrawlerRole.Traveler,  // 20% travelers
-            _ => CrawlerRole.Customs         // 20% customs officers
+            < 0.6f => Roles.Trader,    // 60% traders
+            < 0.8f => Roles.Traveler,  // 20% travelers
+            _ => Roles.Customs         // 20% customs officers
         };
 
         // Initialize role-specific components
@@ -296,7 +296,7 @@ public sealed class Encounter {
         settlement.Domes = domes;
         settlement.Flags |= ActorFlags.Settlement;
         settlement.Flags &= ~ActorFlags.Mobile;
-        settlement.Role = CrawlerRole.Settlement;
+        settlement.Role = Roles.Settlement;
 
         // Add base components
         settlement.AddComponent(new LifeSupportComponent());
@@ -383,7 +383,7 @@ public sealed class Encounter {
         var Inv = new Inventory();
         Inv.Add(resource, amt);
 
-        var resourceActor = new ActorBase(name, giftDesc, Faction.Independent, Inv, new (), Location);
+        var resourceActor = new ActorBase(name, giftDesc, Factions.Independent, Inv, new (), Location);
         resourceActor.AddComponent(new HarvestComponent(Inv, verb, "H"));
         AddActor(resourceActor);
     }
@@ -465,7 +465,7 @@ public sealed class Encounter {
         var Risked = new Inventory();
         Risked.Add(penaltyType, penaltyAmt);
 
-        var hazardActor = new ActorBase(Name, hazardDesc, Faction.Independent, Promised, new(), Location);
+        var hazardActor = new ActorBase(Name, hazardDesc, Factions.Independent, Promised, new(), Location);
         hazardActor.AddComponent(new HazardComponent(
             Rng.Seed(),
             Risked,
@@ -490,13 +490,13 @@ public sealed class Encounter {
         }
         return this;
     }
-    public Crawler GenerateFactionActor(ulong seed, Faction faction, long arrivalTime, int? lifetime) {
+    public Crawler GenerateFactionActor(ulong seed, Factions faction, long arrivalTime, int? lifetime) {
         Crawler result;
 
         result = faction switch {
-            Faction.Bandit => GenerateBanditActor(seed),
-            Faction.Player => GeneratePlayerActor(seed),
-            Faction.Independent => GenerateTradeActor(seed),
+            Factions.Bandit => GenerateBanditActor(seed),
+            Factions.Player => GeneratePlayerActor(seed),
+            Factions.Independent => GenerateTradeActor(seed),
             _ => GenerateCivilianActor(seed, faction),
         };
         AddActorAt(result, arrivalTime, lifetime);
@@ -534,7 +534,6 @@ public sealed class Encounter {
 
     // Replaced SortedDictionary with PriorityQueue + Lazy Deletion for O(log N) performance
     PriorityQueue<ActorScheduled, long> eventQueue = new();
-    Dictionary<ActorScheduled, long> scheduledTimes = new();
 
     public long EncounterTime { get; set; }
 
@@ -577,9 +576,9 @@ public sealed class Encounter {
         if (actor.NextEvent == null) {
             return;
         }
-        long nextTurn = actor.Time;
+        long nextTurn = actor.NextScheduledTime;
         // Lazy Deletion: If already scheduled later/same, ignore. If earlier, mark old time stale.
-        var scheduledTurn = actor.NextScheduledTime;
+        var scheduledTurn = actor.Encounter_ScheduledTime;
         if (nextTurn >= scheduledTurn) {
             Log.LogTrace($"{Name}: {actor.Name} has already scheduled earlier: turn {nextTurn} scheduled {scheduledTurn}");
             return;
@@ -589,15 +588,14 @@ public sealed class Encounter {
         }
 
         Log.LogTrace($"{Name}: {actor.Name} scheduled for {nextTurn}");
+        actor.Encounter_ScheduledTime = nextTurn;
         eventQueue.Enqueue(actor, nextTurn);
 
         UpdateGlobalSchedule();
     }
 
     void Unschedule(ActorScheduled actor) {
-        if (scheduledTimes.Remove(actor)) {
-            // Removing from scheduledTimes makes the entry in PriorityQueue "stale" (ignored on pop)
-        }
+        actor.Encounter_ScheduledTime = 0;
         UpdateGlobalSchedule();
     }
 

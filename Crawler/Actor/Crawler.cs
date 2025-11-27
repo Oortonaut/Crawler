@@ -92,10 +92,10 @@ public class ActorToActor {
 // license for GameTier.EarlyGame (or higher), while late game commodities like trips and
 // gems require a GameTier.LateGame license.
 public class ActorFaction {
-    public ActorFaction(IActor actor, Faction faction) {
+    public ActorFaction(IActor actor, Factions faction) {
         if (actor.Faction == faction) {
             // Bandits trust their own faction less
-            if (actor is Crawler { Role: CrawlerRole.Bandit }) {
+            if (actor is Crawler { Role: Roles.Bandit }) {
                 ActorStanding = 25;
             } else {
                 ActorStanding = 100;
@@ -104,14 +104,14 @@ public class ActorFaction {
         } else {
             ActorStanding = FactionStanding = 10;
             // Bandits are hostile to everyone not in their faction
-            if (actor is Crawler { Role: CrawlerRole.Bandit } || faction is Faction.Bandit) {
+            if (actor is Crawler { Role: Roles.Bandit } || faction is Factions.Bandit) {
                 ActorStanding = -100;
                 FactionStanding = -100;
             }
         }
         Faction = faction;
     }
-    public Faction Faction { get; }
+    public Factions Faction { get; }
     public GameTier GetLicense(CommodityCategory category) =>
         Faction.IsLegal(category) ? GameTier.Late :
         Faction.IsLicensed(category) ? licenses[category] :
@@ -130,7 +130,7 @@ public class ActorFaction {
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
 public partial class Crawler: ActorScheduled {
-    public static Crawler NewRandom(ulong seed, Faction faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
+    public static Crawler NewRandom(ulong seed, Factions faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
         var rng = new XorShift(seed);
         var crawlerSeed = rng.Seed();
         var invSeed = rng.Seed();
@@ -227,27 +227,27 @@ public partial class Crawler: ActorScheduled {
 
         AddComponent(new LifeSupportComponent());
         AddComponent(new AutoRepairComponent());
-        if (Role is not CrawlerRole.Player) {
+        if (Role is not Roles.Player) {
             AddComponent(new RelationPrunerComponent());
         }
-        if (Role is not CrawlerRole.Settlement) {
+        if (Role is not Roles.Settlement) {
             AddComponent(new RetreatComponent()); // High priority survival
             AddComponent(new SurrenderComponent(rng.Seed(), "S"));
         }
-        if (Role is CrawlerRole.Bandit) {
+        if (Role is Roles.Bandit) {
             AddComponent(new CombatComponentAdvanced(rng.Seed())); // Smart combat targeting
         } else {
             AddComponent(new CombatComponentDefense(rng.Seed())); // Combat capable
         }
 
         switch (Role) {
-        case CrawlerRole.Player:
+        case Roles.Player:
             AddComponent(new AttackComponent("A"));
             AddComponent(new PlayerDemandComponent(rng.Seed(), 0.5f, "X"));
             AddComponent(new EncounterMessengerComponent());
             break;
 
-        case CrawlerRole.Settlement:
+        case Roles.Settlement:
             // Settlements: trade, repair, licensing, contraband enforcement
             AddComponent(new CustomsComponent());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f));
@@ -255,18 +255,18 @@ public partial class Crawler: ActorScheduled {
             AddComponent(new LicenseComponent());
             break;
 
-        case CrawlerRole.Trader:
+        case Roles.Trader:
             // Mobile merchants: primarily trade-focused
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f));
             AddComponent(new CombatComponentDefense(rng.Seed())); // Can defend themselves
             break;
 
-        case CrawlerRole.Customs:
+        case Roles.Customs:
             // Customs officers: contraband scanning and enforcement
             AddComponent(new CustomsComponent());
             break;
 
-        case CrawlerRole.Bandit:
+        case Roles.Bandit:
             // Bandits: extortion, robbery, combat
             AddComponent(new BanditComponent(rng.Seed(), 0.5f)); // Extortion/ultimatums
             // Bandits have higher markup/spread for goods they steal/trade
@@ -275,13 +275,13 @@ public partial class Crawler: ActorScheduled {
             Spread = Tuning.Trade.BanditSpread(gaussian);
             break;
 
-        case CrawlerRole.Traveler:
+        case Roles.Traveler:
             // Travelers: quest givers, general interactions
             // TODO: Add quest-related components when quest system is implemented
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.15f)); // Limited trading
             break;
 
-        case CrawlerRole.None:
+        case Roles.None:
         default:
             // No role-specific components
             break;

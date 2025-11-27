@@ -234,7 +234,7 @@ public class Inventory {
             return Overdraft.Contains(segment, n) == FromInventory.None ? FromInventory.None : FromInventory.Overdraft;
         }
     }
-    public void AddRandomInventory(ulong seed, Location Loc, int crew, float supplyDays, float goodsWealth, float segmentWealth, bool includeCore = false, EArray<SegmentKind, float>? segmentClassWeights = null, Faction faction = Faction.Player) {
+    public void AddRandomInventory(ulong seed, Location Loc, int crew, float supplyDays, float goodsWealth, float segmentWealth, bool includeCore = false, EArray<SegmentKind, float>? segmentClassWeights = null, Factions faction = Factions.Player) {
         var Rng = new XorShift(seed);
         var crewSeed = Rng.Seed();
         var goodsSeed = Rng.Seed();
@@ -270,7 +270,7 @@ public class Inventory {
         this[Commodity.Morale] += startMorale * crew;
         this[Commodity.Fuel] += initialFuel + mileageFuel;
     }
-    public void AddCargo(ulong seed, Location Loc, float Wealth, Faction faction = Faction.Player) {
+    public void AddCargo(ulong seed, Location Loc, float Wealth, Factions faction = Factions.Player) {
         var rng = new XorShift(seed);
         var gaussian = new GaussianSampler(rng.Seed());
         // Get faction-specific commodity weights from Tuning

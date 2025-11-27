@@ -2,7 +2,7 @@
 
 namespace Crawler;
 
-public enum CrawlerRole {
+public enum Roles {
     None,        // No specific role/generic crawler
     Player,      // Player
     Settlement,  // Static settlement actor
@@ -12,7 +12,7 @@ public enum CrawlerRole {
     Traveler,    // Dynamic quest giver/wanderer
 }
 
-public enum Faction {
+public enum Factions {
     Player, // Player-controlled faction
     Bandit, // Criminal faction (allegiance, not behavior - use CrawlerRole for behavior)
     Independent, // Neutral/unaffiliated faction (allegiance, not behavior - use CrawlerRole for behavior)
@@ -48,38 +48,38 @@ public enum Faction {
 public class FactionToFaction {
     public ActorToActor DefaultCrawlerRelation { get; set; } = new();
 
-    public static FactionToFaction Get(Faction from, Faction to) => factionToFaction.GetOrAddNew((from, to));
+    public static FactionToFaction Get(Factions from, Factions to) => factionToFaction.GetOrAddNew((from, to));
 
-    static Dictionary<(Faction, Faction), FactionToFaction> factionToFaction = new();
+    static Dictionary<(Factions, Factions), FactionToFaction> factionToFaction = new();
 }
 public class FactionAndFaction {
-    public static FactionAndFaction Get(Faction a, Faction b) {
+    public static FactionAndFaction Get(Factions a, Factions b) {
         if (a > b) {
             (a, b) = (b, a);
         }
         return factionAndFaction.GetOrAddNew((a, b));
     }
-    static Dictionary<(Faction, Faction), FactionAndFaction> factionAndFaction = new();
+    static Dictionary<(Factions, Factions), FactionAndFaction> factionAndFaction = new();
 }
 public static partial class FactionEx {
-    public static FactionToFaction To(this Faction from, Faction to) => FactionToFaction.Get(from, to);
-    public static FactionAndFaction And(this Faction a, Faction b) => FactionAndFaction.Get(a, b);
-    public static bool IsCivilian(this Faction faction) =>
-        faction >= Faction.Civilian0 && faction <= Faction.Civilian19;
+    public static FactionToFaction To(this Factions from, Factions to) => FactionToFaction.Get(from, to);
+    public static FactionAndFaction And(this Factions a, Factions b) => FactionAndFaction.Get(a, b);
+    public static bool IsCivilian(this Factions faction) =>
+        faction >= Factions.Civilian0 && faction <= Factions.Civilian19;
 
-    public static int CivilianIndex(this Faction faction) =>
-        faction.IsCivilian() ? (int)faction - (int)Faction.Civilian0 : -1;
+    public static int CivilianIndex(this Factions faction) =>
+        faction.IsCivilian() ? (int)faction - (int)Factions.Civilian0 : -1;
 
-    public static Faction FromCivilianIndex(int index) =>
-        index >= 0 && index <= 19 ? (Faction)((int)Faction.Civilian0 + index) : Faction.Independent;
+    public static Factions FromCivilianIndex(int index) =>
+        index >= 0 && index <= 19 ? (Factions)((int)Factions.Civilian0 + index) : Factions.Independent;
 
-    public static Color GetColor(this Faction faction) =>
+    public static Color GetColor(this Factions faction) =>
         _factionColors[faction];
-    public static string Name(this Faction faction) => faction.GetData()?.Name ?? faction.ToString();
-    public static Crawler? Capital(this Faction faction) => faction.GetData()?.Capital?.Settlement;
-    public static FactionData? GetData(this Faction faction) => Game.Instance?.Map.FactionData[faction];
+    public static string Name(this Factions faction) => faction.GetData()?.Name ?? faction.ToString();
+    public static Crawler? Capital(this Factions faction) => faction.GetData()?.Capital?.Settlement;
+    public static FactionData? GetData(this Factions faction) => Game.Instance?.Map.FactionData[faction];
 
-    public static EArray<Faction, Color> _factionColors = [
+    public static EArray<Factions, Color> _factionColors = [
         Color.Red,
         Color.Blue,
         Color.White,

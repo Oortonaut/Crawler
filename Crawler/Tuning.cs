@@ -30,7 +30,7 @@ public static partial class Tuning {
         public static float CrawlerDensity = 0.08f;
         public static EArray<EncounterType, float> HourlyArrivalsPerPop = [0, 0.125f, 0.4f, 0.08f, 0.04f];
         // Faction spawn weights by terrain type: Player, Bandit, Trade
-        public static EArray<TerrainType, EArray<Faction, float>> crawlerSpawnWeight = [
+        public static EArray<TerrainType, EArray<Factions, float>> crawlerSpawnWeight = [
             [0, 2, 12],    // Flat - more trade
             [0, 4, 8],    // Rough - balanced
             [0, 6, 6],    // Broken - equal mix
@@ -96,7 +96,7 @@ public static partial class Tuning {
     // Faction trade policies - defines how each faction treats commodity categories and segment kinds
     public static class FactionPolicies {
         // Policies are stored per faction
-        public static EArray<Faction, Policy> Policies = new();
+        public static EArray<Factions, Policy> Policies = new();
 
         // Initialize default policies for core factions
         static FactionPolicies() {
@@ -105,10 +105,10 @@ public static partial class Tuning {
 
         static void InitializeCoreFactionPolicies() {
             // Player - permissive for everything
-            Policies[Faction.Player] = CreateDefaultPolicy(TradePolicy.Legal);
+            Policies[Factions.Player] = CreateDefaultPolicy(TradePolicy.Legal);
 
             // Bandit - sell everything (including contraband)
-            Policies[Faction.Bandit] = CreateDefaultPolicy(TradePolicy.Legal);
+            Policies[Factions.Bandit] = CreateDefaultPolicy(TradePolicy.Legal);
 
             // Independent - legitimate merchants, restrict dangerous goods
             var tradeCommodityPolicy = CreateCommodityDefaultPolicy(TradePolicy.Legal);
@@ -118,7 +118,7 @@ public static partial class Tuning {
             var tradeSegmentPolicy = CreateSegmentDefaultPolicy(TradePolicy.Legal);
             tradeSegmentPolicy[SegmentKind.Offense] = TradePolicy.Taxed;
 
-            Policies[Faction.Independent] = new Policy(tradeCommodityPolicy, tradeSegmentPolicy, "Independent");
+            Policies[Factions.Independent] = new Policy(tradeCommodityPolicy, tradeSegmentPolicy, "Independent");
         }
 
         public static Policy CreateDefaultPolicy(TradePolicy defaultPolicy) {
@@ -141,16 +141,16 @@ public static partial class Tuning {
             return policy;
         }
     }
-    public static bool IsLegal(this Faction faction, CommodityCategory category) => faction.GetPolicy(category) is not (TradePolicy.Controlled or TradePolicy.Restricted or TradePolicy.Prohibited);
-    public static bool IsLicensed(this Faction faction, CommodityCategory category) => faction.GetPolicy(category) is (TradePolicy.Controlled or TradePolicy.Restricted);
-    public static bool IsIllegal(this Faction faction, CommodityCategory category) => faction.GetPolicy(category) is TradePolicy.Prohibited;
-    public static TradePolicy GetPolicy(this Faction faction, Commodity commodity) => faction.GetPolicy(commodity.Category());
-    public static TradePolicy GetPolicy(this Faction faction, CommodityCategory category) => FactionPolicies.Policies[faction].Commodities[category];
-    public static TradePolicy GetPolicy(this Faction faction, SegmentKind kind) => FactionPolicies.Policies[faction].Segments[kind];
-    public static Policy GetPolicy(this Faction faction) => FactionPolicies.Policies[faction];
-    public static void SetPolicy(this Faction faction, CommodityCategory category, TradePolicy policy) => FactionPolicies.Policies[faction].Commodities[category] = policy;
-    public static void SetPolicy(this Faction faction, SegmentKind kind, TradePolicy policy) => FactionPolicies.Policies[faction].Segments[kind] = policy;
-    public static void SetPolicy(this Faction faction, Policy policy) => FactionPolicies.Policies[faction] = policy;
+    public static bool IsLegal(this Factions faction, CommodityCategory category) => faction.GetPolicy(category) is not (TradePolicy.Controlled or TradePolicy.Restricted or TradePolicy.Prohibited);
+    public static bool IsLicensed(this Factions faction, CommodityCategory category) => faction.GetPolicy(category) is (TradePolicy.Controlled or TradePolicy.Restricted);
+    public static bool IsIllegal(this Factions faction, CommodityCategory category) => faction.GetPolicy(category) is TradePolicy.Prohibited;
+    public static TradePolicy GetPolicy(this Factions faction, Commodity commodity) => faction.GetPolicy(commodity.Category());
+    public static TradePolicy GetPolicy(this Factions faction, CommodityCategory category) => FactionPolicies.Policies[faction].Commodities[category];
+    public static TradePolicy GetPolicy(this Factions faction, SegmentKind kind) => FactionPolicies.Policies[faction].Segments[kind];
+    public static Policy GetPolicy(this Factions faction) => FactionPolicies.Policies[faction];
+    public static void SetPolicy(this Factions faction, CommodityCategory category, TradePolicy policy) => FactionPolicies.Policies[faction].Commodities[category] = policy;
+    public static void SetPolicy(this Factions faction, SegmentKind kind, TradePolicy policy) => FactionPolicies.Policies[faction].Segments[kind] = policy;
+    public static void SetPolicy(this Factions faction, Policy policy) => FactionPolicies.Policies[faction] = policy;
     public static class Crawler {
         public static float MoraleAdjCrewLoss = 0.5f;
         public static float StandbyFraction = 0.007f;
@@ -187,7 +187,7 @@ public static partial class Tuning {
         ];
 
         // Commodity weights by faction for crawler inventory generation
-        public static EArray<Faction, EArray<Commodity, float>> CommodityWeights = [
+        public static EArray<Factions, EArray<Commodity, float>> CommodityWeights = [
             // Player - balanced loadout
             [
                 1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials

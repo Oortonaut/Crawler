@@ -482,7 +482,7 @@ public class LicenseComponent : ActorComponentBase {
     public record LicenseInteraction(
         IActor Attacker,
         IActor Subject,
-        Faction LicenseFaction,
+        Factions LicenseFaction,
         CommodityCategory Category,
         GameTier Tier,
         float Price,

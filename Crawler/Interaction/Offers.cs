@@ -62,7 +62,7 @@ public record RepairOffer(
 }
 
 public record LicenseOffer(
-    Faction AgentFaction,
+    Factions AgentFaction,
     CommodityCategory Category,
     GameTier Tier,
     float price): IOffer {

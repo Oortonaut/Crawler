@@ -5,11 +5,11 @@ public partial class Crawler {
         internal ulong _seed;
         internal string _name = "";
         internal string _brief = "";
-        internal Faction _faction = Faction.None;
+        internal Factions _faction = Factions.Independent;
         internal Location _location = null!;
         internal Inventory _supplies = new();
         internal Inventory _cargo = new();
-        internal CrawlerRole _role = CrawlerRole.None;
+        internal Roles _role = Roles.None;
         internal float? _markup;
         internal float? _spread;
         internal bool _initializeComponents = true;
@@ -31,7 +31,7 @@ public partial class Crawler {
             return this;
         }
 
-        public Builder WithFaction(Faction faction) {
+        public Builder WithFaction(Factions faction) {
             _faction = faction;
             return this;
         }
@@ -51,7 +51,7 @@ public partial class Crawler {
             return this;
         }
 
-        public Builder WithRole(CrawlerRole role) {
+        public Builder WithRole(Roles role) {
             _role = role;
             return this;
         }
@@ -80,12 +80,12 @@ public partial class Crawler {
             var crawler = new Crawler(this);
 
             // Initialize components based on role if requested
-            if (_initializeComponents && _role != CrawlerRole.None) {
+            if (_initializeComponents && _role != Roles.None) {
                 var rng = new XorShift(_seed);
                 crawler.InitializeComponents(rng.Seed());
 
                 // Apply role-specific markup/spread for bandits if not explicitly set
-                if (_role == CrawlerRole.Bandit && !_markup.HasValue && !_spread.HasValue) {
+                if (_role == Roles.Bandit && !_markup.HasValue && !_spread.HasValue) {
                     var gaussian = new GaussianSampler(rng.Seed());
                     crawler.Markup = Tuning.Trade.BanditMarkup(gaussian);
                     crawler.Spread = Tuning.Trade.BanditSpread(gaussian);
