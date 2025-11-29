@@ -239,16 +239,8 @@ public class Inventory {
             return Overdraft.Contains(segment, n) == FromInventory.None ? FromInventory.None : FromInventory.Overdraft;
         }
     }
-    public void AddRandomInventory(ulong seed, Location Loc, int crew, float supplyDays, float goodsWealth, float segmentWealth, bool includeCore = false, EArray<SegmentKind, float>? segmentClassWeights = null, Factions faction = Factions.Player) {
-        var Rng = new XorShift(seed);
-        var crewSeed = Rng.Seed();
-        var goodsSeed = Rng.Seed();
-        var segmentSeed = Rng.Seed();
-        AddSegments(segmentSeed, Loc, segmentWealth, includeCore, segmentClassWeights);
-        AddEssentials(crewSeed, Loc, crew, supplyDays);
-        AddCargo(goodsSeed, Loc, goodsWealth, faction);
-    }
-    public void AddEssentials(ulong seed, Location location, int crew, float supplyDays = 10) {
+    public static void RandomEssentials(ulong seed, Location location, int crew, float supplyDays = 10) => new Inventory().AddEssentials(seed, location, crew, supplyDays);
+    public Inventory AddEssentials(ulong seed, Location location, int crew, float supplyDays = 10) {
         var Gaussians = new GaussianSampler(seed);
         float supplyHours = supplyDays * 24;
         float supplyCrewHours = supplyHours * crew;
@@ -274,8 +266,11 @@ public class Inventory {
         this[Commodity.Air] += air + airLeakage;
         this[Commodity.Morale] += startMorale * crew;
         this[Commodity.Fuel] += initialFuel + mileageFuel;
+
+        return this;
     }
-    public void AddCargo(ulong seed, Location Loc, float Wealth, Factions faction = Factions.Player) {
+    public static Inventory RandomCargo(ulong seed, Location Loc, float Wealth, Factions faction = Factions.Player) => new Inventory().AddCargo(seed, Loc, Wealth, faction);
+    public Inventory AddCargo(ulong seed, Location Loc, float Wealth, Factions faction = Factions.Player) {
         var rng = new XorShift(seed);
         var gaussian = new GaussianSampler(rng.Seed());
         // Get faction-specific commodity weights from Tuning
@@ -298,8 +293,12 @@ public class Inventory {
             this[c] += QuantityBought(itemSpend, c, Loc);
             Wealth -= itemSpend;
         }
+        return this;
     }
-    public void AddSegments(ulong seed, Location location, float Wealth, bool includeCore = true, EArray<SegmentKind, float>? baseWeights = null) {
+    public static List<Segment> GenerateCoreSegments(ulong seed, Location location, float Wealth, EArray<SegmentKind, float>? baseWeights = null) => GenerateSegments(seed, location, Wealth, true, baseWeights);
+    public static List<Segment> GenerateCargoSegments(ulong seed, Location location, float Wealth, EArray<SegmentKind, float>? baseWeights = null) => GenerateSegments(seed, location, Wealth, false, baseWeights);
+    static List<Segment> GenerateSegments(ulong seed, Location location, float Wealth, bool includeCore = true, EArray<SegmentKind, float>? baseWeights = null) {
+        var segments = new List<Segment>();
         var rng = new XorShift(seed);
         EArray<SegmentKind, float> BaseWeights = baseWeights ?? [1, 1, 1, 1]; // Power, Traction, Weapons, Defense
         EArray<SegmentKind, float> Weights;
@@ -352,17 +351,25 @@ public class Inventory {
                 _add(rng.ChooseRandom(SegmentEx.SegmentClassLookup[segmentClass]));
             }
         }
-        //////////////////////////////
-        return;
+        return segments;
 
         //////////////////////////////
         void _add(SegmentDef? def) {
             if (def != null) {
                 weightedWealth[def.SegmentKind] -= def.Cost;
-                Add(def.NewSegment(seed));
+                var segment = def.NewSegment(rng.Seed());
+                segment.Packaged = !includeCore;
+                segments.Add(segment);
             }
         }
     }
+
+    public void AddSegments(IEnumerable<Segment> segments) {
+        foreach (var segment in segments) {
+            Add(segment);
+        }
+    }
+    public void AddSegments(ulong seed, Location location, float Wealth, EArray<SegmentKind, float>? baseWeights = null) => AddSegments(GenerateCargoSegments(seed, location, Wealth, baseWeights));
 
     public Inventory SetOverdraft(Inventory od) {
         Overdraft = od;

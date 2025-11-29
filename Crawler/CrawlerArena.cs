@@ -378,7 +378,7 @@ public class CrawlerArena {
             .WithSupplies(inventory)
             .WithName(name)
             .WithComponentInitialization(false)
-            .AddSegments(workingSegments)
+            .WithSegments(workingSegments)
             .Build();
 
         // Assign the crawler as owner to all segments

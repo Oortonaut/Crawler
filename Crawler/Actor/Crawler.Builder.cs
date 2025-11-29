@@ -86,7 +86,7 @@ public partial class Crawler {
             return this;
         }
 
-        public Builder AddSegments(IEnumerable<Segment> segments) {
+        public Builder WithSegments(IEnumerable<Segment> segments) {
             _workingSegments.AddRange(segments);
             return this;
         }

@@ -162,21 +162,22 @@ public partial class Crawler: ActorScheduled {
         var rng = new XorShift(seed);
         var crawlerSeed = rng.Seed();
         var invSeed = rng.Seed();
-        var newInv = new Inventory();
-        newInv.AddRandomInventory(invSeed, here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
+        var segmentSeed = rng.Seed();
 
-        // Extract working segments from inventory and add them to builder
-        var workingSegments = newInv.Segments.Where(s => !s.IsPackaged).ToList();
-        foreach (var segment in workingSegments) {
-            newInv.Segments.Remove(segment);
-        }
+        var workingSegments = Inventory.GenerateCoreSegments(segmentSeed, here, segmentWealth, segmentClassWeights);
+
+        var newInv = new Inventory();
+        newInv.AddEssentials(crawlerSeed + 1, here, crew, supplyDays);
+        newInv.AddCargo(crawlerSeed + 2, here, goodsWealth, faction);
+        var cargoSegments = Inventory.GenerateCargoSegments(crawlerSeed + 3, here, goodsWealth, null);
+        newInv.AddSegments(cargoSegments);
 
         var crawler = new Builder()
             .WithSeed(crawlerSeed)
             .WithFaction(faction)
             .WithLocation(here)
             .WithSupplies(newInv)
-            .AddSegments(workingSegments)
+            .WithSegments(workingSegments)
             .Build();
 
         return crawler;
