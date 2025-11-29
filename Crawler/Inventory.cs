@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System.Diagnostics;
+using System.Linq;
 
 namespace Crawler;
 
@@ -77,7 +78,11 @@ public class Inventory {
             }
         }
     }
-    public void Add(Segment s) => Segments.Add(s);
+    public void Add(Segment s) {
+        // Segments in inventory storage should be packaged
+        Debug.Assert(s.IsPackaged, "Segments added to Inventory should be packaged");
+        Segments.Add(s);
+    }
     public void Remove(Segment s) {
         if (Segments.Contains(s)) {
             Segments.Remove(s);
@@ -364,4 +369,33 @@ public class Inventory {
         return this;
     }
     public IEnumerable<(Commodity, float)> Pairs => _commodities.Pairs();
+
+    // Data structure for serialization
+    public record class Data {
+        public Dictionary<Commodity, float> Commodities { get; set; } = new();
+        public List<Segment.Data> Segments { get; set; } = new();
+    }
+
+    public Data ToData() {
+        return new Data {
+            Commodities = _commodities.Pairs().ToDictionary(kv => kv.Key, kv => kv.Value),
+            Segments = Segments.Select(s => s.ToData()).ToList()
+        };
+    }
+
+    public void FromData(Data data) {
+        _commodities.Initialize(0);
+        foreach (var (commodity, amount) in data.Commodities) {
+            _commodities[commodity] = amount;
+        }
+        Segments.Clear();
+        foreach (var segmentData in data.Segments) {
+            // Reconstruct segment from data
+            if (SegmentEx.NameLookup.TryGetValue(segmentData.DefName, out var segmentDef)) {
+                var segment = segmentDef.NewSegment(segmentData.Seed);
+                segment.FromData(segmentData);
+                Segments.Add(segment);
+            }
+        }
+    }
 };

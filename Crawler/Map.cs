@@ -117,6 +117,21 @@ public record Location {
 
 public class LocationActor {
     public bool Visited = false;
+
+    // Data structure for serialization
+    public record class Data {
+        public bool Visited { get; set; }
+    }
+
+    public Data ToData() {
+        return new Data {
+            Visited = this.Visited
+        };
+    }
+
+    public void FromData(Data data) {
+        this.Visited = data.Visited;
+    }
 }
 
 public record FactionData(string Name, Color Color, Capital? Capital);

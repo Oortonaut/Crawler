@@ -202,30 +202,39 @@ public static class SaveLoadExtensions {
     }
 
     public static SavedCrawler ToSaveData(this Crawler crawler) {
+        // Use the new Data structure
+        var data = (Crawler.Data)crawler.ToData();
+
         var tradeComponent = crawler.Components.OfType<TradeOfferComponent>().FirstOrDefault();
         return new SavedCrawler {
-            Name = crawler.Name,
-            Faction = crawler.Faction,
-            LocationPos = crawler.Location.Position,
-            Supplies = crawler.Supplies.ToSaveData(),
-            Cargo = crawler.Cargo.ToSaveData(),
+            Name = data.Init.Name,
+            Faction = data.Init.Faction,
+            LocationPos = data.Init.Location.Position,
+            Supplies = data.Init.Supplies.ToSaveData(),
+            Cargo = data.Init.Cargo.ToSaveData(),
             Markup = tradeComponent?.Markup ?? 1.0f,
             Spread = tradeComponent?.Spread ?? 1.0f,
-            Relations = crawler.GetRelations().ToDictionary(
-                kvp => kvp.Key.Name,
-                kvp => kvp.Value.ToSaveData()
+            Relations = data.ActorRelations.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new SavedActorRelation {
+                    Hostile = kvp.Value.Flags.HasFlag(ActorToActor.EFlags.Hostile),
+                    Surrendered = kvp.Value.Flags.HasFlag(ActorToActor.EFlags.Surrendered),
+                    DamageCreated = kvp.Value.DamageCreated,
+                    DamageInflicted = kvp.Value.DamageInflicted,
+                    DamageTaken = kvp.Value.DamageTaken
+                }
             ),
-            VisitedLocations = crawler.GetVisitedLocations().ToDictionary(
-                kvp => $"{kvp.Key.Position.X},{kvp.Key.Position.Y}",
-                kvp => kvp.Value.ToSaveData()
+            VisitedLocations = data.LocationRelations.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new SavedActorLocation { Visited = kvp.Value.Visited }
             ),
-            EvilPoints = crawler.EvilPoints,
-            EndState = crawler.EndState,
-            EndMessage = crawler.EndMessage,
-            RngState = crawler.GetRngState(),
-            GaussianRngState = crawler.GetGaussianRngState(),
-            GaussianPrimed = crawler.GetGaussianPrimed(),
-            GaussianZSin = crawler.GetGaussianZSin()
+            EvilPoints = data.EvilPoints,
+            EndState = data.EndState,
+            EndMessage = data.EndMessage,
+            RngState = data.Rng.State,
+            GaussianRngState = data.Gaussian.Rng.State,
+            GaussianPrimed = data.Gaussian.Primed,
+            GaussianZSin = data.Gaussian.ZSin
         };
     }
 
@@ -518,32 +527,65 @@ public static class SaveLoadExtensions {
 
     public static Crawler ToGameCrawler(this SavedCrawler savedCrawler, Map map) {
         var location = map.FindLocationByPosition(savedCrawler.LocationPos);
-        var inventory = savedCrawler.Supplies.ToGameInventory();
+        var supplies = savedCrawler.Supplies.ToGameInventory();
+        var cargo = savedCrawler.Cargo.ToGameInventory();
 
-        // Use a temporary seed for construction, will be replaced by saved RNG state
-        var crawler = new Crawler.Builder()
-            .WithSeed(0x123456789ABCDEF0UL)
-            .WithFaction(savedCrawler.Faction)
-            .WithLocation(location)
-            .WithSupplies(inventory)
-            .WithName(savedCrawler.Name)
-            .WithComponentInitialization(false)
-            .Build();
+        // Create Init structure
+        var init = new Crawler.Init {
+            Seed = savedCrawler.RngState, // Use saved RNG state as seed
+            Name = savedCrawler.Name,
+            Brief = "",
+            Faction = savedCrawler.Faction,
+            Location = location,
+            Supplies = supplies,
+            Cargo = cargo,
+            Role = Roles.None, // TODO: Save/restore role
+            InitializeComponents = false,
+            WorkingSegments = new List<Segment>() // Will be restored from segments in supplies
+        };
 
-        crawler.EvilPoints = savedCrawler.EvilPoints;
-        crawler.EndState = savedCrawler.EndState;
-        crawler.EndMessage = savedCrawler.EndMessage;
+        // Create Data structure
+        var actorRelations = savedCrawler.Relations.ToDictionary(
+            kvp => kvp.Key,
+            kvp => new ActorToActor.Data {
+                Flags = (kvp.Value.Hostile ? ActorToActor.EFlags.Hostile : 0) |
+                        (kvp.Value.Surrendered ? ActorToActor.EFlags.Surrendered : 0),
+                DamageCreated = kvp.Value.DamageCreated,
+                DamageInflicted = kvp.Value.DamageInflicted,
+                DamageTaken = kvp.Value.DamageTaken,
+                Ultimatum = null
+            }
+        );
 
-        // Restore RNG state
-        crawler.SetRngState(savedCrawler.RngState);
-        crawler.SetGaussianRngState(savedCrawler.GaussianRngState);
-        crawler.SetGaussianPrimed(savedCrawler.GaussianPrimed);
-        crawler.SetGaussianZSin(savedCrawler.GaussianZSin);
+        var locationRelations = savedCrawler.VisitedLocations.ToDictionary(
+            kvp => kvp.Key,
+            kvp => new LocationActor.Data {
+                Visited = kvp.Value.Visited
+            }
+        );
 
-        // Restore trade inventory
-        var tradeInventory = savedCrawler.Cargo.ToGameInventory();
-        crawler.Cargo.Clear();
-        crawler.Cargo.Add(tradeInventory);
+        var data = new Crawler.Data {
+            Init = init,
+            Rng = new XorShift.Data { State = savedCrawler.RngState },
+            Gaussian = new GaussianSampler.Data {
+                Rng = new XorShift.Data { State = savedCrawler.GaussianRngState },
+                Primed = savedCrawler.GaussianPrimed,
+                ZSin = savedCrawler.GaussianZSin
+            },
+            Time = 0, // TODO: Save/restore time
+            LastTime = 0,
+            EndState = savedCrawler.EndState,
+            EndMessage = savedCrawler.EndMessage,
+            ActorRelations = actorRelations,
+            LocationRelations = locationRelations,
+            NextEvent = null,
+            Encounter_ScheduledTime = 0,
+            WorkingSegments = new List<Segment.Data>(), // TODO: Extract from segments
+            EvilPoints = savedCrawler.EvilPoints
+        };
+
+        // Create crawler using Init + Data constructor
+        var crawler = new Crawler(init, data);
 
         // Restore markup/spread to TradeOfferComponent if it exists
         var tradeComponent = crawler.Components.OfType<TradeOfferComponent>().FirstOrDefault();
@@ -552,22 +594,8 @@ public static class SaveLoadExtensions {
             tradeComponent.Spread = savedCrawler.Spread;
         }
 
-        // Restore visited locations
-        var visitedLocations = new Dictionary<Location, LocationActor>();
-        foreach (var kvp in savedCrawler.VisitedLocations) {
-            var locParts = kvp.Key.Split(',');
-            if (locParts.Length == 2 &&
-                float.TryParse(locParts[0], out float x) &&
-                float.TryParse(locParts[1], out float y)) {
-                var loc = map.FindLocationByPosition(new System.Numerics.Vector2(x, y));
-                visitedLocations[loc] = new LocationActor {
-                    Visited = kvp.Value.Visited,
-                };
-            }
-        }
-        crawler.SetVisitedLocations(visitedLocations);
-
-        // Relations are restored in a second pass after all actors are loaded (see ToGameMap)
+        // Call Begin to initialize
+        crawler.Begin();
 
         return crawler;
     }
@@ -653,25 +681,21 @@ public static class SaveLoadExtensions {
     }
 
     public static void RestoreRelationsTo(this SavedCrawler savedCrawler, Crawler crawler, Dictionary<string, IActor> actorLookup) {
-        var relations = new Dictionary<IActor, ActorToActor>();
-
-        foreach (var (actorName, savedRelation) in savedCrawler.Relations) {
-            if (actorLookup.TryGetValue(actorName, out var otherActor)) {
-                var relation = new ActorToActor {
-                    Hostile = savedRelation.Hostile,
-                    Surrendered = savedRelation.Surrendered,
-                    DamageCreated = savedRelation.DamageCreated,
-                    DamageInflicted = savedRelation.DamageInflicted,
-                    DamageTaken = savedRelation.DamageTaken
-                };
-
-                relations[otherActor] = relation;
+        // Convert SavedCrawler relations to ActorToActor.Data
+        var actorRelations = savedCrawler.Relations.ToDictionary(
+            kvp => kvp.Key,
+            kvp => new ActorToActor.Data {
+                Flags = (kvp.Value.Hostile ? ActorToActor.EFlags.Hostile : 0) |
+                        (kvp.Value.Surrendered ? ActorToActor.EFlags.Surrendered : 0),
+                DamageCreated = kvp.Value.DamageCreated,
+                DamageInflicted = kvp.Value.DamageInflicted,
+                DamageTaken = kvp.Value.DamageTaken,
+                Ultimatum = null
             }
-        }
+        );
 
-        if (relations.Count > 0) {
-            crawler.SetRelations(relations);
-        }
+        // Use the ActorBase helper method to restore relations
+        crawler.RestoreActorRelations(actorRelations, actorLookup);
     }
 
 }

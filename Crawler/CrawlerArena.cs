@@ -364,6 +364,13 @@ public class CrawlerArena {
 
     private Crawler CreateInitializedCrawler(CrawlerDesign design, string name, Factions faction) {
         var inventory = design.Inventory.Clone();
+
+        // Extract working segments from inventory and add them to builder
+        var workingSegments = inventory.Segments.Where(s => !s.IsPackaged).ToList();
+        foreach (var segment in workingSegments) {
+            inventory.Segments.Remove(segment);
+        }
+
         var crawler = new Crawler.Builder()
             .WithSeed((ulong)(name.GetHashCode() + faction.GetHashCode()))
             .WithFaction(faction)
@@ -371,10 +378,11 @@ public class CrawlerArena {
             .WithSupplies(inventory)
             .WithName(name)
             .WithComponentInitialization(false)
+            .AddSegments(workingSegments)
             .Build();
 
         // Assign the crawler as owner to all segments
-        foreach (var segment in crawler.Supplies.Segments) {
+        foreach (var segment in crawler.Segments) {
             segment.Owner = crawler;
         }
 

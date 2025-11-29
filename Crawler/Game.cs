@@ -625,9 +625,7 @@ public class Game {
     }
 
     IEnumerable<MenuItem> TradeInventoryMenuItems(ShowArg showOption = ShowArg.Show) {
-        // Show packaged segments in supplies that can be moved to cargo
-        var packagedSegments = Player.Supplies.Segments.Where(s => s.IsPackaged).ToList();
-
+        // Commodities
         foreach (var pair in Player.Supplies.Pairs) {
             var commodity = pair.Item1;
             int i = ( int ) commodity;
@@ -639,20 +637,30 @@ public class Game {
             if (amt2 > 0) {
                 yield return new ActionMenuItem($"PC{i + 1}S", $"{commodity} to Supplies", args => MoveFromCargo(commodity, args), EnableArg.Enabled, showOption);
             }
-
         }
 
-        for (int i = 0; i < packagedSegments.Count; i++) {
-            var segment = packagedSegments[i];
-            yield return new ActionMenuItem($"PT{i + 1}C", $"{segment.StateName} to Cargo", _ => MoveToCargo(segment), EnableArg.Enabled, showOption);
+        // Working segments that can be packaged
+        var workingSegments = Player.Segments.ToList();
+        for (int i = 0; i < workingSegments.Count; i++) {
+            var segment = workingSegments[i];
+            yield return new ActionMenuItem($"PW{i + 1}S", $"Package {segment.StateName} to Supplies", _ => PackageToSupplies(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PW{i + 1}C", $"Package {segment.StateName} to Cargo", _ => PackageToCargo(segment), EnableArg.Enabled, showOption);
         }
 
-        // Show segments in cargo that can be moved back to supplies
-        var tradeSegments = Player.Cargo.Segments.ToList();
-        for (int i = 0; i < tradeSegments.Count; i++) {
-            var segment = tradeSegments[i];
-            int index = i;
-            yield return new ActionMenuItem($"PT{i + 1}S", $"{segment.StateName} to Supplies", _ => MoveFromCargo(segment), EnableArg.Enabled, showOption);
+        // Packaged segments in supplies (all should be packaged now)
+        var suppliesSegments = Player.Supplies.Segments.ToList();
+        for (int i = 0; i < suppliesSegments.Count; i++) {
+            var segment = suppliesSegments[i];
+            yield return new ActionMenuItem($"PS{i + 1}I", $"Install {segment.StateName}", _ => InstallSegment(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PS{i + 1}C", $"{segment.StateName} to Cargo", _ => MoveToCargo(segment), EnableArg.Enabled, showOption);
+        }
+
+        // Packaged segments in cargo that can be moved or installed
+        var cargoSegments = Player.Cargo.Segments.ToList();
+        for (int i = 0; i < cargoSegments.Count; i++) {
+            var segment = cargoSegments[i];
+            yield return new ActionMenuItem($"PC{i + 1}I", $"Install {segment.StateName}", _ => InstallSegment(segment), EnableArg.Enabled, showOption);
+            yield return new ActionMenuItem($"PC{i + 1}S", $"{segment.StateName} to Supplies", _ => MoveFromCargo(segment), EnableArg.Enabled, showOption);
         }
     }
 
@@ -706,6 +714,24 @@ public class Game {
         Player.Message($"{amount} {commodity} moved to cargo");
         int time = (int)(commodity.Mass() * amount / 1200);
         return Math.Max(time, 1);
+    }
+
+    int InstallSegment(Segment segment) {
+        Player.InstallSegment(segment);
+        Player.Message($"{segment.Name} installed");
+        return 1800; // Installation takes time
+    }
+
+    int PackageToSupplies(Segment segment) {
+        Player.PackageToSupplies(segment);
+        Player.Message($"{segment.Name} packaged to supplies");
+        return 1800; // Packaging takes time
+    }
+
+    int PackageToCargo(Segment segment) {
+        Player.PackageToCargo(segment);
+        Player.Message($"{segment.Name} packaged to cargo");
+        return 1800; // Packaging takes time
     }
 
     int Save() {

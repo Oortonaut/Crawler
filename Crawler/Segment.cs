@@ -215,6 +215,31 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         target.Packaged = this.Packaged;
         target.Activated = this.Activated;
     }
+
+    // Data structure for serialization
+    public record class Data {
+        public ulong Seed { get; set; }
+        public string DefName { get; set; } = "";
+        public int Hits { get; set; }
+        public bool Packaged { get; set; }
+        public bool Activated { get; set; }
+    }
+
+    public virtual Data ToData() {
+        return new Data {
+            Seed = this.Seed,
+            DefName = this.SegmentDef.Name,
+            Hits = this.Hits,
+            Packaged = this.Packaged,
+            Activated = this.Activated
+        };
+    }
+
+    public virtual void FromData(Data data) {
+        Hits = data.Hits;
+        Packaged = data.Packaged;
+        Activated = data.Activated;
+    }
 }
 
 public record OffenseDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier)
@@ -382,6 +407,29 @@ public class ReactorSegment(ulong seed, ReactorDef reactorDef, IActor? Owner): P
         CopyBaseTo(clone);
         clone.Charge = this.Charge;
         return clone;
+    }
+
+    // Extended Data for ReactorSegment
+    public new record class Data : Segment.Data {
+        public float Charge { get; set; }
+    }
+
+    public override Segment.Data ToData() {
+        return new Data {
+            Seed = this.Seed,
+            DefName = this.SegmentDef.Name,
+            Hits = this.Hits,
+            Packaged = this.Packaged,
+            Activated = this.Activated,
+            Charge = this.Charge
+        };
+    }
+
+    public override void FromData(Segment.Data data) {
+        base.FromData(data);
+        if (data is Data reactorData) {
+            Charge = reactorData.Charge;
+        }
     }
 }
 public record ChargerDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier ChargeTier)
@@ -607,6 +655,29 @@ public class ShieldSegment(ulong seed, ShieldDef shieldDef, IActor? Owner): Defe
         CopyBaseTo(clone);
         clone.ShieldLeft = this.ShieldLeft;
         return clone;
+    }
+
+    // Extended Data for ShieldSegment
+    public new record class Data : Segment.Data {
+        public float ShieldLeft { get; set; }
+    }
+
+    public override Segment.Data ToData() {
+        return new Data {
+            Seed = this.Seed,
+            DefName = this.SegmentDef.Name,
+            Hits = this.Hits,
+            Packaged = this.Packaged,
+            Activated = this.Activated,
+            ShieldLeft = this.ShieldLeft
+        };
+    }
+
+    public override void FromData(Segment.Data data) {
+        base.FromData(data);
+        if (data is Data shieldData) {
+            ShieldLeft = shieldData.ShieldLeft;
+        }
     }
 }
 public static class SegmentEx {

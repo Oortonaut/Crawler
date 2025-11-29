@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Crawler.Logging;
@@ -85,6 +86,33 @@ public class ActorToActor {
         }
         return result;
     }
+
+    // Data structure for serialization
+    public record class Data {
+        public EFlags Flags { get; set; }
+        public int DamageCreated { get; set; }
+        public int DamageInflicted { get; set; }
+        public int DamageTaken { get; set; }
+        public UltimatumState? Ultimatum { get; set; }
+    }
+
+    public Data ToData() {
+        return new Data {
+            Flags = this.Flags,
+            DamageCreated = this.DamageCreated,
+            DamageInflicted = this.DamageInflicted,
+            DamageTaken = this.DamageTaken,
+            Ultimatum = this.Ultimatum
+        };
+    }
+
+    public void FromData(Data data) {
+        this.Flags = data.Flags;
+        this.DamageCreated = data.DamageCreated;
+        this.DamageInflicted = data.DamageInflicted;
+        this.DamageTaken = data.DamageTaken;
+        this.Ultimatum = data.Ultimatum;
+    }
 }
 
 // For this faction, dealing in Controlled commodities requires a license.
@@ -136,25 +164,58 @@ public partial class Crawler: ActorScheduled {
         var invSeed = rng.Seed();
         var newInv = new Inventory();
         newInv.AddRandomInventory(invSeed, here, crew, supplyDays, goodsWealth, segmentWealth, true, segmentClassWeights, faction);
-        
+
+        // Extract working segments from inventory and add them to builder
+        var workingSegments = newInv.Segments.Where(s => !s.IsPackaged).ToList();
+        foreach (var segment in workingSegments) {
+            newInv.Segments.Remove(segment);
+        }
+
         var crawler = new Builder()
             .WithSeed(crawlerSeed)
             .WithFaction(faction)
             .WithLocation(here)
             .WithSupplies(newInv)
+            .AddSegments(workingSegments)
             .Build();
 
         return crawler;
     }
 
-    private Crawler(Builder builder)
-        : base(builder._name, builder._brief, builder._faction, builder._supplies, builder._cargo, builder._location) {
+    // Init-based constructor (primary constructor pattern)
+    public Crawler(Init init) : base(init) {
         Flags |= ActorFlags.Mobile;
-        Rng = new XorShift(builder._seed);
-        Gaussian = new GaussianSampler(Rng.Seed());
         Supplies.Overdraft = Cargo;
-        Role = builder._role;
-        UpdateSegmentCache();
+        Role = init.Role;
+
+        // Initialize working segments from init
+        _allSegments = init.WorkingSegments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
+
+        // Initialize components based on role if requested
+        if (init.InitializeComponents) {
+            InitializeComponents(Rng.Seed());
+        }
+    }
+
+    // Init + Data constructor (for loading from save)
+    public Crawler(Init init, Data data) : this(init) {
+        FromData(data);
+    }
+
+    // Builder-based constructor (convenience wrapper)
+    private Crawler(Builder builder)
+        : base(builder.GetSeed(), builder.GetName(), builder.GetBrief(), builder.GetFaction(), builder.GetSupplies(), builder.GetCargo(), builder.GetLocation()) {
+        Flags |= ActorFlags.Mobile;
+        Supplies.Overdraft = Cargo;
+        Role = builder.GetRole();
+
+        // Initialize working segments from builder
+        _allSegments = builder.GetWorkingSegments().OrderBy(s => (s.ClassCode, s.Cost)).ToList();
+
+        // Initialize components based on role if requested
+        if (builder.GetInitializeComponents()) {
+            InitializeComponents(Rng.Seed());
+        }
     }
     public override string Brief(IActor viewer) {
         var C = CrawlerDisplay(viewer).Split('\n').ToList();
@@ -395,7 +456,12 @@ public partial class Crawler: ActorScheduled {
     }
 
     public void UpdateSegmentCache() {
-        _allSegments = Supplies.Segments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
+        // _allSegments is already maintained as the working segments list
+        // No need to re-sort unless segments were added/removed
+        _allSegments = _allSegments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
+
+        // Assert that all working segments are not packaged
+        Debug.Assert(_allSegments.All(s => !s.IsPackaged), "Working segments should not be packaged");
 
         _activeSegments.Clear();
         _disabledSegments.Clear();
@@ -424,10 +490,65 @@ public partial class Crawler: ActorScheduled {
                 _undestroyedSegments.Add(segment);
                 break;
             case Segment.Working.Packaged:
-                _undestroyedSegments.Add(segment);
+                // This should not happen in working segments
+                Debug.Fail("Packaged segment found in working segments list");
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// Install a segment from supplies or cargo into the working segments list.
+    /// Unpacks the segment and adds it to _allSegments.
+    /// </summary>
+    public void InstallSegment(Segment segment) {
+        Debug.Assert(segment.IsPackaged, "Can only install packaged segments");
+
+        // Remove from supplies or cargo
+        if (Supplies.Segments.Contains(segment)) {
+            Supplies.Remove(segment);
+        } else if (Cargo.Segments.Contains(segment)) {
+            Cargo.Remove(segment);
+        } else {
+            throw new InvalidOperationException("Segment not found in supplies or cargo");
+        }
+
+        // Unpack and add to working segments
+        segment.Packaged = false;
+        _allSegments.Add(segment);
+        UpdateSegmentCache();
+    }
+
+    /// <summary>
+    /// Package a working segment and move it to supplies storage.
+    /// </summary>
+    public void PackageToSupplies(Segment segment) {
+        Debug.Assert(!segment.IsPackaged, "Segment is already packaged");
+        Debug.Assert(_allSegments.Contains(segment), "Segment not in working segments");
+
+        // Remove from working segments
+        _allSegments.Remove(segment);
+
+        // Package and add to supplies
+        segment.Packaged = true;
+        Supplies.Add(segment);
+        UpdateSegmentCache();
+    }
+
+    /// <summary>
+    /// Package a working segment and move it to cargo storage.
+    /// </summary>
+    public void PackageToCargo(Segment segment) {
+        Debug.Assert(!segment.IsPackaged, "Segment is already packaged");
+        Debug.Assert(_allSegments.Contains(segment), "Segment not in working segments");
+
+        // Remove from working segments
+        _allSegments.Remove(segment);
+
+        // Package and add to cargo
+        segment.Packaged = true;
+        Cargo.Add(segment);
+        UpdateSegmentCache();
     }
     List<Segment> _allSegments = [];
     List<Segment> _activeSegments = [];
@@ -542,8 +663,9 @@ public partial class Crawler: ActorScheduled {
         string result = Style.Name.Format($"[{Name}]");
         result += $" Evil: {EvilPoints}\n";
 
-        result += "\nCrawler Segments:\n" + Supplies.Segments.SegmentReport(Location);
-        result += "Stored Segments:\n" + Cargo.Segments.SegmentReport(Location);
+        result += "\nWorking Segments:\n" + _allSegments.SegmentReport(Location);
+        result += "Packaged Segments (Supplies):\n" + Supplies.Segments.SegmentReport(Location);
+        result += "Packaged Segments (Cargo):\n" + Cargo.Segments.SegmentReport(Location);
         result += "Inventory:\n" + InventoryReport(Supplies);
         result += "Cargo:\n" + InventoryReport(Cargo);
 
@@ -827,7 +949,7 @@ public partial class Crawler: ActorScheduled {
     public override void ReceiveFire(IActor from, List<HitRecord> fire) {
         base.ReceiveFire(from, fire);
 
-        if (!Supplies.Segments.Any() || !fire.Any()) {
+        if (!_allSegments.Any() || !fire.Any()) {
             return;
         }
 
@@ -937,7 +1059,63 @@ public partial class Crawler: ActorScheduled {
         return (remaining, $" killing {CrewInv} crew and {moraleLoss} morale");
     }
 
-    // Accessor methods for save/load
+    // Serialization methods
+    public override ActorBase.Data ToData() {
+        var scheduledData = (ActorScheduled.Data)base.ToData();
+
+        // Create Init from current state
+        var init = new Init {
+            Seed = scheduledData.Init.Seed,
+            Name = scheduledData.Init.Name,
+            Brief = scheduledData.Init.Brief,
+            Faction = scheduledData.Init.Faction,
+            Location = scheduledData.Init.Location,
+            Supplies = scheduledData.Init.Supplies,
+            Cargo = scheduledData.Init.Cargo,
+            Role = this.Role,
+            InitializeComponents = false, // Don't re-initialize on load
+            WorkingSegments = new List<Segment>() // Will be restored from Data.WorkingSegments
+        };
+
+        return new Data {
+            Init = init,
+            Rng = scheduledData.Rng,
+            Gaussian = scheduledData.Gaussian,
+            Time = scheduledData.Time,
+            LastTime = scheduledData.LastTime,
+            EndState = scheduledData.EndState,
+            EndMessage = scheduledData.EndMessage,
+            ActorRelations = scheduledData.ActorRelations,
+            LocationRelations = scheduledData.LocationRelations,
+            NextEvent = scheduledData.NextEvent,
+            Encounter_ScheduledTime = scheduledData.Encounter_ScheduledTime,
+            WorkingSegments = _allSegments.Select(s => s.ToData()).ToList(),
+            EvilPoints = this.EvilPoints
+        };
+    }
+
+    public void FromData(Data data) {
+        // Call base FromData
+        base.FromData(data);
+
+        // Restore working segments
+        _allSegments.Clear();
+        foreach (var segmentData in data.WorkingSegments) {
+            if (SegmentEx.NameLookup.TryGetValue(segmentData.DefName, out var segmentDef)) {
+                var segment = segmentDef.NewSegment(segmentData.Seed);
+                segment.FromData(segmentData);
+                _allSegments.Add(segment);
+            }
+        }
+
+        // Restore other state
+        this.EvilPoints = data.EvilPoints;
+
+        // Update cached segment lists
+        UpdateSegmentCache();
+    }
+
+    // Accessor methods for save/load (deprecated - use ToData/FromData instead)
     public XorShift GetRng() => Rng;
     public ulong GetRngState() => Rng.GetState();
     public void SetRngState(ulong state) => Rng.SetState(state);

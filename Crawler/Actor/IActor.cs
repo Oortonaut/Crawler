@@ -165,7 +165,118 @@ public interface IActor {
     void Left(Encounter encounter);
 }
 
-public class ActorBase(string name, string brief, Factions faction, Inventory supplies, Inventory cargo, Location Location): IActor {
+public class ActorBase(ulong seed, string name, string brief, Factions faction, Inventory supplies, Inventory cargo, Location Location): IActor {
+    public record class Init {
+        public required ulong Seed { get; set; }
+        public string Name { get; set; } = "";
+        public string Brief { get; set; } = "";
+        public Factions Faction { get; set; }
+        public Location Location { get; set; } = null!;
+        public Inventory Supplies { get; set; } = new();
+        public Inventory Cargo { get; set; } = new();
+    }
+
+    public record class Data {
+        public Init Init { get; set; } = null!;
+        public XorShift.Data Rng { get; set; } = null!;
+        public GaussianSampler.Data Gaussian { get; set; } = null!;
+        public long Time { get; set; }
+        public long LastTime { get; set; }
+        public EEndState? EndState { get; set; }
+        public string EndMessage { get; set; } = "";
+        public Dictionary<string, ActorToActor.Data> ActorRelations { get; set; } = new();
+        public Dictionary<string, LocationActor.Data> LocationRelations { get; set; } = new();
+    }
+
+    public class Builder {
+        protected ulong _seed = (ulong)Random.Shared.NextInt64();
+        protected string _name = "";
+        protected string _brief = "";
+        protected Factions _faction = Factions.Independent;
+        protected Location _location = null!;
+        protected Inventory _supplies = new();
+        protected Inventory _cargo = new();
+
+        public Builder() { }
+
+        public Builder WithSeed(ulong seed) {
+            _seed = seed;
+            return this;
+        }
+
+        public Builder WithName(string name) {
+            _name = name;
+            return this;
+        }
+
+        public Builder WithBrief(string brief) {
+            _brief = brief;
+            return this;
+        }
+
+        public Builder WithFaction(Factions faction) {
+            _faction = faction;
+            return this;
+        }
+
+        public Builder WithLocation(Location location) {
+            _location = location;
+            return this;
+        }
+
+        public Builder WithSupplies(Inventory supplies) {
+            _supplies = supplies;
+            return this;
+        }
+
+        public Builder WithCargo(Inventory cargo) {
+            _cargo = cargo;
+            return this;
+        }
+
+        public Builder AddSupplies(Commodity commodity, float amount) {
+            _supplies.Add(commodity, amount);
+            return this;
+        }
+
+        public Builder AddCargo(Commodity commodity, float amount) {
+            _cargo.Add(commodity, amount);
+            return this;
+        }
+
+        public Init BuildInit() {
+            return new Init {
+                Seed = _seed,
+                Name = _name,
+                Brief = _brief,
+                Faction = _faction,
+                Location = _location,
+                Supplies = _supplies,
+                Cargo = _cargo
+            };
+        }
+
+        public static Builder Load(Init init) {
+            return new Builder()
+                .WithSeed(init.Seed)
+                .WithName(init.Name)
+                .WithBrief(init.Brief)
+                .WithFaction(init.Faction)
+                .WithLocation(init.Location)
+                .WithSupplies(init.Supplies)
+                .WithCargo(init.Cargo);
+        }
+    }
+
+    // Init-based constructor
+    public ActorBase(Init init) : this(init.Seed, init.Name, init.Brief, init.Faction, init.Supplies, init.Cargo, init.Location) { }
+
+    // Init + Data constructor (for loading from save)
+    public ActorBase(Init init, Data data) : this(init) {
+        FromData(data);
+    }
+
+    public ulong Seed { get; set; } = seed;
     public string Name { get; set; } = name;
     public Factions Faction { get; set; } = faction;
     public Inventory Supplies { get; } = supplies;
@@ -184,8 +295,8 @@ public class ActorBase(string name, string brief, Factions faction, Inventory su
     public ILogger Log => LogCat.Log;
 
     // RNG state - initialized by derived classes or builders
-    protected XorShift Rng = new XorShift(0);
-    protected GaussianSampler Gaussian = new GaussianSampler(0);
+    protected XorShift Rng = new(seed);
+    protected GaussianSampler Gaussian = new GaussianSampler(seed * 3 + 7);
 
     public bool IsDestroyed => EndState is not null;
     public bool IsSettlement => Flags.HasFlag(ActorFlags.Settlement);
@@ -331,6 +442,86 @@ public class ActorBase(string name, string brief, Factions faction, Inventory su
         if (relation.Hostile != hostile) {
             relation.Hostile = hostile;
             HostilityChanged?.Invoke(other, hostile);
+        }
+    }
+
+    // Serialization methods
+    public virtual Data ToData() {
+        // Create Init from current state
+        var init = new Init {
+            Seed = this.Seed,
+            Name = this.Name,
+            Brief = this.Brief(this),
+            Faction = this.Faction,
+            Location = this.Location,
+            Supplies = this.Supplies,
+            Cargo = this.Cargo
+        };
+
+        // Serialize actor relations by name (will need to be resolved on load)
+        var actorRelations = new Dictionary<string, ActorToActor.Data>();
+        foreach (var (actor, relation) in _relations) {
+            actorRelations[actor.Name] = relation.ToData();
+        }
+
+        // Serialize location relations by position key
+        var locationRelations = new Dictionary<string, LocationActor.Data>();
+        foreach (var (location, relation) in _locations) {
+            locationRelations[$"{location.Position.X},{location.Position.Y}"] = relation.ToData();
+        }
+
+        return new Data {
+            Init = init,
+            Rng = this.Rng.ToData(),
+            Gaussian = this.Gaussian.ToData(),
+            Time = this.Time,
+            LastTime = this.LastTime,
+            EndState = this.EndState,
+            EndMessage = this.EndMessage,
+            ActorRelations = actorRelations,
+            LocationRelations = locationRelations
+        };
+    }
+
+    public virtual void FromData(Data data) {
+        // Restore RNG state
+        this.Rng.FromData(data.Rng);
+        this.Gaussian.FromData(data.Gaussian);
+
+        // Restore time tracking
+        this.Time = data.Time;
+        this.LastTime = data.LastTime;
+
+        // Restore end state
+        this.EndState = data.EndState;
+        this.EndMessage = data.EndMessage;
+
+        // Note: Actor and Location relations are restored in a second pass
+        // after all actors are loaded (see SaveLoad.RestoreRelationsTo)
+    }
+
+    // Called after all actors are loaded to restore relations
+    public void RestoreActorRelations(Dictionary<string, ActorToActor.Data> actorRelations, Dictionary<string, IActor> actorLookup) {
+        _relations.Clear();
+        foreach (var (actorName, relationData) in actorRelations) {
+            if (actorLookup.TryGetValue(actorName, out var actor)) {
+                var relation = new ActorToActor();
+                relation.FromData(relationData);
+                _relations[actor] = relation;
+            }
+        }
+    }
+
+    public void RestoreLocationRelations(Dictionary<string, LocationActor.Data> locationRelations, Map map) {
+        _locations.Clear();
+        foreach (var (posKey, relationData) in locationRelations) {
+            var parts = posKey.Split(',');
+            if (parts.Length == 2 && float.TryParse(parts[0], out float x) && float.TryParse(parts[1], out float y)) {
+                var location = map.FindLocationByPosition(new System.Numerics.Vector2(x, y));
+                var relation = new LocationActor();
+                relation.FromData(relationData);
+                _locations[location] = relation;
+            }
         }
     }
 }

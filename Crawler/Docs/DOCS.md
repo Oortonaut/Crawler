@@ -65,3 +65,63 @@ See Crawler/Docs/ARCHITECTURE.md for the system map and component relationships.
 ## Processes
 
 See Crawler/Docs/RULES.md for process guidelines including commit preparation and documentation grooming.
+                  
+## Style and Naming Guidelines
+- a FooCfg (or Foo.Cfg) contains static, constant information shared by multiple Foo objects. Configs are typically held and referenced to avoid duplication of const data. Typically a long-lifetime or read-serialized object.
+- a FooInit (or Foo.Init) contains information about the initial dynamic state of a Foo object. Typically a short-lived structure containing a config and constructor information that will be moved or copied into a Foo. Used once only.
+- a FooData (or Foo.Data, FooFactionData, etc.) contains privileged information about the current internal state of a Foo object. Used for networking, save load, cloning, etc.
+- a Foo contains the persistent internal state, indexes and helper data, transient internal state, and logic for Foo objects.
+- A FooBuilder creates a Foo from a (possibly default) Init or Cfg when the object setup process requires multiple steps or finalization. It calls the Init or Cfg constructor, performs any setup or deserialization of the internal state, and finalizes initialization if necessary.
+
+### Constructor Patterns
+
+Objects follow these constructor patterns:
+
+```csharp
+new Foo(Foo.Def)                      // From definition
+new Bar(Bar.Cfg)                      // From config
+new Baz(Baz.Init)                     // From init (normal construction)
+new Baz(Baz.Init, Baz.Data)           // From init + data (load from save)
+new Wut()                             // Default constructor
+```
+
+### Init/Cfg/Data Pattern (Actors)
+
+The actor hierarchy uses a consistent Init/Cfg/Data pattern:
+
+**Init Structure:**
+- Contains construction-time configuration
+- Used for object initialization
+- Short-lived, used once
+
+**Data Structure:**
+- Contains Init as first field (not duplicating fields)
+- Captures current runtime state for save/load
+- Forms inheritance hierarchy matching class hierarchy
+- Example: `ActorBase.Data` → `ActorScheduled.Data` → `Crawler.Data`
+
+**Constructor Pattern:**
+```csharp
+public Crawler(Init init) : base(init) {
+    // Normal construction from Init
+}
+
+public Crawler(Init init, Data data) : this(init) {
+    FromData(data);  // Restore state from Data
+}
+```
+
+**Serialization Methods:**
+```csharp
+public virtual Data ToData() {
+    // Create snapshot of current state
+}
+
+public virtual void FromData(Data data) {
+    // Restore runtime state from Data
+}
+```
+
+**See:** [DATA-MODEL.md#saveload-data-structures](DATA-MODEL.md#saveload-data-structures) for full details
+
+These constructor patterns ensure consistent initialization across the codebase. Objects with final initialization (actors) use the Init/Data pattern, while simpler classes use regular constructors.

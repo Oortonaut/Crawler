@@ -99,10 +99,18 @@ public struct XorShift {
 
     ulong _state; /* The state must be seeded with a nonzero value. */
 
+    // Data structure for serialization
+    public record class Data {
+        public ulong State { get; set; }
+    }
+
     // State management for save/load
     public ulong GetState() => _state;
-
     public void SetState(ulong state) => _state = state;
+
+    public Data ToData() => new Data { State = _state };
+    public void FromData(Data data) => _state = data.State;
+    public XorShift(Data data) : this(1) { FromData(data); }
 
     // Extension methods for choosing from collections
     public T? Next<T>(IEnumerable<T> choices) {
@@ -124,6 +132,13 @@ public struct GaussianSampler(ulong seed) {
     XorShift _rng = new(seed);
     bool _primed = false;
     double _zSin = 0;
+
+    // Data structure for serialization
+    public record class Data {
+        public XorShift.Data Rng { get; set; } = null!;
+        public bool Primed { get; set; }
+        public double ZSin { get; set; }
+    }
 
     public double NextDouble() {
         if (_primed) {
@@ -156,6 +171,20 @@ public struct GaussianSampler(ulong seed) {
     public void SetPrimed(bool primed) => _primed = primed;
     public double GetZSin() => _zSin;
     public void SetZSin(double zSin) => _zSin = zSin;
+
+    public Data ToData() => new Data {
+        Rng = _rng.ToData(),
+        Primed = _primed,
+        ZSin = _zSin
+    };
+
+    public void FromData(Data data) {
+        _rng.FromData(data.Rng);
+        _primed = data.Primed;
+        _zSin = data.ZSin;
+    }
+
+    public GaussianSampler(Data data) : this(1) { FromData(data); }
 }
 
 // Converts a float to an integer but integrates error over time.

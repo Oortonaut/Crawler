@@ -1,51 +1,73 @@
 namespace Crawler;
 
 public partial class Crawler {
-    public class Builder {
-        internal ulong _seed;
-        internal string _name = "";
-        internal string _brief = "";
-        internal Factions _faction = Factions.Independent;
-        internal Location _location = null!;
-        internal Inventory _supplies = new();
-        internal Inventory _cargo = new();
+    public new record class Init : ActorScheduled.Init {
+        public Roles Role { get; set; }
+        public bool InitializeComponents { get; set; } = true;
+        public List<Segment> WorkingSegments { get; set; } = new();
+    }
+
+    // Data structure for serialization
+    public new record class Data : ActorScheduled.Data {
+        // Override Init to use Crawler.Init
+        public new Init Init {
+            get => (Init)((ActorScheduled.Data)this).Init;
+            set => ((ActorScheduled.Data)this).Init = value;
+        }
+
+        public List<Segment.Data> WorkingSegments { get; set; } = new();
+        public int EvilPoints { get; set; }
+    }
+
+    public new class Builder : ActorScheduled.Builder {
         internal Roles _role = Roles.None;
         internal bool _initializeComponents = true;
+        internal List<Segment> _workingSegments = new();
 
-        public Builder() { }
+        public Builder() : base() { }
 
-        public Builder WithSeed(ulong seed) {
-            _seed = seed;
+        public new Builder WithSeed(ulong seed) {
+            base.WithSeed(seed);
             return this;
         }
 
-        public Builder WithName(string name) {
-            _name = name;
+        public new Builder WithName(string name) {
+            base.WithName(name);
             return this;
         }
 
-        public Builder WithBrief(string brief) {
-            _brief = brief;
+        public new Builder WithBrief(string brief) {
+            base.WithBrief(brief);
             return this;
         }
 
-        public Builder WithFaction(Factions faction) {
-            _faction = faction;
+        public new Builder WithFaction(Factions faction) {
+            base.WithFaction(faction);
             return this;
         }
 
-        public Builder WithLocation(Location location) {
-            _location = location;
+        public new Builder WithLocation(Location location) {
+            base.WithLocation(location);
             return this;
         }
 
-        public Builder WithSupplies(Inventory supplies) {
-            _supplies = supplies;
+        public new Builder WithSupplies(Inventory supplies) {
+            base.WithSupplies(supplies);
             return this;
         }
 
-        public Builder WithCargo(Inventory cargo) {
-            _cargo = cargo;
+        public new Builder WithCargo(Inventory cargo) {
+            base.WithCargo(cargo);
+            return this;
+        }
+
+        public new Builder AddSupplies(Commodity commodity, float amount) {
+            base.AddSupplies(commodity, amount);
+            return this;
+        }
+
+        public new Builder AddCargo(Commodity commodity, float amount) {
+            base.AddCargo(commodity, amount);
             return this;
         }
 
@@ -59,21 +81,67 @@ public partial class Crawler {
             return this;
         }
 
+        public Builder AddSegment(Segment segment) {
+            _workingSegments.Add(segment);
+            return this;
+        }
+
+        public Builder AddSegments(IEnumerable<Segment> segments) {
+            _workingSegments.AddRange(segments);
+            return this;
+        }
+
+        public new Init BuildInit() {
+            var scheduledInit = base.BuildInit();
+            return new Init {
+                Seed = scheduledInit.Seed,
+                Name = scheduledInit.Name,
+                Brief = scheduledInit.Brief,
+                Faction = scheduledInit.Faction,
+                Location = scheduledInit.Location,
+                Supplies = scheduledInit.Supplies,
+                Cargo = scheduledInit.Cargo,
+                Role = _role,
+                InitializeComponents = _initializeComponents,
+                WorkingSegments = _workingSegments
+            };
+        }
+
+        public static Builder Load(Init init) {
+            return new Builder()
+                .WithSeed(init.Seed)
+                .WithName(init.Name)
+                .WithBrief(init.Brief)
+                .WithFaction(init.Faction)
+                .WithLocation(init.Location)
+                .WithSupplies(init.Supplies)
+                .WithCargo(init.Cargo)
+                .WithRole(init.Role)
+                .WithComponentInitialization(init.InitializeComponents)
+                .LoadWorkingSegments(init.WorkingSegments);
+        }
+
+        public Builder LoadWorkingSegments(List<Segment> workingSegments) {
+            _workingSegments = workingSegments;
+            return this;
+        }
+
+        // Getters for constructor access
+        internal ulong GetSeed() => _seed;
+        internal string GetName() => _name;
+        internal string GetBrief() => _brief;
+        internal Factions GetFaction() => _faction;
+        internal Location GetLocation() => _location;
+        internal Inventory GetSupplies() => _supplies;
+        internal Inventory GetCargo() => _cargo;
+        internal Roles GetRole() => _role;
+        internal bool GetInitializeComponents() => _initializeComponents;
+        internal List<Segment> GetWorkingSegments() => _workingSegments;
+
         public Crawler Build() {
-            // Generate name from seed if not provided
-            if (string.IsNullOrEmpty(_name)) {
-                _name = Names.HumanName(_seed);
-            }
-
-            var crawler = new Crawler(this);
-
-            // Initialize components based on role if requested
-            if (_initializeComponents && _role != Roles.None) {
-                var rng = new XorShift(_seed);
-                crawler.InitializeComponents(rng.Seed());
-            }
-
-            return crawler;
+            var result = new Crawler(this);
+            result.Begin();
+            return result;
         }
     }
 }

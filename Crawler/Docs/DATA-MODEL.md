@@ -5,6 +5,7 @@
 
 ## Quick Navigation
 - [IActor Interface](#iactor-interface)
+- [Save/Load Data Structures](#saveload-data-structures)
 - [ActorToActor](#actortoactor-relationship-state)
 - [ActorLocation](#actorlocation-visit-tracking)
 - [Segments](#segments)
@@ -13,6 +14,7 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2025-01-28**: Implemented Init/Cfg/Data pattern for save/load system; added ActorBase.Data, ActorScheduled.Data, and Crawler.Data structures forming inheritance hierarchy; all Data structures contain Init as first field with ToData()/FromData() methods
 - **2025-11-08**: Added XorShift RNG and GaussianSampler to Crawler class for deterministic randomness; all crawlers now maintain their own RNG state with seed-based initialization
 - **2025-10-29**: Policy record now includes Description field for faction policy descriptions
 - **2025-10-24**: Added `Overdraft` property and `ContainsResult` enum to Inventory; withdrawal methods now support overdraft from linked inventory
@@ -76,6 +78,237 @@ interface IActor {
 - Simplified inventory
 - No segment management
 - Used for encounter content
+
+---
+
+## Save/Load Data Structures
+
+**Pattern:** Init/Cfg/Data
+**Purpose:** Serialization and state restoration
+
+### Design Principles
+
+The save/load system follows a consistent Init/Cfg/Data pattern across all actor types:
+
+1. **Init** - Construction-time configuration
+   - Contains static configuration and initial state
+   - Used for object construction
+   - Seed-based for deterministic generation
+
+2. **Data** - Serializable runtime state
+   - Contains Init as first field (not duplicating fields)
+   - Captures current runtime state for save/load
+   - Forms inheritance hierarchy matching class hierarchy
+
+3. **Constructor Pattern** - Two constructors for each class:
+   ```csharp
+   new Foo(Foo.Init init)              // Normal construction
+   new Foo(Foo.Init init, Foo.Data data)  // Load from save
+   ```
+
+### Data Hierarchy
+
+```
+ActorBase.Data
+├── ActorScheduled.Data
+    └── Crawler.Data
+```
+
+### ActorBase.Data
+
+**File:** `IActor.cs:179-189`
+
+```csharp
+public record class Data {
+    public Init Init { get; set; }
+    public XorShift.Data Rng { get; set; }
+    public GaussianSampler.Data Gaussian { get; set; }
+    public long Time { get; set; }
+    public long LastTime { get; set; }
+    public EEndState? EndState { get; set; }
+    public string EndMessage { get; set; }
+    public Dictionary<string, ActorToActor.Data> ActorRelations { get; set; }
+    public Dictionary<string, LocationActor.Data> LocationRelations { get; set; }
+}
+```
+
+**Contains:**
+- Init structure for reconstruction
+- RNG state (XorShift and GaussianSampler)
+- Time tracking
+- End state (destroyed, etc.)
+- Actor relationships keyed by actor name
+- Location relationships keyed by position string
+
+### ActorScheduled.Data
+
+**File:** `ActorScheduled.cs:18-21`
+
+```csharp
+public new record class Data : ActorBase.Data {
+    public ScheduleEvent? NextEvent { get; set; }
+    public long Encounter_ScheduledTime { get; set; }
+}
+```
+
+**Adds:**
+- Scheduled event state
+- Encounter scheduling time
+
+### Crawler.Data
+
+**File:** `Crawler.Builder.cs:11-20`
+
+```csharp
+public new record class Data : ActorScheduled.Data {
+    public new Init Init { get; set; }  // Override to use Crawler.Init
+    public List<Segment.Data> WorkingSegments { get; set; }
+    public int EvilPoints { get; set; }
+}
+```
+
+**Adds:**
+- Working segments state (unpacked segments)
+- Evil points counter
+
+### Serialization Methods
+
+Each actor class implements:
+
+```csharp
+// ActorBase
+public virtual Data ToData() {
+    return new Data {
+        Init = CreateInitFromCurrentState(),
+        Rng = this.Rng.ToData(),
+        Gaussian = this.Gaussian.ToData(),
+        // ... other fields
+    };
+}
+
+public virtual void FromData(Data data) {
+    this.Rng.FromData(data.Rng);
+    this.Gaussian.FromData(data.Gaussian);
+    // ... restore other state
+}
+```
+
+**Key points:**
+- `ToData()` creates a snapshot of current state
+- `FromData()` restores runtime state from Data
+- Each level calls base implementation
+- Init is reconstructed from current state
+
+### Relationship Restoration
+
+Actor relationships require two-pass restoration:
+
+**First pass:** Create all actors
+```csharp
+var init = CreateInitFromSaveData(savedData);
+var data = CreateDataFromSaveData(savedData);
+var actor = new Crawler(init, data);
+```
+
+**Second pass:** Restore relations after all actors exist
+```csharp
+actor.RestoreActorRelations(data.ActorRelations, actorLookup);
+actor.RestoreLocationRelations(data.LocationRelations, map);
+```
+
+**Why two passes?**
+- ActorRelations use IActor references, not names
+- Must resolve names → actor references after all actors loaded
+- Helper methods on ActorBase handle this restoration
+
+### Component State
+
+Components are **not** serialized in Data structures. They are reconstructed based on Role:
+
+```csharp
+var init = new Crawler.Init {
+    // ... other fields
+    Role = Roles.Bandit,
+    InitializeComponents = true  // Reconstruct components based on role
+};
+```
+
+**Rationale:**
+- Components are deterministic based on role and seed
+- Avoids complex component state serialization
+- Simpler save file format
+- Components re-subscribe to events on Begin()
+
+### Usage Example
+
+**Saving:**
+```csharp
+var crawlerData = (Crawler.Data)crawler.ToData();
+// Serialize crawlerData to YAML/JSON
+```
+
+**Loading:**
+```csharp
+// Deserialize from YAML/JSON to get savedCrawler data
+
+// Create Init structure
+var init = new Crawler.Init {
+    Seed = savedCrawler.RngState,
+    Name = savedCrawler.Name,
+    Faction = savedCrawler.Faction,
+    Location = location,
+    Supplies = supplies,
+    Cargo = cargo,
+    Role = Roles.None,
+    InitializeComponents = false,
+    WorkingSegments = new List<Segment>()
+};
+
+// Create Data structure
+var data = new Crawler.Data {
+    Init = init,
+    Rng = new XorShift.Data { State = savedCrawler.RngState },
+    Gaussian = new GaussianSampler.Data { /* ... */ },
+    WorkingSegments = /* ... */,
+    EvilPoints = savedCrawler.EvilPoints,
+    // ... other fields
+};
+
+// Construct crawler from Init + Data
+var crawler = new Crawler(init, data);
+crawler.Begin();  // Initialize components
+```
+
+### Related Data Structures
+
+**Segment.Data:**
+```csharp
+public record class Data {
+    public ulong Seed { get; set; }
+    public string DefName { get; set; }
+    public int Hits { get; set; }
+    public bool Packaged { get; set; }
+    public bool Activated { get; set; }
+}
+```
+
+**ActorToActor.Data:**
+```csharp
+public record class Data {
+    public EFlags Flags { get; set; }
+    public int DamageCreated { get; set; }
+    public int DamageInflicted { get; set; }
+    public int DamageTaken { get; set; }
+    public UltimatumState? Ultimatum { get; set; }
+}
+```
+
+**LocationActor.Data:**
+```csharp
+public record class Data {
+    public bool Visited { get; set; }
+}
+```
 
 ---
 
