@@ -366,7 +366,7 @@ public class RepairComponent : ActorComponentBase {
         public override string Description => $"Repair {SegmentToRepair.Name} for {Price}¢¢";
 
         public override int Perform(string args = "") {
-            long duration = 3600; // 1 hour to repair
+            int duration = 3600; // 1 hour to repair
             long endTime = Game.SafeTime + duration;
 
             // Create bidirectional Ultimatums to track the repair relationship
@@ -383,7 +383,7 @@ public class RepairComponent : ActorComponentBase {
             };
 
             // Lock both actors for the duration
-            (Subject as ActorScheduled)?.ConsumeTime(duration, () => {
+            (Subject as ActorScheduled)?.ConsumeTime("Repairing", 300, duration, post: () => {
                 // Complete the repair
                 SegmentToRepair.Hits = 0;
                 Subject.Message($"Repair of {SegmentToRepair.Name} completed");
@@ -392,7 +392,7 @@ public class RepairComponent : ActorComponentBase {
                 Mechanic.To(Subject).Ultimatum = null;
             });
 
-            (Mechanic as ActorScheduled)?.ConsumeTime(duration, () => {
+            (Mechanic as ActorScheduled)?.ConsumeTime("Repaired", 300, duration, post: () => {
                 Mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
             });
 
@@ -727,7 +727,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         base.OnComponentsDirty();
     }
 
-    public override int GetNextEvent() {
+    public override ScheduleEvent? GetNextEvent() {
         Owner.Message($"{Owner.Name} think action");
         return base.GetNextEvent();
     }

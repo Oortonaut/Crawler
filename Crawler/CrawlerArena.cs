@@ -301,13 +301,13 @@ public class CrawlerArena {
         // Initial attack from first attacker
         if (firstAttacker.WeaponDelay().HasValue) {
             var delay = firstAttacker.Attack(secondAttacker);
-            firstAttacker.ConsumeTime(delay);
+            firstAttacker.ConsumeTime("A", 700, delay);
         }
 
         // Initial attack from second attacker with slight offset
         if (secondAttacker.WeaponDelay().HasValue) {
             var delay = secondAttacker.Attack(firstAttacker);
-            secondAttacker.ConsumeTime(delay);
+            secondAttacker.ConsumeTime("B", 700, delay);
         }
 
         while (rounds < maxRounds) {
@@ -338,7 +338,7 @@ public class CrawlerArena {
             // Perform attack if attacker is still capable
             if (!nextAttacker.IsDestroyed && !nextAttacker.IsDisarmed && nextAttacker.WeaponDelay().HasValue) {
                 var delay = nextAttacker.Attack(nextDefender);
-                nextAttacker.ConsumeTime(delay);
+                nextAttacker.ConsumeTime("N", 700, delay);
             } else {
                 // If can't attack, just advance time
                 break;

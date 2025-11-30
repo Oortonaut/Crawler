@@ -321,12 +321,20 @@ public abstract class CombatComponentBase : ActorComponentBase {
     /// Attempt to attack the current or selected target.
     /// Returns AP cost if attack was performed, null otherwise.
     /// </summary>
-    protected int AttackTarget(IActor target) {
-        if (Owner is not Crawler attacker) return 0;
-        if (attacker.IsDisarmed) return 0;
+    protected ScheduleEvent? AttackTarget(IActor target) {
+        if (Owner is not Crawler attacker) return null;
+        if (attacker.IsDisarmed) return null;
 
+        var countdowns = attacker.WeaponDelays().ToArray();
+        if (countdowns.Length == 0) return null;
+        if (countdowns[0] != 0) {
+            return Owner.NewEvent("Charging", 0, countdowns[0]);
+        }
         // Try to attack current target if still valid
-        return attacker.Attack(target);
+        var duration = attacker.Attack(target);
+        return Owner.NewEvent("Volley", Priority, duration, Pre: () => {
+            attacker.Attack(target);
+        });
     }
 
     public override void Attach(IActor owner) {
@@ -343,8 +351,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
         Owner.SetHostileTo(actor, true);
         if (actor is ActorScheduled scheduled &&
             Owner is ActorScheduled ownerScheduled) {
-            var elapsed = scheduled.Time - ownerScheduled.Time;
-            (Owner as ActorScheduled)?.ConsumeTime((int)elapsed);
+            ownerScheduled.PassTime("ReceivingFire", scheduled.Time);
         }
     }
 
@@ -381,12 +388,12 @@ public abstract class CombatComponentBase : ActorComponentBase {
         return CurrentTarget;
     }
 
-    public override int GetNextEvent() {
+    public override ScheduleEvent? GetNextEvent() {
         var target = ChooseTarget();
         if (target is not null) {
             return AttackTarget(target);
         }
-        return 0;
+        return null;
     }
 }
 

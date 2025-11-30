@@ -7,27 +7,35 @@ namespace Crawler;
 public class RetreatComponent : ActorComponentBase {
     public override int Priority => 1000; // Highest priority - survival first
 
-    public override int GetNextEvent() {
-        if (Owner is not Crawler crawler) return 0;
+    public override ScheduleEvent? GetNextEvent() {
+        if (Owner is not Crawler crawler) return null;
 
         // Check if depowered first
         if (crawler.IsDepowered) {
             crawler.Message($"{crawler.Name} has no power.");
-            return 0;
+            return null;
         }
 
         float hits = crawler.Segments.Sum(s  => s.Hits);
         float maxHits = crawler.Segments.Sum(s  => s.MaxHits);
-        float ratio =  hits / maxHits;
+        float damageRatio =  hits / maxHits;
+        float escapeChance = crawler.EscapeChance();
 
+        int fleeTime = 60;
         // Flee if vulnerable and not pinned
-        if (crawler.IsVulnerable && !crawler.Pinned() && ratio > 0.75f) {
-            crawler.Message($"{crawler.Name} flees the encounter.");
-            crawler.Location.GetEncounter().RemoveActor(crawler);
-            return 1; // Consumed time to flee
+        if (crawler.IsVulnerable && escapeChance > 0 && damageRatio > 0.75f) {
+            return crawler.NewEvent("Flee", Priority, fleeTime, Post: () => {
+                if (crawler.GetRng().NextSingle() < escapeChance) {
+                    crawler.Message($"{crawler.Name} fled.");
+                    crawler.Location.GetEncounter().RemoveActor(crawler);
+                } else {
+                    crawler.Message($"{crawler.Name} couldn't escape.");
+
+                }
+            }); // Consumed time to flee
         }
 
-        return 0; // Not vulnerable, let lower priority components handle it
+        return null; // Not vulnerable, let lower priority components handle it
     }
 }
 

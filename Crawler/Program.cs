@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text;
 using Crawler;
 using Crawler.Logging;
 using Microsoft.Extensions.Logging;
@@ -54,6 +55,8 @@ string Logo = string.Join("\n", [
     @"+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~+",
 ]);
 
+Console.OutputEncoding = new UTF8Encoding();
+Console.InputEncoding = new UTF8Encoding();
 Console.WriteLine(Logo);
 Console.WriteLine("Welcome to Crawler  (c) 2025 Ace Stapp");
 

@@ -4,7 +4,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
-public record ScheduleEvent(long StartTime, bool Busy, long EndTime, Action? Action) {
+public record ScheduleEvent(string tag, int Priority, long StartTime, long EndTime, Action? Pre, Action? Post) {
+    bool _invoked;
+    public void PreInvoke() {
+        if (!_invoked) {
+            _invoked = true;
+            Pre?.Invoke();
+        }
+    }
+    public void PostInvoke() {
+        if (_invoked) {
+            Post?.Invoke();
+        }
+    }
+    public override string ToString() {
+        var result = $"{tag}+{Priority} @{Game.TimeString(EndTime)}";
+        result += _invoked ? " Active" : " Pending";
+        if (Post != null) {
+            result += " Post";
+        }
+        return result;
+    }
 }
 /// <summary>
 /// Base class for actors with scheduling capability.
@@ -60,76 +80,88 @@ public class ActorScheduled : ActorBase {
         : base(seed, name, brief, faction, supplies, cargo, location) {
     }
 
+    public void SetNextEvent(ScheduleEvent? nextEvent) {
+        void doit() {
+            (var last, NextEvent) = (NextEvent, nextEvent);
+            // Ensure the encounter reschedules this actor for the new time
+            if (last != NextEvent) {
+                Location.GetEncounter().ActorScheduleChanged(this);
+            }
+        }
+
+        if (nextEvent == null || NextEvent == null) {
+            doit();
+        } else {
+            Debug.Assert(nextEvent.EndTime >= Time);
+            Debug.Assert(nextEvent.StartTime <= Time);
+
+            if (NextEvent.Priority != nextEvent.Priority) {
+                if (nextEvent.Priority > NextEvent.Priority) {
+                    doit();
+                } else {
+                    // dropped lower priority event
+                    Log.LogWarning($"Dropped lower priority event {nextEvent.Priority} < {NextEvent.Priority}");
+                }
+            } else {
+                // same priority
+                if (nextEvent.EndTime < NextEvent.EndTime) {
+                    doit();
+                } else {
+                    // dropped later event
+                    Log.LogWarning($"Dropped later event {nextEvent.EndTime} > {NextEvent.EndTime}");
+                }
+            }
+        }
+    }
     /// <summary>
     /// Schedule an action to occur after a delay.
     /// Sets NextEvent and optionally associates an action to be invoked at that time.
     /// </summary>
-    public void ConsumeTime(long delay, Action? action = null) {
-        if (delay < 0) throw new ArgumentOutOfRangeException(nameof(delay));
-
-        if (NextEvent == null) {
-            NextEvent = new ScheduleEvent(Time, true, delay, action);
-        } else {
-            Log.LogWarning($"Double scheduled {NextEvent} vs {Time + delay}");
-        }
-
-        // Ensure the encounter reschedules this actor for the new time
-        Location.GetEncounter().Schedule(this);
+    public void ConsumeTime(string tag, int priority, int delay, Action? pre = null, Action? post = null) {
+        SetNextEvent(this.NewEvent(tag, priority, delay, pre, post));
     }
-    public virtual void PassTime(long time) {
-        if (time < LastTime) {
-            throw new InvalidOperationException($"Time travel.");
-        } else if (time == LastTime) {
-            Log.LogInformation($"Passing no time");
-        } else {
-            if (NextEvent == null) {
-                NextEvent = new ScheduleEvent(Time, false, time, null);
-            } else {
-                Log.LogWarning($"Double scheduled {NextScheduledTime} vs {time}");
-            }
-        }
+    public virtual void PassTime(string tag, long time) {
+        SetNextEvent(this.NewEvent(tag, 0, time - Time));
     }
 
-    public ScheduleEvent? NextEvent;
+    public ScheduleEvent? NextEvent { get; private set; }
     public long NextScheduledTime => NextEvent?.EndTime ?? 0;
-    public long Encounter_ScheduledTime = 0;
-    /// <summary>
-    /// Tick this actor to the specified time, invoking scheduled actions when appropriate.
-    /// </summary>
-    public void TickTo(long encounterTime) {
-        if (NextEvent == null) {
-            _TickTo(encounterTime);
-            return;
-        }
-        while (encounterTime <= NextScheduledTime) {
-            _TickTo(NextScheduledTime);
-        }
-        if (Time < encounterTime) {
-            // There may be a remaining NextEvent and NextEvent.Action might not
-            // be null but it won't get called
-            _TickTo(encounterTime);
-        }
-    }
+    public ScheduleEvent? Encounter_Scheduled = null;
 
-    void _TickTo(long encounterTime) {
+    internal void TickTo(long encounterTime) {
         SimulateTo(encounterTime);
-        Debug.Assert(NextScheduledTime <= encounterTime);
-        if (encounterTime == NextScheduledTime && NextEvent!.Action != null) {
-            NextEvent.Action?.Invoke();
+        if (encounterTime == NextScheduledTime) {
+            var evt = NextEvent!;
             NextEvent = null;
-        } else {
+            if (evt.Post == null) {
+                Think();
+            } else {
+                evt.Post.Invoke();
+            }
+        } else if (NextEvent?.Priority == 0) {
             Think();
         }
         PostTick(encounterTime);
     }
+
+    public override void SimulateTo(long time) {
+        NextEvent?.PreInvoke();
+        base.SimulateTo(time);
+    }
+
+    public override void Think() {
+        if (NextEvent == null) {
+            var idleEvent = this.NewEvent("Idle", 0, Tuning.MaxDelay);
+            SetNextEvent(idleEvent);
+        }
+    }
+
 
     /// <summary>
     /// Post-tick hook for derived classes to perform cleanup or additional processing.
     /// </summary>
     protected virtual void PostTick(long time) { }
     public override string ToString() => $"{base.ToString()} [{Game.DateString(Time)} {Game.TimeString(Time)}]";
-
-    public ScheduleEvent ScheduleEvent(int Duration, bool Busy, Action? Action) => new(Time, Busy, Time + Duration, Action);
 
     // Serialization methods
     public override ActorBase.Data ToData() {
@@ -145,13 +177,13 @@ public class ActorScheduled : ActorBase {
             ActorRelations = baseData.ActorRelations,
             LocationRelations = baseData.LocationRelations,
             NextEvent = this.NextEvent,
-            Encounter_ScheduledTime = this.Encounter_ScheduledTime
+            //Encounter_ScheduledTime = this.Encounter_Scheduled
         };
     }
 
     public virtual void FromData(Data data) {
         base.FromData(data);
-        this.NextEvent = data.NextEvent;
-        this.Encounter_ScheduledTime = data.Encounter_ScheduledTime;
+        SetNextEvent(data.NextEvent);
+        //this.Encounter_Scheduled = data.Encounter_ScheduledTime;
     }
 }

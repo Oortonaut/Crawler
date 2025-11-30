@@ -366,6 +366,9 @@ public partial class Crawler: ActorScheduled {
         base.SimulateTo(time);
         int elapsed = Elapsed;
 
+        if (LastTime == 0) {
+            Log.LogInformation($"First tick of {Name}");
+        }
         if (EndState != null || elapsed == 0) {
             return;
         }
@@ -383,6 +386,7 @@ public partial class Crawler: ActorScheduled {
         UpdateSegmentCache();
     }
     protected override void PostTick(long time) {
+        base.PostTick(time);
         TestEnded();
     }
     public override void Travel(Location loc) {
@@ -400,7 +404,7 @@ public partial class Crawler: ActorScheduled {
 
         // Schedule this crawler in the game's traveling crawlers queue
         Game.Instance!.ScheduleCrawler(this, arrivalTime);
-        ConsumeTime(delay, () => {
+        ConsumeTime("Travel", 50, delay, post: () => {
             Location = loc;
             Location.GetEncounter().AddActor(this);
         });
@@ -412,11 +416,11 @@ public partial class Crawler: ActorScheduled {
             return;
         }
         if (NextEvent != null) {
-            Log.LogError($"Next event should be null, but it's {NextEvent} and elapsed {Elapsed}");
-            return;
+            Debug.Assert(NextEvent.Priority == 0);
+            SetNextEvent(null);
         }
 
-        var actors = Location.GetEncounter().ActorsExcept(this);
+        //var actors = Location.GetEncounter().ActorsExcept(this);
 
         // Let components provide proactive behaviors in priority order
         // All NPCs should now have appropriate AI components:
@@ -425,15 +429,14 @@ public partial class Crawler: ActorScheduled {
         // - HostileAIComponent (priority 400): generic combat fallback
         CleanComponents(true);
         foreach (var component in Components) {
-            component.GetNextEvent();
-            if (NextEvent != null) {
-                // Component scheduled an action, we're done
-                break;
+            var componentEvent = component.GetNextEvent();
+            if (componentEvent != null) {
+                SetNextEvent(componentEvent);
             }
         }
 
-        // No fallback needed - all actors should have appropriate components
-        // If we reach here, no component took action (idle/waiting)
+        // Base will create the fallback delay if nothing is scheduled
+        base.Think();
     }
 
     public override void Message(string message) {
@@ -442,6 +445,10 @@ public partial class Crawler: ActorScheduled {
             CrawlerEx.Message(Game.TimeString(Time) + ": " + message);
         }
     }
+    public IEnumerable<int> WeaponDelays() {
+        return _activeSegments.Where(seg => seg.CycleLength > 0).Select(seg => seg.Cycle).Distinct();
+    }
+
     public int? WeaponDelay() {
         int minDelay = Tuning.MaxDelay;
         int N = 0;

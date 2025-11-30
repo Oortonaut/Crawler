@@ -471,4 +471,7 @@ public static partial class CrawlerEx {
         }
         return chance;
     }
+    public static ScheduleEvent NewEvent(this IActor actor, string tag, int Priority, long Duration, Action? Pre = null, Action? Post = null) => new(tag, Priority, actor.Time, actor.Time + Duration, Pre, Post);
+
+
 }

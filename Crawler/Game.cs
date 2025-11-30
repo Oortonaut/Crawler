@@ -64,7 +64,7 @@ public class Game {
         Gaussian.SetPrimed(saveData.GaussianPrimed);
         Gaussian.SetZSin(saveData.GaussianZSin);
 
-        TimeSeconds = saveData.Hour;
+        GameTime = saveData.Hour;
         quit = saveData.Quit;
 
         // Reconstruct the map from save data
@@ -83,10 +83,13 @@ public class Game {
 
     bool quit = false;
     public void Schedule(Encounter encounter) {
-        Schedule(encounter, Math.Max(TimeSeconds, encounter.NextEncounterEvent));
+        Schedule(encounter, encounter.NextEncounterEvent);
     }
     void Schedule(Encounter encounter, long nextTurn) {
-        if (turnForEncounter.TryGetValue(encounter, out var scheduledTurn)) {
+        // Encounters must advance monotonically
+        //Debug.Assert(nextTurn > GameTime);
+        var scheduledTurn = encounter.Game_Scheduled;
+        if (scheduledTurn > 0) {
             if (nextTurn < scheduledTurn) {
                 Log.LogInformation($"Schedule {encounter}: rescheduling to {nextTurn}");
                 Unschedule(encounter);
@@ -97,35 +100,33 @@ public class Game {
         }
         Log.LogInformation($"Schedule {encounter}: adding to {nextTurn}");
         encountersByTurn.GetOrAddNew(nextTurn).Add(encounter);
-        turnForEncounter[encounter] = nextTurn;
+        encounter.Game_Scheduled = nextTurn;
     }
     void Unschedule(Encounter encounter) {
-        if (turnForEncounter.TryGetValue(encounter, out var scheduledTurn)) {
+        var scheduledTurn = encounter.Game_Scheduled;
+        if (scheduledTurn > 0) {
             Log.LogInformation($"Unschedule {encounter.Name}: {scheduledTurn}");
             var encounters = encountersByTurn[scheduledTurn];
             encounters.Remove(encounter);
             if (encounters.Count == 0) {
                 encountersByTurn.Remove(scheduledTurn);
             }
-            turnForEncounter.Remove(encounter);
+            encounter.Game_Scheduled = 0;
         } else {
             Log.LogInformation($"Unschedule {encounter.Name}: not scheduled");
         }
     }
     (long turn, List<Encounter>) TurnEncounters() {
         var kv = encountersByTurn.First();
-        var turn = kv.Key;
-        var result = kv.Value;
+        var (turn, encounters) = kv;
         encountersByTurn.Remove(turn);
-        foreach (var encounter in result) {
-            // TODO: use a 0 sentinel instead of removing
-            turnForEncounter.Remove(encounter);
+        foreach (var encounter in encounters) {
+            encounter.Game_Scheduled = 0;
         }
         //Log.LogInformation($"Turn {turn}: {result.Count} encounters");
-        return (turn, result);
+        return (turn, encounters);
     }
     SortedDictionary<long, List<Encounter>> encountersByTurn = new();
-    Dictionary<Encounter, long> turnForEncounter = new();
 
     // Traveling crawlers management (using PriorityQueue with lazy deletion like Encounter)
     PriorityQueue<Crawler, long> travelingCrawlers = new();
@@ -214,7 +215,7 @@ public class Game {
 
             using var activity = Scope($"Game::Turn")?
                 .AddTag("turn", turn);
-            TimeSeconds = turn;
+            GameTime = turn;
 
             // Process traveling crawler arrivals at this time
             ProcessTravelingCrawlers(turn);
@@ -366,6 +367,9 @@ public class Game {
     Encounter PlayerEncounter() => PlayerLocation.GetEncounter();
 
     public static string DateString(long t) {
+        if (t == 0) {
+            return "----/--/--";
+        }
         long seconds = t;
         long minutes = t / 60;
         long hours = minutes / 60;
@@ -379,9 +383,12 @@ public class Game {
         months %= 12;
         return $"{years:D4}/{months + 1:D2}/{days + 1:D2}";
     }
-    public string DateString() => DateString(TimeSeconds);
+    public string DateString() => DateString(GameTime);
 
     public static string TimeString(long t) {
+        if (t == 0) {
+            return "--:--:--";
+        }
         long seconds = t;
         long minutes = t / 60;
         long hours = minutes / 60;
@@ -390,7 +397,7 @@ public class Game {
         hours %= 24;
         return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
     }
-    public string TimeString() => TimeString(TimeSeconds);
+    public string TimeString() => TimeString(GameTime);
 
     int Look() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
@@ -431,9 +438,9 @@ public class Game {
     bool PlayerLost => !string.IsNullOrEmpty(Player?.EndMessage);
 
     // seconds -
-    public long TimeSeconds { get; private set; } = 100_000_000_000; // appx 3168 years
+    public long GameTime { get; private set; } = 100_000_000_000; // appx 3168 years
 
-    public static long SafeTime => Instance == null ? 0 : Instance.TimeSeconds;
+    public static long SafeTime => Instance?.GameTime ?? 0;
 
     public MenuItem GameMenu() {
         List<MenuItem> items = [
@@ -450,7 +457,7 @@ public class Game {
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
         if (ap > 0) {
-            Player.ConsumeTime(ap, null);
+            Player.ConsumeTime("Menu", 500, ap, post: null);
         }
         return selected;
     }
@@ -1368,7 +1375,7 @@ public class Game {
     List<Encounter> allEncounters = new();
     // Accessor methods for save/load
     public ulong GetSeed() => Seed;
-    public long GetTime() => TimeSeconds;
+    public long GetTime() => GameTime;
     public Crawler GetPlayer() => Player;
     public Map GetMap() => Map;
     public bool GetQuit() => quit;
