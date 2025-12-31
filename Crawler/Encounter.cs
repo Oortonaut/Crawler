@@ -212,6 +212,10 @@ public sealed class Encounter : IComparable<Encounter> {
         trader.Faction = Factions.Independent;
         trader.Role = Roles.Trader;
 
+        // Traders should have cargo segments to sell
+        var cargoSegments = Inventory.GenerateCargoSegments(actorRng.Seed(), Location, goodsWealth, null);
+        trader.Supplies.AddSegments(cargoSegments);
+
         // Initialize role-specific components
         trader.InitializeComponents(actorRng.Seed());
         return trader;

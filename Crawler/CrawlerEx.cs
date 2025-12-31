@@ -383,7 +383,7 @@ public static partial class CrawlerEx {
     public static List<MenuItem> InteractionMenuItems(this IActor agent, List<Interaction> interactions, string title, string prefix) {
         List<MenuItem> result = new();
         if (interactions.Count == 0) {
-            result.Add(new MenuItem(prefix, $"{title}\n"));
+            result.Add(new ActionMenuItem(prefix, $"{title}\n", _ => 0, EnableArg.Disabled, ShowArg.Show));
         } else {
             var show = interactions.Count > 4 ? ShowArg.Hide : ShowArg.Show;
             result.AddRange(interactions.DetailMenuItems(prefix, show));

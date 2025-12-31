@@ -12,6 +12,13 @@ public class CustomsComponent : ActorComponentBase {
     public override void Enter(Encounter encounter) {
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
+
+        // Scan all actors already present in the encounter
+        foreach (var actor in encounter.Actors) {
+            if (actor != Owner) {
+                SetupContrabandUltimatum(actor, Game.SafeTime);
+            }
+        }
     }
 
     public override void Leave(Encounter encounter) {
@@ -121,14 +128,9 @@ public class CustomsComponent : ActorComponentBase {
         public override string? MessageFor(IActor viewer) {
             if (viewer != Target) return null;
             var ultimatum = Owner.To(Target).Ultimatum;
-            if (ultimatum == null) return null;
-            var contraband = ultimatum.Data as Inventory;
-            if (contraband != null && ultimatum?.ExpirationTime > 0) {
-                return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to submit to customs search.\n" +
-                       $"You are carrying {contraband.Brief()}";
+            if (ultimatum == null || ultimatum.ExpirationTime == 0) return null;
 
-            }
-            return null;
+            return $"{Owner.Name} demands customs inspection. You have until {Game.TimeString(ultimatum.ExpirationTime)} to comply.";
         }
 
         public override int Perform(string args = "") {
@@ -674,9 +676,20 @@ public class EncounterMessengerComponent : ActorComponentBase {
 
     void OnActorArrived(IActor actor, long time) {
         if (actor != Owner) {
-            Owner.Message($"{actor.Name} enters");
+            if (time < Game.SafeTime) {
+                // Historical arrival - was already here
+                Owner.Message($"{actor.Name} is here");
+            } else {
+                // Real-time arrival
+                Owner.Message($"{actor.Name} enters");
+            }
         } else {
-            Owner.Message($"You entered {GetEncounter().Name}");
+            var encounter = GetEncounter();
+            Owner.Message($"You entered {encounter.Name}");
+            // List all actors already present
+            foreach (var other in encounter.ActorsExcept(Owner)) {
+                Owner.Message($"{other.Name} is here");
+            }
         }
     }
 

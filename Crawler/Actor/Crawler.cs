@@ -164,8 +164,6 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         var newInv = new Inventory();
         newInv.AddEssentials(crawlerSeed + 1, here, crew, supplyDays);
         newInv.AddCargo(crawlerSeed + 2, here, goodsWealth, faction);
-        var cargoSegments = Inventory.GenerateCargoSegments(crawlerSeed + 3, here, goodsWealth, null);
-        newInv.AddSegments(cargoSegments);
 
         var crawler = new Builder()
             .WithSeed(crawlerSeed)
@@ -754,7 +752,7 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
                 nameString += $" Settlement";
             }
         } else {
-            nameString += $" Crawler";
+            nameString += $" {Role}";
         }
         return $"{nameString}{Adjs}\n{result}";
     }
