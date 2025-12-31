@@ -76,3 +76,26 @@ Next phase here is to add utility segments for crawlers and settlements.
 * Repair
 * Sensors
 * ECM
+
+## Logging Rubric
+                                                                          
+### Formatting
+Searchability
+
+### Severity
+The log severity covers three different functions: error reporting, monitoring events, and monitoring state periodically. There's a little functional overlap between log levels since we're using a scalar severity.
+
+State changes, initialization, etc. are a level more severe than state logging. Debug events are a level lower than normal operation events; this is sometimes hard to differentiate if you aren't explicit about guarding your debug code with `#ifdef` or `[Conditional("Debug")]` or the like. 
+                                            
+A "frequent" event happens more than once per frame per player.
+
+### Errors
+* Fatal/Critical: something went very wrong, and it's unsafe to continue. Use for out of memory, heap corruption, etc. Log and flush, then exit.
+* Error: Something went wrong, but you can safely shut down. Use for code assertions, data structure corruption with a limited extent, critical assets missing, etc. Contain the damage and allow the user to save if needed/possible, then shut down.
+* Warning: Something went wrong, but you can safely continue. Use for most recoverable errors, like missing files, bad configuration, network timeouts, etc. Try to recover by using defaults or fallbacks.
+
+### Logging
+* Display/Information: infrequent major events, no periodic state logging. Use to monitor the operation of systems without being overwhelming. "What's going on in the scheduler?"
+* Log/Trace: periodic major state, frequent minor events, infrequent major debug events and state. Use to monitor detailed system operations. "What's getting dispatched?" 
+* Verbose/Debug: frequent minor debug events. 
+* VeryVerbose/Debug: very frequent or marginally important debug events, detailed debug state.

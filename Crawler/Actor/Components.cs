@@ -91,4 +91,6 @@ public abstract class ActorComponentBase : IActorComponent {
 
     public virtual ScheduleEvent? GetNextEvent() => null;
     public override string ToString() => $"{GetType().Name} on {Owner?.Name}";
+
+    protected Encounter GetEncounter() => Owner.Location.GetEncounter();
 }

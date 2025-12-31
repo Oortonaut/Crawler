@@ -39,6 +39,10 @@ public class Game {
         _instance = this;
         Seed = seed;
         Rng = new XorShift(seed);
+
+        // Initialize crawler scheduler
+        crawlerTravelScheduler = new Scheduler<Game, CrawlerTravelEvent, Crawler, long>(this);
+
         Welcome();
     }
     protected void Welcome() {
@@ -52,10 +56,14 @@ public class Game {
         }
         Gaussian = new GaussianSampler(Rng.Seed());
         _map = new Map(Rng.Seed(), H, H * 5 / 2);
+        _map.Construct();
         var currentLocation = Map.GetStartingLocation();
         _player = currentLocation.GetEncounter().GeneratePlayerActor(Rng.Seed());
         _player.Name = crawlerName;
-        currentLocation.GetEncounter().AddActor(_player);
+        currentLocation.GetEncounter().AddActorAt(_player, GameTime);
+
+        // Schedule the player's first turn so the game loop starts
+        ScheduleCrawler(_player, GameTime);
     }
     void Construct(SaveGameData saveData) {
         Seed = saveData.Seed;
@@ -78,59 +86,15 @@ public class Game {
         _player.Location = currentLocation;
 
         // Add player to map
-        currentLocation.GetEncounter().AddActor(Player);
+        // TODO SAVE TIME
+        var saveGameTime = 0;
+        currentLocation.GetEncounter().AddActorAt(Player, saveGameTime);
     }
 
     bool quit = false;
-    public void Schedule(Encounter encounter) {
-        Schedule(encounter, encounter.NextEncounterEvent);
-    }
-    void Schedule(Encounter encounter, long nextTurn) {
-        // Encounters must advance monotonically
-        //Debug.Assert(nextTurn > GameTime);
-        var scheduledTurn = encounter.Game_Scheduled;
-        if (scheduledTurn > 0) {
-            if (nextTurn < scheduledTurn) {
-                Log.LogInformation($"Schedule {encounter}: rescheduling to {nextTurn}");
-                Unschedule(encounter);
-            } else {
-                Log.LogInformation($"Schedule {encounter}: already scheduled for {scheduledTurn}");
-                return;
-            }
-        }
-        Log.LogInformation($"Schedule {encounter}: adding to {nextTurn}");
-        encountersByTurn.GetOrAddNew(nextTurn).Add(encounter);
-        encounter.Game_Scheduled = nextTurn;
-    }
-    void Unschedule(Encounter encounter) {
-        var scheduledTurn = encounter.Game_Scheduled;
-        if (scheduledTurn > 0) {
-            Log.LogInformation($"Unschedule {encounter.Name}: {scheduledTurn}");
-            var encounters = encountersByTurn[scheduledTurn];
-            encounters.Remove(encounter);
-            if (encounters.Count == 0) {
-                encountersByTurn.Remove(scheduledTurn);
-            }
-            encounter.Game_Scheduled = 0;
-        } else {
-            Log.LogInformation($"Unschedule {encounter.Name}: not scheduled");
-        }
-    }
-    (long turn, List<Encounter>) TurnEncounters() {
-        var kv = encountersByTurn.First();
-        var (turn, encounters) = kv;
-        encountersByTurn.Remove(turn);
-        foreach (var encounter in encounters) {
-            encounter.Game_Scheduled = 0;
-        }
-        //Log.LogInformation($"Turn {turn}: {result.Count} encounters");
-        return (turn, encounters);
-    }
-    SortedDictionary<long, List<Encounter>> encountersByTurn = new();
 
-    // Traveling crawlers management (using PriorityQueue with lazy deletion like Encounter)
-    PriorityQueue<Crawler, long> travelingCrawlers = new();
-    Dictionary<Crawler, long> travelingCrawlerData = new();
+    // Use generic Scheduler for crawler travel scheduling
+    Scheduler<Game, CrawlerTravelEvent, Crawler, long> crawlerTravelScheduler;
 
     // TODO: use this for log scoping too
     static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => null; // LogCat.Game.StartActivity(name, kind);
@@ -138,96 +102,81 @@ public class Game {
     static Meter Metrics => LogCat.GameMetrics;
 
     public void ScheduleCrawler(Crawler crawler, long time) {
-        // Lazy Deletion: If already scheduled, overwrite with new time if earlier
-        if (travelingCrawlerData.TryGetValue(crawler, out var scheduled)) {
-            if (time >= scheduled) {
-                Log.LogInformation($"ScheduleCrawler: {crawler.Name} already scheduled earlier at {scheduled}");
-                return;
+        Log.LogInformation($"ScheduleCrawler: {crawler.Name} scheduled for {time}");
+
+        // Use the generic Scheduler
+        var travelEvent = new CrawlerTravelEvent(crawler, time);
+        crawlerTravelScheduler.Schedule(travelEvent);
+    }
+
+    void ProcessCrawlerArrivals() {
+        while (crawlerTravelScheduler.Peek(out var evt, out var time)) {
+            if (time!.Value > GameTime) {
+                break;
             }
-            Log.LogInformation($"ScheduleCrawler: {crawler.Name} rescheduling from {scheduled} to {time}");
-        } else {
-            Log.LogInformation($"ScheduleCrawler: {crawler.Name} scheduled for {time}");
-        }
 
-        travelingCrawlerData[crawler] = time;
-        travelingCrawlers.Enqueue(crawler, time);
-    }
+            var travelEvent = crawlerTravelScheduler.Dequeue();
+            if (travelEvent != null) {
+                Log.LogInformation($"ProcessCrawlerArrivals: {travelEvent.Crawler.Name} arrived at {travelEvent.ArrivalTime}");
 
-    public void UnscheduleTravelingCrawler(Crawler crawler) {
-        if (travelingCrawlerData.Remove(crawler)) {
-            Log.LogInformation($"UnscheduleTravelingCrawler: {crawler.Name} unscheduled");
-            // The entry in PriorityQueue becomes "stale" (ignored on dequeue)
-        }
-    }
+                var crawler = travelEvent.Crawler;
 
-    void ProcessTravelingCrawlers(long currentTime) {
-        while (travelingCrawlers.Count > 0) {
-            if (!travelingCrawlers.TryPeek(out var crawler, out var eventTime)) break;
+                // Tick the crawler to the current game time
+                crawler.TickTo(travelEvent.ArrivalTime);
 
-            // Stop if we haven't reached the event time yet
-            if (eventTime > currentTime) break;
+                // Update the crawler's encounter to current game time
+                // This spawns dynamic crawlers and fires EncounterTicked
+                var encounter = crawler.Location.GetEncounter();
+                encounter.UpdateTo(GameTime);
 
-            travelingCrawlers.Dequeue();
-
-            // Lazy Deletion: Check if this event is stale
-            if (!travelingCrawlerData.TryGetValue(crawler, out var data) || data != eventTime) {
-                continue;
-            }
-            travelingCrawlerData.Remove(crawler);
-
-            // Execute the callback action
-            Log.LogInformation($"ProcessTravelingCrawlers: {crawler.Name} event at time {eventTime}");
-        }
-    }
-
-    long? NextTravelingCrawlerArrival() {
-        while (travelingCrawlers.Count > 0) {
-            if (travelingCrawlers.TryPeek(out var crawler, out var eventTime)) {
-                // Check if this is a valid (non-stale) entry
-                if (travelingCrawlerData.TryGetValue(crawler, out var data) && data == eventTime) {
-                    return eventTime;
+                // If this is the player, show the game menu repeatedly until they consume time or quit
+                if (crawler == Player) {
+                    int ap = 0;
+                    do {
+                        ap = ShowGameMenu();
+                        // Loop until player takes an action that consumes time or quits
+                    } while (ap <= 0 && !quit);
                 }
-                // Stale entry, skip it
-                travelingCrawlers.Dequeue();
             }
         }
-        return null;
+    }
+
+    int ShowGameMenu() {
+        List<MenuItem> items = [
+            .. GameMenuItems(),
+            .. PlayerMenuItems(),
+            .. SectorMenuItems(),
+            .. GlobeMenuItems(),
+            .. EncounterMenuItems(),
+            MenuItem.Sep,
+            new MenuItem("", "Choose"),
+        ];
+
+        Look();
+
+        var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
+
+        // If time was consumed, schedule the player using ConsumeTime
+        if (ap > 0) {
+            Player.ConsumeTime("PlayerAction", 0, ap);
+        }
+
+        return ap;
     }
 
     public void Run() {
-
-        while (!quit && (encountersByTurn.Count > 0 || travelingCrawlers.Count > 0)) {
-            // Determine the next event time (encounter or traveling crawler arrival)
-            long? nextEncounterTime = encountersByTurn.Any() ? encountersByTurn.First().Key : null;
-            long? nextTravelTime = NextTravelingCrawlerArrival();
-
-            long turn;
-            if (nextEncounterTime.HasValue && nextTravelTime.HasValue) {
-                // Process whichever comes first
-                turn = Math.Min(nextEncounterTime.Value, nextTravelTime.Value);
-            } else if (nextEncounterTime.HasValue) {
-                turn = nextEncounterTime.Value;
-            } else if (nextTravelTime.HasValue) {
-                turn = nextTravelTime.Value;
-            } else {
-                break; // No more events
+        while (!quit && crawlerTravelScheduler.Any()) {
+            // Get the next crawler event time
+            if (!crawlerTravelScheduler.Peek(out var evt, out var nextTime)) {
+                break;
             }
+
+            GameTime = nextTime!.Value;
 
             using var activity = Scope($"Game::Turn")?
-                .AddTag("turn", turn);
-            GameTime = turn;
+                .AddTag("start", GameTime);
 
-            // Process traveling crawler arrivals at this time
-            ProcessTravelingCrawlers(turn);
-
-            // Process encounters at this time
-            if (nextEncounterTime.HasValue && nextEncounterTime.Value == turn) {
-                var (_, turnEncounters) = TurnEncounters();
-                foreach (var encounter in turnEncounters) {
-                    encounter.Tick(turn);
-                    Schedule(encounter);
-                }
-            }
+            ProcessCrawlerArrivals();
 
             if (PlayerWon || PlayerLost) {
                 Save();
@@ -427,7 +376,6 @@ public class Game {
 
     public void RegisterEncounter(Encounter encounter) {
         allEncounters.Add(encounter);
-        Schedule(encounter);
     }
 
     public IEnumerable<Encounter> Encounters() {
@@ -442,25 +390,6 @@ public class Game {
 
     public static long SafeTime => Instance?.GameTime ?? 0;
 
-    public MenuItem GameMenu() {
-        List<MenuItem> items = [
-            .. GameMenuItems(),
-            .. PlayerMenuItems(),
-            .. SectorMenuItems(),
-            .. GlobeMenuItems(),
-            .. EncounterMenuItems(),
-            MenuItem.Sep,
-            new MenuItem("", "Choose"),
-        ];
-
-        Look();
-
-        var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
-        if (ap > 0) {
-            Player.ConsumeTime("Menu", 500, ap, post: null);
-        }
-        return selected;
-    }
     int SectorMap() {
         var sector = PlayerLocation.Sector;
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);

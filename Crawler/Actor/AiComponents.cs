@@ -24,7 +24,7 @@ public class RetreatComponent : ActorComponentBase {
         int fleeTime = 60;
         // Flee if vulnerable and not pinned
         if (crawler.IsVulnerable && escapeChance > 0 && damageRatio > 0.75f) {
-            return crawler.NewEvent("Flee", Priority, fleeTime, Post: () => {
+            return crawler.NewEventFor("Flee", Priority, fleeTime, Post: () => {
                 if (crawler.GetRng().NextSingle() < escapeChance) {
                     crawler.Message($"{crawler.Name} fled.");
                     crawler.Location.GetEncounter().RemoveActor(crawler);

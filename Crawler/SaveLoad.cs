@@ -492,7 +492,7 @@ public static class SaveLoadExtensions {
 
     public static Location ToGameLocation(this SavedLocation savedLocation, Sector sector) {
         var location = new Location(savedLocation.Seed,
-            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth, loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(savedLocation.Seed, loc).Generate());
+            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth, loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(savedLocation.Seed, loc).Create());
         return location;
     }
 
@@ -578,8 +578,6 @@ public static class SaveLoadExtensions {
             EndMessage = savedCrawler.EndMessage,
             ActorRelations = actorRelations,
             LocationRelations = locationRelations,
-            NextEvent = null,
-            Encounter_ScheduledTime = 0,
             WorkingSegments = new List<Segment.Data>(), // TODO: Extract from segments
             EvilPoints = savedCrawler.EvilPoints
         };

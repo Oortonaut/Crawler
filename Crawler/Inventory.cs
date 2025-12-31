@@ -358,7 +358,11 @@ public class Inventory {
             if (def != null) {
                 weightedWealth[def.SegmentKind] -= def.Cost;
                 var segment = def.NewSegment(rng.Seed());
-                segment.Packaged = !includeCore;
+                // Core segments (working segments) should be unpackaged
+                // Cargo segments should remain packaged (default)
+                if (includeCore) {
+                    segment.Packaged = false;
+                }
                 segments.Add(segment);
             }
         }

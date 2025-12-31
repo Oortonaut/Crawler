@@ -293,21 +293,18 @@ public class CrawlerArena {
         }
 
         int win = 0;
-        long currentTime = 0;
 
         // Determine attack order based on design1First parameter
         var (firstAttacker, secondAttacker) = design1First ? (crawler1, crawler2) : (crawler2, crawler1);
 
         // Initial attack from first attacker
         if (firstAttacker.WeaponDelay().HasValue) {
-            var delay = firstAttacker.Attack(secondAttacker);
-            firstAttacker.ConsumeTime("A", 700, delay);
+            firstAttacker.Attack(secondAttacker);
         }
 
-        // Initial attack from second attacker with slight offset
+        // Initial attack from second attacker
         if (secondAttacker.WeaponDelay().HasValue) {
-            var delay = secondAttacker.Attack(firstAttacker);
-            secondAttacker.ConsumeTime("B", 700, delay);
+            secondAttacker.Attack(firstAttacker);
         }
 
         while (rounds < maxRounds) {
@@ -325,22 +322,15 @@ public class CrawlerArena {
             }
             rounds++;
 
-            // Determine who attacks next based on scheduled times
-            var nextAttacker = crawler1.NextScheduledTime <= crawler2.NextScheduledTime ? crawler1 : crawler2;
+            // Alternate who attacks next
+            var nextAttacker = rounds % 2 == 0 ? crawler1 : crawler2;
             var nextDefender = nextAttacker == crawler1 ? crawler2 : crawler1;
-
-            currentTime = nextAttacker.NextScheduledTime;
-
-            // Simulate both crawlers to current time
-            crawler1.SimulateTo(currentTime);
-            crawler2.SimulateTo(currentTime);
 
             // Perform attack if attacker is still capable
             if (!nextAttacker.IsDestroyed && !nextAttacker.IsDisarmed && nextAttacker.WeaponDelay().HasValue) {
-                var delay = nextAttacker.Attack(nextDefender);
-                nextAttacker.ConsumeTime("N", 700, delay);
+                nextAttacker.Attack(nextDefender);
             } else {
-                // If can't attack, just advance time
+                // If can't attack, end combat
                 break;
             }
         }

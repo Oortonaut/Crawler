@@ -128,6 +128,18 @@ public interface IActor {
     /// <summary>Update this actor (called every game second)</summary>
     /// <param name="time"></param>
     /// <returns>Elapsed time</returns>
+    void TickTo(long time);
+    void TickTo(long time, ScheduleEvent evt);
+
+    /// <summary>
+    /// Advances actor's internal time without processing events or thinking.
+    /// Used for initializing actor time when entering simulation.
+    ///
+    /// Parallel to PassTimeUntil (scheduling) as TickTo is to ConsumeTime:
+    /// - ConsumeTime(duration) schedules relative to current time → TickTo() processes it
+    /// - PassTimeUntil(time) schedules at absolute time → TickTo() processes it
+    /// - SimulateTo(time) directly advances time without scheduling or processing
+    /// </summary>
     void SimulateTo(long time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
@@ -366,6 +378,30 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public long LastTime { get; protected set; }
     public long Time { get; protected set; } = 0;
     public int Elapsed => (int)(LastTime > 0 ? Time - LastTime : 0);
+    public void TickTo(long encounterTime) {
+        SimulateTo(encounterTime);
+        Think();
+        PostTick(encounterTime);
+    }
+
+    public void TickTo(long encounterTime, ScheduleEvent evt) {
+        Debug.Assert(evt.End == encounterTime);
+        SimulateTo(encounterTime);
+        evt.Post?.Invoke();
+        Think();
+        PostTick(encounterTime);
+    }
+    protected virtual void PostTick(long encounterTime) {}
+
+    /// <summary>
+    /// Advances actor's internal time without processing events or thinking.
+    /// Used for initializing actor time when entering simulation.
+    ///
+    /// Parallel to PassTimeUntil (scheduling) as TickTo is to ConsumeTime:
+    /// - ConsumeTime(duration) schedules relative to current time → TickTo() processes it
+    /// - PassTimeUntil(time) schedules at absolute time → TickTo() processes it
+    /// - SimulateTo(time) directly advances time without scheduling or processing
+    /// </summary>
     public virtual void SimulateTo(long time) {
         if (Flags.HasFlag(ActorFlags.Loading))
             throw new InvalidOperationException($"Tried to simulate {Name} during loading.");

@@ -328,11 +328,11 @@ public abstract class CombatComponentBase : ActorComponentBase {
         var countdowns = attacker.WeaponDelays().ToArray();
         if (countdowns.Length == 0) return null;
         if (countdowns[0] != 0) {
-            return Owner.NewEvent("Charging", 0, countdowns[0]);
+            return Owner.NewEventFor("Charging", 0, countdowns[0]);
         }
         // Try to attack current target if still valid
         var duration = attacker.Attack(target);
-        return Owner.NewEvent("Volley", Priority, duration, Pre: () => {
+        return Owner.NewEventFor("Volley", Priority, duration, Pre: () => {
             attacker.Attack(target);
         });
     }
@@ -351,7 +351,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
         Owner.SetHostileTo(actor, true);
         if (actor is ActorScheduled scheduled &&
             Owner is ActorScheduled ownerScheduled) {
-            ownerScheduled.PassTime("ReceivingFire", scheduled.Time);
+            ownerScheduled.PassTimeUntil("ReceivingFire", scheduled.Time);
         }
     }
 

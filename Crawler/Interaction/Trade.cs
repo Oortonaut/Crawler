@@ -136,6 +136,8 @@ public static class TradeEx {
             var markup = Tuning.Economy.LocalMarkup(segment.SegmentKind, Location);
             var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
             markup *= merchantMarkup * policyMultiplier;
+
+            // Segments are packaged by default, so just add to cargo
             Seller.Cargo.Segments.Add(segment);
             var price = segment.Cost * markup;
 

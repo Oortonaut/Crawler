@@ -1,3 +1,7 @@
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+
 namespace Crawler;
 
 public static partial class CollectionEx {
@@ -213,4 +217,11 @@ public static partial class CollectionEx {
 
     // Structure construction
     public static Stack<T> ToStack<T>(this IEnumerable<T> e) => new Stack<T>(e);
+
+    [Conditional("DEBUG")]
+    public static void Assert<T>(this IEnumerable<T> items, [DoesNotReturnIf(false)] Predicate<T> condition, [CallerArgumentExpression(nameof(condition))] string? message = null) {
+        foreach (var item in items) {
+            Debug.Assert(condition(item), message);
+        }
+    }
 }

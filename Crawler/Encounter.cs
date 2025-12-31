@@ -13,20 +13,10 @@ public enum EncounterType {
     Hazard,
 }
 public class EncounterActor {
-    public bool Dynamic => ExitTime > 0;
     public long ArrivalTime { get; set; } = 0;
-    public long ExitTime { get; set; } = 0; // 0 means never exits (permanent actor)
-    public bool ShouldExit(long currentTime) => Dynamic && currentTime >= ExitTime;
-    public void ExitAfter(int duration) {
-        if (Dynamic) {
-            ExitTime = Math.Min(ExitTime, Game.SafeTime + duration);
-        } else {
-            ExitTime = ArrivalTime + duration;
-        }
-    }
 }
 
-public sealed class Encounter {
+public sealed class Encounter : IComparable<Encounter> {
     public Encounter(ulong seed, Location location): this(seed, location,
         location.Type == EncounterType.Settlement ?
             location.Sector.ControllingFaction :
@@ -39,8 +29,10 @@ public sealed class Encounter {
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Faction = faction;
-        lastDynamicEvent = Game.SafeTime - CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f);
-        EncounterTime = lastDynamicEvent;
+        long offset = (Rng / "StartTime").NextInt64(3600);
+        EncounterTime = Game.SafeTime - offset -
+                        CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f);
+
         Game.Instance!.RegisterEncounter(this);
     }
     XorShift Rng;
@@ -52,11 +44,11 @@ public sealed class Encounter {
     public event ActorLeftEventHandler? ActorLeft;
     public event EncounterTickEventHandler? EncounterTicked;
 
-    public string Name { get; set; } = "Encounter";
+    public string Name { get; set; } = "<unnamed>";
     public string Description { get; set; } = "";
-    public override string ToString() => $"{Name} at {Location} '{Description}'";
+    public override string ToString() => $"Encounter {Name} at {Location} '{Description}' {Game.TimeString(EncounterTime)}";
     public string ViewFrom(IActor viewer) {
-        string result = Style.Name.Format(Name);
+        string result = "Encounter " + Style.Name.Format(Name) + $" at {Location.PosString}";
         if (Description != "") {
             result += ": " + Description;
         }
@@ -88,7 +80,10 @@ public sealed class Encounter {
             string prefix = "C" + (char)('A' + index);
             using var activityOther = Scope($"Menu {prefix}")?
                 .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("Subject.Faction", subject.Faction);
-            var interactions = agent.InteractionsWith(subject).Cast<Interaction>().ToList();
+            // Collect interactions from both directions: agent->subject and subject->agent
+            var interactions = agent.InteractionsWith(subject)
+                .Concat(subject.InteractionsWith(agent))
+                .ToList();
             ap += interactions.TickInteractions(agent, prefix);
             var agentActorMenus = agent.InteractionMenuItems(interactions, subject.Brief(agent), prefix);
             result.AddRange(agentActorMenus);
@@ -98,21 +93,20 @@ public sealed class Encounter {
 
     // Dynamic crawler management
     float hourlyArrivals => Tuning.Encounter.HourlyArrivalsPerPop[Location.Type] * Location.Population * Tuning.Encounter.CrawlerDensity;
-    long lastDynamicEvent = 0;
     Crawler AddDynamicCrawler(ulong seed, long arrivalTime, int lifetime) {
-        Debug.Assert(arrivalTime >= lastDynamicEvent);
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
-        var crawler = GenerateFactionActor(seed, faction, arrivalTime, lifetime);
+        var crawler = GenerateFactionActor(seed, faction);
 
-        // Add LeaveEncounterComponent to manage automatic departure
-        long exitTime = arrivalTime + lifetime;
-        crawler.AddComponent(new LeaveEncounterComponent(exitTime));
+        // Note: GenerateFactionActor creates the crawler with the Loading flag set
+        // and calls InitializeComponents. AddActorAt will call Begin() to properly
+        // enter all components into the encounter.
+        AddActorAt(crawler, arrivalTime, lifetime);
 
         return crawler;
     }
-    void SpawnDynamicCrawlers(long currentTime) {
-        long elapsed = currentTime - lastDynamicEvent;
+    public void SpawnDynamicCrawlers(long previousTime, long currentTime) {
+        long elapsed = currentTime - previousTime;
         if (elapsed < 0) {
             throw new InvalidOperationException($"TODO: Retrocausality");
         }
@@ -129,19 +123,23 @@ public sealed class Encounter {
             var arrivals = new List<(long arrivalTime, int lifetime)>();
             for (int i = 0; i < arrivalCount; i++) {
                 int lifetime = CrawlerEx.PoissonQuantile(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, ref Rng);
-                // Arrivals spread across the next minute (60 seconds)
-                long arrivalTime = currentTime - Rng.NextInt64(elapsed);
-                if (arrivalTime + lifetime > currentTime) {
+                // Arrivals spread across the elapsed time period
+                long arrivalTime = previousTime + Rng.NextInt64(elapsed);
+                // Only add crawlers that:
+                // 1. Are still present at currentTime (arrivalTime + lifetime > currentTime)
+                // 2. Arrive at or after current encounter time (arrivalTime >= EncounterTime)
+                //    This prevents adding crawlers scheduled in the past during tick processing
+                if (arrivalTime + lifetime > currentTime && arrivalTime >= EncounterTime) {
                     arrivals.Add((arrivalTime, lifetime));
                 }
             }
+            arrivals.Sort((a, b) => a.arrivalTime.CompareTo(b.arrivalTime));
 
             // Add crawlers in order of arrival time
-            foreach (var (arrivalTime, lifetime) in arrivals.OrderBy(a => a.arrivalTime)) {
+            foreach (var (arrivalTime, lifetime) in arrivals) {
                 AddDynamicCrawler(Rng.Seed(), arrivalTime, lifetime);
             }
         }
-        lastDynamicEvent = currentTime;
     }
 
     Location location;
@@ -162,21 +160,23 @@ public sealed class Encounter {
         // Update caching when actors join
         if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
 
+        if (lifetime.HasValue && actor is Crawler crawler) {
+            crawler.AddComponent(new LeaveEncounterComponent(arrivalTime + lifetime.Value));
+        }
+
         long exitTime = lifetime.HasValue ? arrivalTime + lifetime.Value : 0;
         var metadata = new EncounterActor {
             ArrivalTime = arrivalTime,
-            ExitTime = exitTime,
         };
         actors[actor] = metadata;
         actor.To(Location).Visited = true;
         actor.Arrived(this);
 
-        ActorArrived?.Invoke(actor, arrivalTime);
+        // Initialize actor time to arrival time before firing events
+        // This ensures message timestamps display correctly
+        actor.SimulateTo(arrivalTime);
 
-        if (actor is ActorScheduled scheduled) {
-            scheduled.PassTime("Arriving", arrivalTime);
-            scheduled.TickTo(EncounterTime);
-        }
+        ActorArrived?.Invoke(actor, arrivalTime);
 
     }
     // Is this subverting C# idiom to automatically insert using this[]
@@ -184,10 +184,6 @@ public sealed class Encounter {
 
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
     public void RemoveActor(IActor actor) {
-        if (actor is Crawler crawler) {
-            Unschedule(crawler);
-        }
-
         // Raise ActorLeaving event
         ActorLeaving?.Invoke(actor, EncounterTime);
 
@@ -212,6 +208,7 @@ public sealed class Encounter {
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
         var trader = Crawler.NewRandom(actorRng.Seed(), Factions.Independent, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.8f, 1, 1]);
+        trader.Name = Names.HumanName(actorRng.Seed());
         trader.Faction = Factions.Independent;
         trader.Role = Roles.Trader;
 
@@ -226,6 +223,7 @@ public sealed class Encounter {
         float goodsWealth = wealth * 0.65f;
         float segmentWealth = wealth * 0.5f;
         var player = Crawler.NewRandom(seed, Factions.Player, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1, 1]);
+        player.Name = Names.HumanName(seed);
         player.Flags |= ActorFlags.Player;
         player.Faction = Factions.Player;
         player.Role = Roles.Player;
@@ -243,6 +241,7 @@ public sealed class Encounter {
         float goodsWealth = wealth * 0.6f;
         float segmentWealth = wealth * 0.5f;
         var enemy = Crawler.NewRandom(actorRng.Seed(), Factions.Bandit, Location, crew, 10, goodsWealth, segmentWealth, [1, 1, 1.2f, 0.8f]);
+        enemy.Name = Names.HumanName(actorRng.Seed());
         enemy.Faction = Factions.Bandit;
         enemy.Role = Roles.Bandit;
 
@@ -259,32 +258,50 @@ public sealed class Encounter {
         int crew = Math.Max(1, (int)(wealth / 40));
         float goodsWealth = wealth * 0.375f * 0.5f;
         float segmentWealth = wealth * (1.0f - 0.75f);
-        var civilian = Crawler.NewRandom(actorRng.Seed(), civilianFaction, Location, crew, 10, goodsWealth, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
-        civilian.Faction = civilianFaction;
 
         // Randomly assign a civilian role
         var roleRoll = actorRng.NextSingle();
-        civilian.Role = roleRoll switch {
+        var role = roleRoll switch {
             < 0.6f => Roles.Trader,    // 60% traders
             < 0.8f => Roles.Traveler,  // 20% travelers
             _ => Roles.Customs         // 20% customs officers
         };
 
-        // Initialize role-specific components
-        civilian.InitializeComponents(actorRng.Seed());
+        // Generate working segments
+        var workingSegments = Inventory.GenerateCoreSegments(actorRng.Seed(), Location, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
+
+        // Generate inventory with essentials and cargo
+        var newInv = new Inventory();
+        newInv.AddEssentials(actorRng.Seed(), Location, crew, 10);
+        newInv.AddCargo(actorRng.Seed(), Location, goodsWealth, civilianFaction);
+        var cargoSegments = Inventory.GenerateCargoSegments(actorRng.Seed(), Location, goodsWealth, null);
+        newInv.AddSegments(cargoSegments);
+
+        // Build crawler with role and component initialization set BEFORE Begin() is called
+        var civilian = new Crawler.Builder()
+            .WithSeed(actorRng.Seed())
+            .WithName(Names.HumanName(actorRng.Seed()))
+            .WithFaction(civilianFaction)
+            .WithLocation(Location)
+            .WithSupplies(newInv)
+            .WithSegments(workingSegments)
+            .WithRole(role)
+            .WithComponentInitialization(true)  // Initialize components before Begin()
+            .Build();
+
         return civilian;
     }
 
-    public Crawler GenerateCapital(ulong seed) {
+    public Crawler CreateCapital(ulong seed) {
         using var activity = Scope($"GenerateCapital {nameof(Encounter)}");
-        var settlement = GenerateSettlement(seed);
+        var settlement = CreateSettlement(seed);
         settlement.Domes += 2;
         settlement.Flags |= ActorFlags.Capital;
         return settlement;
     }
-    public Crawler GenerateSettlement(ulong seed) {
+    public Crawler CreateSettlement(ulong seed) {
         var settlementRng = new XorShift(seed);
-        using var activity = Scope($"GenerateSettlement {nameof(Encounter)}");
+        using var activity = Scope($"CreateSettlement {seed} at {Location.Description}");
         float t = Location.Position.Y / (float)Location.Map.Height;
         int domes = (int)Math.Log2(Location.Population) + 1;
         int crew = Math.Min(domes * 10, Location.Population);
@@ -321,11 +338,12 @@ public sealed class Encounter {
         } else {
             EncounterNames = [.. Names.ClassicSettlementNames, .. Names.NightSettlementNames];
         }
-        Name = settlementRng.ChooseRandom(EncounterNames)!;
-        AddActor(settlement);
+        var settlementName = settlementRng.ChooseRandom(EncounterNames)!;
+        Name = settlementName;
+        settlement.Name = settlementName;
         return settlement;
     }
-    public void GenerateResource(ulong seed) {
+    public IActor CreateResource(ulong seed) {
         var rng = new XorShift(seed);
         var resource = rng.ChooseRandom<Commodity>();
         Name = $"{resource} Resource";
@@ -384,9 +402,9 @@ public sealed class Encounter {
 
         var resourceActor = new ActorBase(rng.Seed(), name, giftDesc, Factions.Independent, Inv, new (), Location);
         resourceActor.AddComponent(new HarvestComponent(Inv, verb, "H"));
-        AddActor(resourceActor);
+        return resourceActor;
     }
-    public void GenerateHazard(ulong seed) {
+    public IActor CreateHazard(ulong seed) {
         var rng = new XorShift(seed);
         float payoff = Location.Wealth * Tuning.Game.hazardWealthFraction;
         float risk = payoff * Tuning.Game.hazardNegativePayoffRatio;
@@ -471,36 +489,45 @@ public sealed class Encounter {
             Tuning.Game.hazardNegativePayoffChance,
             description,
             "H"));
-        AddActor(hazardActor);
+        return hazardActor;
     }
-    public Encounter Generate() {
-        using var activity = Scope($"Generate {nameof(Encounter)}");
+    public Encounter Create() {
+        using var activity = Scope($"Create {nameof(Encounter)}");
         var seed = Rng.Seed();
+        IActor? actor = null;
         switch (Location.Type) {
         case EncounterType.Crossroads:
         {
             Name = $"{Faction} Crossroads";
-            GenerateFactionActor(seed, Faction, EncounterTime, null);
+            actor = GenerateFactionActor(seed, Faction);
         }
         break;
-        case EncounterType.Settlement: GenerateSettlement(seed); break;
-        case EncounterType.Resource: GenerateResource(seed); break;
-        case EncounterType.Hazard: GenerateHazard(seed); break;
+        case EncounterType.Settlement: actor = CreateSettlement(seed); break;
+        case EncounterType.Resource: actor = CreateResource(seed); break;
+        case EncounterType.Hazard: actor = CreateHazard(seed); break;
         }
+        if (actor != null) {
+            // Add the main encounter actor at the encounter's start time
+            AddActorAt(actor, EncounterTime);
+        }
+
+        // Spawn dynamic crawlers from encounter start to present
+        SpawnDynamicCrawlers(EncounterTime, Game.SafeTime);
+
         return this;
     }
-    public Crawler GenerateFactionActor(ulong seed, Factions faction, long arrivalTime, int? lifetime) {
+    public Crawler GenerateFactionActor(ulong seed, Factions faction) {
         Crawler result;
 
         result = faction switch {
             Factions.Bandit => GenerateBanditActor(seed),
             Factions.Player => GeneratePlayerActor(seed),
             Factions.Independent => GenerateTradeActor(seed),
-            _ => GenerateCivilianActor(seed, faction),
+            var civilian => GenerateCivilianActor(seed, faction),
         };
-        AddActorAt(result, arrivalTime, lifetime);
         return result;
     }
+
 
     public IEnumerable<IActor> ActorsExcept(IActor actor) => Actors.Where(a => a != actor);
     public IEnumerable<Crawler> CrawlersExcept(IActor actor) => ActorsExcept(actor).OfType<Crawler>();
@@ -531,11 +558,7 @@ public sealed class Encounter {
         description: "Duration of individual crawler tick execution in milliseconds"
     );
 
-    // Replaced SortedDictionary with PriorityQueue + Lazy Deletion for O(log N) performance
-    PriorityQueue<ActorScheduled, long> eventQueue = new();
-
     public long EncounterTime { get; set; }
-    internal long Game_Scheduled = 0;
 
     // Tracks if the player is present to toggle between High Precision and Batched modes
     bool _hasPlayer = false;
@@ -543,133 +566,38 @@ public sealed class Encounter {
         _hasPlayer = actors.Keys.Any(a => a.Flags.HasFlag(ActorFlags.Player));
     }
 
-    public long NextEncounterEvent {
-        get {
-            if (!eventQueue.TryPeek(out _, out long nextCrawlerEvent)) {
-                return EncounterTime; //  + Tuning.MaxDelay;
-            }
-
-            // High Precision Mode: If player is here, we must run exactly at the next event
-            //if (_hasPlayer) {
-                return nextCrawlerEvent;
-            //}
-
-            /*
-            // Batch Mode: For background encounters, only wake up the Game loop hourly.
-            // This prevents thousands of micro-updates from clogging the global scheduler.
-            long batchInterval = Tuning.MaxDelay;
-            long batchTarget = EncounterTime + batchInterval;
-
-            // If the next event is within the current batch window, wait until the window closes.
-            if (nextCrawlerEvent < batchTarget) {
-                return batchTarget;
-            }
-
-            // If the next event is further out than the batch window, sleep until then.
-            return nextCrawlerEvent;
-            */
-        }
-    }
-
-    // Re-entrancy guard
-    bool isTicking = false;
-
-    public void ActorScheduleChanged(ActorScheduled actor) {
-        var nextEvent = actor.NextEvent;
-        if (actor.NextEvent == null) {
-            Unschedule(actor);
-            return;
-        }
-        long nextTurn = nextEvent!.EndTime;
-
-        Log.LogTrace($"{Name}: {actor.Name} scheduled for {nextEvent}");
-        Debug.Assert(nextTurn >= lastDynamicEvent);
-        Debug.Assert(nextTurn >= EncounterTime);
-        Debug.Assert(EncounterTime >= lastDynamicEvent);
-        actor.Encounter_Scheduled = nextEvent;
-        eventQueue.Enqueue(actor, nextTurn);
-
-        UpdateGlobalSchedule();
-    }
-
-    void Unschedule(ActorScheduled actor) {
-        actor.Encounter_Scheduled = null;
-        UpdateGlobalSchedule();
-    }
-
-    void UpdateGlobalSchedule() {
-        // Optimization: Don't poke Global Game Schedule while strictly internal to Tick
-    //    if (!isTicking) {
-            Game.Instance!.Schedule(this);
-      //  }
-    }
-
-    public void Tick(long time) {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-        if (time < EncounterTime) {
-            Log.LogError($"Encounter {Name} ticked backwards from {EncounterTime} to {time}");
-            EncounterTime = time;
-            return;
-        }
-        
-        isTicking = true; // Block global updates until we are done processing the batch
-
-        try {
-            using var activity = Scope($"Tick {nameof(Encounter)} {this} to {time}");
-
-            Debug.Assert(eventQueue.Count >= actors.Count);
-            while (eventQueue.TryPeek(out var actor, out var eventTime)) {
-                // exit and keep the event if it should still be pending
-                if (eventTime > time) break;
-
-                var actorStopwatch = Stopwatch.StartNew();
-                Debug.Assert(EncounterTime <= eventTime);
-                (long encounterStartTime, EncounterTime) = (EncounterTime, eventTime);
-
-                if (!eventQueue.TryDequeue(out actor, out eventTime)) {
-                    break;
-                }
-                var nextEvent = actor.NextEvent!;
-                Debug.Assert(actor.NextEvent != null);
-                if (actor.Encounter_Scheduled != actor.NextEvent || actor.Encounter_Scheduled == null) {
-                    continue;
-                }
-                Log.LogInformation($"{actor.Name} running {nextEvent}");
-                actor.Encounter_Scheduled = null;
-                SpawnDynamicCrawlers(eventTime);
-
-                EncounterTicked?.Invoke(encounterStartTime, EncounterTime);
-
-                actor.TickTo(EncounterTime);
-                actorStopwatch.Stop();
-
-                // TODO: Move this into a component
-                if (actor.Flags.HasFlag(ActorFlags.Player)) {
-                    Game.Instance!.GameMenu();
-                }
-
-                CrawlerTickCount.Add(1, new KeyValuePair<string, object?>("crawler.faction", actor.Faction));
-                CrawlerTickDuration.Record(actorStopwatch.ElapsedMilliseconds,
-                    new KeyValuePair<string, object?>("crawler.name", actor.Name),
-                    new KeyValuePair<string, object?>("crawler.faction", actor.Faction)
-                );
-            }
-        } finally {
-            isTicking = false;
-            UpdateGlobalSchedule(); // Single global update at the end
+    /// <summary>
+    /// Updates the encounter to the specified time, spawning dynamic crawlers
+    /// and firing the EncounterTicked event.
+    /// </summary>
+    public void UpdateTo(long currentTime) {
+        if (currentTime < EncounterTime) {
+            throw new InvalidOperationException($"Cannot move encounter time backwards from {Game.TimeString(EncounterTime)} to {Game.TimeString(currentTime)}");
         }
 
-        stopwatch.Stop();
-        Log.LogInformation($"Finished ticking Encounter {this} at time {time}, last event {EncounterTime}, next event {NextEncounterEvent}");
+        if (currentTime == EncounterTime) {
+            return; // Already at this time
+        }
 
-        EncounterTickCount.Add(1,
-            new KeyValuePair<string, object?>("encounter.name", Name),
-            new KeyValuePair<string, object?>("encounter.faction", Faction)
-        );
-        EncounterTickDuration.Record(stopwatch.ElapsedMilliseconds,
-            new KeyValuePair<string, object?>("encounter.name", Name),
-            new KeyValuePair<string, object?>("encounter.faction", Faction)
-        );
+        long previousTime = EncounterTime;
+
+        // Spawn dynamic crawlers for the elapsed time period
+        SpawnDynamicCrawlers(previousTime, currentTime);
+
+        // Fire the EncounterTicked event for components listening to time passage
+        EncounterTicked?.Invoke(previousTime, currentTime);
+
+        // Advance encounter time
+        EncounterTime = currentTime;
+    }
+
+    // IComparable implementation for use with Scheduler
+    public int CompareTo(Encounter? other) {
+        if (other == null) return 1;
+        if (ReferenceEquals(this, other)) return 0;
+
+        // Compare by identity using GetHashCode as a stable unique identifier
+        // The Scheduler uses the Tag only for identity, not ordering
+        return GetHashCode().CompareTo(other.GetHashCode());
     }
 }

@@ -1,0 +1,8 @@
+N
+TestPlayer
+5
+
+CA
+X
+Q
+Q

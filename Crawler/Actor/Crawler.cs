@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using Crawler.Logging;
+﻿using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;
@@ -157,7 +152,7 @@ public class ActorFaction {
     public int FactionStanding { get; set; } // How the faction feels about the actor
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
-public partial class Crawler: ActorScheduled {
+public partial class Crawler: ActorBase, IComparable<Crawler> {
     public static Crawler NewRandom(ulong seed, Factions faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
         var rng = new XorShift(seed);
         var crawlerSeed = rng.Seed();
@@ -378,7 +373,7 @@ public partial class Crawler: ActorScheduled {
         //    .SetTag("crawler.name", Name)
         //    .SetTag("crawler.faction", Faction)
         //    .SetTag("elapsed_seconds", elapsed);
-        Log.LogInformation($"Ticking {Name} at {Location.Name} time {time}, elapsed {elapsed}");
+        Log.LogInformation($"Ticking {Name} at {Location.Description} time {time}, elapsed {elapsed}");
 
         Recharge(elapsed);
         Decay(elapsed);
@@ -404,10 +399,38 @@ public partial class Crawler: ActorScheduled {
 
         // Schedule this crawler in the game's traveling crawlers queue
         Game.Instance!.ScheduleCrawler(this, arrivalTime);
-        ConsumeTime("Travel", 50, delay, post: () => {
-            Location = loc;
-            Location.GetEncounter().AddActor(this);
-        });
+
+        // Update location and add to encounter
+        Location = loc;
+        Location.GetEncounter().AddActor(this);
+    }
+
+    // Track next scheduled time for this crawler
+    private long _nextScheduledTime = 0;
+    public long NextScheduledTime => _nextScheduledTime > 0 ? _nextScheduledTime : Time;
+
+    // Scheduling API methods - now schedule at Game level instead of Encounter level
+    public void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null) {
+        var arrivalTime = Time + duration;
+
+        // Execute pre-action immediately
+        pre?.Invoke();
+
+        // Schedule this crawler at Game level
+        Game.Instance!.ScheduleCrawler(this, arrivalTime);
+        _nextScheduledTime = arrivalTime;
+
+        // Store post-action to execute on arrival (if needed in future)
+        // For now, post actions are executed immediately after scheduling
+        post?.Invoke();
+    }
+
+    public void PassTimeUntil(string tag, long time) {
+        var duration = time - Time;
+        if (duration > 0) {
+            Game.Instance!.ScheduleCrawler(this, time);
+            _nextScheduledTime = time;
+        }
     }
 
     public override void Think() {
@@ -415,27 +438,19 @@ public partial class Crawler: ActorScheduled {
         if (Flags.HasFlag(ActorFlags.Player)) {
             return;
         }
-        if (NextEvent != null) {
-            Debug.Assert(NextEvent.Priority == 0);
-            SetNextEvent(null);
-        }
 
-        //var actors = Location.GetEncounter().ActorsExcept(this);
-
-        // Let components provide proactive behaviors in priority order
-        // All NPCs should now have appropriate AI components:
-        // - RetreatComponent (priority 1000): flee when vulnerable
-        // - BanditComponent (priority 600): bandit-specific AI
-        // - HostileAIComponent (priority 400): generic combat fallback
+        // Let components provide proactive behaviors
         CleanComponents(true);
         foreach (var component in Components) {
             var componentEvent = component.GetNextEvent();
             if (componentEvent != null) {
-                SetNextEvent(componentEvent);
+                // Execute the component's scheduled action
+                ConsumeTime(componentEvent.tag, componentEvent.Priority,
+                    componentEvent.End - componentEvent.Start,
+                    componentEvent.Pre, componentEvent.Post);
             }
         }
 
-        // Base will create the fallback delay if nothing is scheduled
         base.Think();
     }
 
@@ -696,6 +711,9 @@ public partial class Crawler: ActorScheduled {
         if (IsDefenseless) {
             Adjs.Add("Defenseless");
         }
+        if (Flags.HasFlag(ActorFlags.Settlement)) {
+            Adjs.Add($"{Domes} Domes");
+        }
         if (Adjs.Any()) {
             return " (" + string.Join(", ", Adjs) + ")";
         } else {
@@ -728,16 +746,17 @@ public partial class Crawler: ActorScheduled {
         ];
         string result = coloredSegments.TransposeJoinStyled();
         var Adjs = StateString(viewer);
-        var nameString = Style.Name.Format(Name) + $": {Faction.Name()}{Adjs}";
+        var nameString = Style.Name.Format(Name) + $", {Faction.Name()}";
         if (Flags.HasFlag(ActorFlags.Settlement)) {
             if (Flags.HasFlag(ActorFlags.Capital)) {
-                nameString += " [Capital]";
+                nameString += $" Capital";
             } else {
-                nameString += $" [Settlement]";
+                nameString += $" Settlement";
             }
-            nameString += $" ({Domes} Domes)";
+        } else {
+            nameString += $" Crawler";
         }
-        return $"{nameString}\n{result}";
+        return $"{nameString}{Adjs}\n{result}";
     }
 
     public float ScrapInv {
@@ -1069,17 +1088,17 @@ public partial class Crawler: ActorScheduled {
 
     // Serialization methods
     public override ActorBase.Data ToData() {
-        var scheduledData = (ActorScheduled.Data)base.ToData();
+        var baseData = base.ToData();
 
         // Create Init from current state
         var init = new Init {
-            Seed = scheduledData.Init.Seed,
-            Name = scheduledData.Init.Name,
-            Brief = scheduledData.Init.Brief,
-            Faction = scheduledData.Init.Faction,
-            Location = scheduledData.Init.Location,
-            Supplies = scheduledData.Init.Supplies,
-            Cargo = scheduledData.Init.Cargo,
+            Seed = baseData.Init.Seed,
+            Name = baseData.Init.Name,
+            Brief = baseData.Init.Brief,
+            Faction = baseData.Init.Faction,
+            Location = baseData.Init.Location,
+            Supplies = baseData.Init.Supplies,
+            Cargo = baseData.Init.Cargo,
             Role = this.Role,
             InitializeComponents = false, // Don't re-initialize on load
             WorkingSegments = new List<Segment>() // Will be restored from Data.WorkingSegments
@@ -1087,16 +1106,14 @@ public partial class Crawler: ActorScheduled {
 
         return new Data {
             Init = init,
-            Rng = scheduledData.Rng,
-            Gaussian = scheduledData.Gaussian,
-            Time = scheduledData.Time,
-            LastTime = scheduledData.LastTime,
-            EndState = scheduledData.EndState,
-            EndMessage = scheduledData.EndMessage,
-            ActorRelations = scheduledData.ActorRelations,
-            LocationRelations = scheduledData.LocationRelations,
-            NextEvent = scheduledData.NextEvent,
-            Encounter_ScheduledTime = scheduledData.Encounter_ScheduledTime,
+            Rng = baseData.Rng,
+            Gaussian = baseData.Gaussian,
+            Time = baseData.Time,
+            LastTime = baseData.LastTime,
+            EndState = baseData.EndState,
+            EndMessage = baseData.EndMessage,
+            ActorRelations = baseData.ActorRelations,
+            LocationRelations = baseData.LocationRelations,
             WorkingSegments = _allSegments.Select(s => s.ToData()).ToList(),
             EvilPoints = this.EvilPoints
         };
@@ -1133,4 +1150,14 @@ public partial class Crawler: ActorScheduled {
     public void SetGaussianPrimed(bool primed) => Gaussian.SetPrimed(primed);
     public double GetGaussianZSin() => Gaussian.GetZSin();
     public void SetGaussianZSin(double zSin) => Gaussian.SetZSin(zSin);
+
+    // IComparable<Crawler> implementation for use with Scheduler
+    public int CompareTo(Crawler? other) {
+        if (other == null) return 1;
+        if (ReferenceEquals(this, other)) return 0;
+
+        // Compare by identity using GetHashCode as a stable unique identifier
+        // The Scheduler uses the Tag only for identity, not ordering
+        return GetHashCode().CompareTo(other.GetHashCode());
+    }
 }

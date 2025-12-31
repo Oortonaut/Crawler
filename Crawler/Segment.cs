@@ -98,7 +98,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         set => _hits = Math.Clamp(value, 0, SegmentDef.MaxHits);
     }
 
-    public bool Packaged { get; set; } = false;
+    public bool Packaged { get; set; } = true;  // Default to packaged for safety
     public bool Activated { get; set; } = true;
     // Returns amount of damage sunk (not necessarily dealt)
     public virtual (int remaining, string desc) AddDmg(HitType hitType, int delta) {

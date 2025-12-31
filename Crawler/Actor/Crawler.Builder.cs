@@ -1,25 +1,25 @@
 namespace Crawler;
 
 public partial class Crawler {
-    public new record class Init : ActorScheduled.Init {
+    public new record class Init : ActorBase.Init {
         public Roles Role { get; set; }
         public bool InitializeComponents { get; set; } = true;
         public List<Segment> WorkingSegments { get; set; } = new();
     }
 
     // Data structure for serialization
-    public new record class Data : ActorScheduled.Data {
+    public new record class Data : ActorBase.Data {
         // Override Init to use Crawler.Init
         public new Init Init {
-            get => (Init)((ActorScheduled.Data)this).Init;
-            set => ((ActorScheduled.Data)this).Init = value;
+            get => (Init)((ActorBase.Data)this).Init;
+            set => ((ActorBase.Data)this).Init = value;
         }
 
         public List<Segment.Data> WorkingSegments { get; set; } = new();
         public int EvilPoints { get; set; }
     }
 
-    public new class Builder : ActorScheduled.Builder {
+    public new class Builder : ActorBase.Builder {
         internal Roles _role = Roles.None;
         internal bool _initializeComponents = true;
         internal List<Segment> _workingSegments = new();

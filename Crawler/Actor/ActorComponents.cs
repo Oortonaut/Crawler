@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
@@ -594,10 +595,9 @@ public class HazardComponent : ActorComponentBase {
 
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        // Can explore if not already looted and subject has enough inventory to risk
+        // Can explore if not already looted
         if (Owner.EndState == EEndState.Looted) yield break;
         if (subject == Owner) yield break;
-        if (subject.Supplies.Contains(_risk) == FromInventory.None) yield break;
 
         yield return new HazardInteraction(Owner, subject, _rng, _risk, _riskChance, _description, _optionCode);
     }
@@ -676,7 +676,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} enters");
         } else {
-            Owner.Message("You entered");
+            Owner.Message($"You entered {GetEncounter().Name}");
         }
     }
 
@@ -684,7 +684,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} about to leave");
         } else {
-            Owner.Message("You are leaving");
+            Owner.Message($"You are leaving {GetEncounter().Name}");
         }
     }
 
@@ -692,7 +692,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} leaves");
         } else {
-            Owner.Message("You leave");
+            Owner.Message($"You leave {GetEncounter().Name}");
         }
     }
 

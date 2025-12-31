@@ -268,19 +268,10 @@ public static partial class CrawlerEx {
             .SetTag("AgentToSubject", agent.To(subject).ToString())
             .SetTag("SubjectToAgent", subject.To(agent).ToString());
 
-        // Get interactions from agent's components
-        if (agent is Crawler agentCrawler) {
-            foreach (var component in agentCrawler.Components) {
+        // Get interactions from agent's components (works for ActorBase and Crawler)
+        if (agent is ActorBase agentBase) {
+            foreach (var component in agentBase.Components) {
                 foreach (var interaction in component.EnumerateInteractions(subject)) {
-                    yield return interaction;
-                }
-            }
-        }
-
-        // Get interactions from subject's components
-        if (subject is Crawler subjectCrawler) {
-            foreach (var component in subjectCrawler.Components) {
-                foreach (var interaction in component.EnumerateInteractions(agent)) {
                     yield return interaction;
                 }
             }
@@ -398,12 +389,12 @@ public static partial class CrawlerEx {
             result.AddRange(interactions.DetailMenuItems(prefix, show));
             result.Add(MenuItem.Sep);
 
-
             bool anyEnabled = interactions.Any(i => i.GetImmediacy() == Immediacy.Menu);
             result.Add(new ActionMenuItem(prefix,
                 title,
                 args => interactions.InteractionMenu(title, prefix, args).turns,
-                anyEnabled ? EnableArg.Enabled : EnableArg.Disabled));
+                anyEnabled ? EnableArg.Enabled : EnableArg.Disabled,
+                ShowArg.Show));
             result.Add(MenuItem.Sep);
         }
         return result;
@@ -471,7 +462,13 @@ public static partial class CrawlerEx {
         }
         return chance;
     }
-    public static ScheduleEvent NewEvent(this IActor actor, string tag, int Priority, long Duration, Action? Pre = null, Action? Post = null) => new(tag, Priority, actor.Time, actor.Time + Duration, Pre, Post);
-
+    public static ScheduleEvent NewEventFor(this IActor actor, string tag, int Priority, long Duration, Action? Pre = null, Action? Post = null) {
+        var evt = new ScheduleEvent(tag, Priority, actor.Time, actor.Time + Duration, Pre, Post);
+        if (actor is ActorScheduled scheduled) {
+            evt = evt with { Actor = scheduled };
+        }
+        return evt;
+    }
+    public static ScheduleEvent NewIdleEvent(this IActor actor) => actor.NewEventFor("Idle", 0, Tuning.MaxDelay);
 
 }

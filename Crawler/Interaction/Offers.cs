@@ -120,6 +120,7 @@ public record SegmentOffer(Segment Segment): IOffer {
         null;
     public void PerformOn(IActor Agent, IActor Subject) {
         Agent.Cargo.Remove(Segment);
+        Segment.Packaged = true;
         Subject.Supplies.Add(Segment);
     }
     public float ValueFor(IActor Agent) => Segment.Cost * Tuning.Economy.LocalMarkup(Segment.SegmentKind, Agent.Location);

@@ -32,17 +32,17 @@ public record Location {
     }
 
     public TerrainType Terrain => Sector.Terrain;
-    public override string ToString() => $"{Type} @{PosString} Pop:{Population:F1}";
+    public override string ToString() => $"Location @{PosString} Pop:{Population:F1} ({Type})";
     public Map Map => Sector.Map;
     Encounter? _encounter = null;
     public bool HasEncounter => _encounter != null;
     public void SetEncounter(Encounter encounter) => _encounter = encounter;
     public Encounter GetEncounter() => _encounter ??= NewEncounter(this);
     public string PosString => $"{(int)(Position.X * 100) % 100:D2},{(int)(Position.Y * 100) % 100:D2}";
-    public string Name => HasEncounter ? _encounter!.Name : Type.ToString();
+    public string Description => (HasEncounter ? _encounter!.Name : $"<{Type}>") + $" @{PosString}";
     public string EncounterName(IActor visitor) => (visitor.To(this).Visited && HasEncounter) switch {
         true => _encounter!.Name,
-        false => Type.ToString(),
+        false => $"<{Type}>",
     };
     // Pareto distribution Type I - seeded deterministically from Seed
     public const float MaxPopulation = 500;
@@ -62,7 +62,6 @@ public record Location {
     public Sector Sector { get; init; }
     public Vector2 Position { get; init; }
     public EncounterType Type { get; init; }
-    public float wealth { get; init; }
     public ulong Seed { get; init; }
     public Func<Location, Encounter> NewEncounter { get; set; }
 
@@ -163,7 +162,7 @@ public class Sector {
     public readonly List<Sector> Neighbors = new();
     public readonly List<Location> Locations = new();
     public IEnumerable<Location> Settlements => Locations.Where(loc => loc.Type == EncounterType.Settlement);
-    public override string ToString() => $"{Name} ({Terrain})";
+    public override string ToString() => $"Sector {Name} ({Terrain})";
     public string Look() {
         var result = $"{ControllingFaction.Name()} - {Name} ({Terrain} Terrain) ";
         var locationSummary = Locations.GroupBy(loc => loc.Type).Select(g => $"{g.Key}" + (g.Count() > 1 ? $" ({g.Count()})" : ""));
@@ -221,6 +220,8 @@ public class Map {
         CreateSectors(out Sectors);
         CreateLocations();
         CollectNeighbors();
+    }
+    public void Construct() {
         CreateFactionCapitals();
         AssignSectorFactions();
     }
@@ -268,7 +269,7 @@ public class Map {
             tLat = Math.Clamp(tLat, 0.0f, 1.0f);
             float wealth = 300 * ( float ) Math.Pow(50, tLat);
 
-            var newEncounter = (Location loc) => new Encounter(Rng.Seed(), loc).Generate();
+            var newEncounter = (Location loc) => new Encounter(Rng.Seed(), loc).Create();
             var locationSeed = ( ulong ) loc.Z;
             var encounterLocation = new Location(locationSeed,
                 sector, new(loc.X, loc.Y), encounterType, wealth, newEncounter);
@@ -326,7 +327,9 @@ public class Map {
             var sector = setLocation.Sector;
             sector.ControllingFaction = faction;
             var encounter = new Encounter(Rng.Seed(), setLocation, faction);
-            var crawler = encounter.GenerateCapital(Rng.Seed());
+            var crawler = encounter.CreateCapital(Rng.Seed());
+            encounter.AddActorAt(crawler, encounter.EncounterTime);
+            encounter.SpawnDynamicCrawlers(encounter.EncounterTime, Game.SafeTime);
             var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
             float influence = 5 + crawler.Domes;
             var factionName = crawler.Name.MakeFactionName(Rng.Seed());
