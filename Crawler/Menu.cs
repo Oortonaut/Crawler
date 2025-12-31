@@ -16,9 +16,9 @@ public record MenuItem(string Option, string Item) {
             }
         }
         if (!IsEnabled) {
-            return "[" + Style.MenuDisabled.Format(Option) + $"]{Item}";
+            return "(" + Style.MenuDisabled.Format(Option.ToLower()) + $") {Item}";
         } else {
-            return "[" + Style.MenuOption.Format(Option) + $"]{Item}";
+            return "[" + Style.MenuOption.Format(Option) + $"] {Item}";
         }
     }
 }
