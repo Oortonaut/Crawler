@@ -617,18 +617,37 @@ public class HazardComponent : ActorComponentBase {
         public override string Description => Desc;
 
         public override int Perform(string args = "") {
-            var rewardOffer = Hazard.CargoOffer();
+            // Determine loss amount
             var risked = Risk.Loot(Rng/1, RiskChance);
-            var riskOffer = new InventoryOffer(false, risked);
 
             Hazard.Message($"{Explorer.Name} explores the hazard");
-            Explorer.Message($"You explore {Hazard.Name} and gain {rewardOffer.Description}");
 
-            rewardOffer.PerformOn(Hazard, Explorer);
+            // Check if Explorer can afford the full loss (has >= risked amount)
+            bool canAfford = Explorer.Supplies.Contains(risked) != FromInventory.None;
 
-            if (!risked.IsEmpty) {
-                Explorer.Message($"But you lose {risked} in the process!");
-                riskOffer.PerformOn(Explorer, Hazard);
+            // Always lose min(risked, current inventory)
+            var actualLoss = new Inventory();
+            foreach (var commodity in Enum.GetValues<Commodity>()) {
+                if (risked[commodity] > 0) {
+                    float loss = Math.Min(risked[commodity], Explorer.Supplies[commodity]);
+                    if (loss > 0) {
+                        actualLoss.Add(commodity, loss);
+                        Explorer.Supplies[commodity] -= loss;
+                    }
+                }
+            }
+
+            if (!actualLoss.IsEmpty) {
+                Explorer.Message($"You lose {actualLoss} exploring {Hazard.Name}!");
+            }
+
+            // Only give reward if could afford the full risked amount
+            if (canAfford) {
+                var rewardOffer = Hazard.CargoOffer();
+                Explorer.Message($"You gain {rewardOffer.Description} from {Hazard.Name}");
+                rewardOffer.PerformOn(Hazard, Explorer);
+            } else {
+                Explorer.Message($"You couldn't afford the full loss and gain nothing from {Hazard.Name}");
             }
 
             Hazard.End(EEndState.Looted, $"explored by {Explorer.Name}");
@@ -638,7 +657,17 @@ public class HazardComponent : ActorComponentBase {
 
         public override Immediacy GetImmediacy(string args = "") {
             if (Hazard.EndState == EEndState.Looted) return Immediacy.Failed;
-            if (Explorer.Supplies.Contains(Risk) == FromInventory.None) return Immediacy.Failed;
+
+            // Check if Explorer has > 0 of any risked resource (allows attempting the hazard)
+            bool hasAnyRiskedResource = false;
+            foreach (var commodity in Enum.GetValues<Commodity>()) {
+                if (Risk[commodity] > 0 && Explorer.Supplies[commodity] > 0) {
+                    hasAnyRiskedResource = true;
+                    break;
+                }
+            }
+            if (!hasAnyRiskedResource) return Immediacy.Failed;
+
             return Immediacy.Menu;
         }
     }
