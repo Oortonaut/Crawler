@@ -26,6 +26,9 @@ public abstract record Interaction(IActor Mechanic, IActor Subject, string MenuO
 
     /// <summary>Shortcut key code (e.g., "T" for trade, "DA" for demand accept)</summary>
     public string OptionCode => MenuOption;
+
+    /// <summary>Expected duration in seconds for this interaction. Used for UI display and planning.</summary>
+    public virtual long ExpectedDuration => 0;
 }
 
 // Simple consequence: mark as hostile
@@ -37,9 +40,15 @@ public record HostilityInteraction(IActor Attacker, IActor Subject, string Reaso
         Mechanic.Message($"{Subject.Name} {Reason}. You are now hostile.");
         Subject.Message($"{Mechanic.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
         Subject.Supplies[Commodity.Morale] -= 2;
+
+        // Time consumption for hostility declaration
+        Mechanic.ConsumeTime("DeclareHostile", 300, ExpectedDuration);
+        Subject.ConsumeTime("BecomeHostile", 300, ExpectedDuration);
+
         return 1;
     }
     public override string Description => $"Turn hostile against {Subject.Name}";
+    public override long ExpectedDuration => Tuning.Crawler.HostilityTime;
 }
 
 public record ExchangeInteraction: Interaction {
@@ -96,12 +105,18 @@ public record ExchangeInteraction: Interaction {
             performed++;
         }
 
+        // Time consumption for trade
+        long tradeDuration = ExpectedDuration * count;
+        Mechanic.ConsumeTime("Trading", 300, tradeDuration);
+        Subject.ConsumeTime("Trading", 300, tradeDuration);
+
         return performed;
     }
     public override string Description { get; }
     public override string ToString() => Description;
     public IOffer AgentOffer { get; init; }
     public IOffer SubjectOffer { get; init; }
+    public override long ExpectedDuration => Tuning.Crawler.TradeTime;
     public string MakeDescription() {
         // Note: Can't access Value here without Agent binding
         var buyerDesc = AgentOffer.Description;

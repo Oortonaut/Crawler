@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;
@@ -145,6 +146,10 @@ public class CustomsComponent : ActorComponentBase {
             // Clear ultimatum
             Owner.To(Target).Ultimatum = null;
 
+            // Contraband search takes time: 1 hour if clean, 3 hours if contraband found
+            Owner.ConsumeTime("Searching", 300, ExpectedDuration);
+            Target.ConsumeTime("Searched", 300, ExpectedDuration);
+
             return 1;
         }
 
@@ -152,6 +157,13 @@ public class CustomsComponent : ActorComponentBase {
             var inventoryOffer = new InventoryOffer(false, Contraband);
             if (inventoryOffer.DisabledFor(Target, Owner) != null) return Immediacy.Failed;
             return Immediacy.Menu;
+        }
+
+        public override long ExpectedDuration {
+            get {
+                bool hasContraband = !Contraband.IsEmpty;
+                return hasContraband ? Tuning.Crawler.ContrabandSearchFound : Tuning.Crawler.ContrabandSearchClean;
+            }
         }
     }
 
@@ -172,10 +184,16 @@ public class CustomsComponent : ActorComponentBase {
             Owner.To(Target).Ultimatum = null;
             Owner.SetHostileTo(Target, true);
 
+            // Time consumption for refusing contraband search
+            Owner.ConsumeTime("RefusedBy", 300, ExpectedDuration);
+            Target.ConsumeTime("Refusing", 300, ExpectedDuration);
+
             return 1;
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Menu;
+
+        public override long ExpectedDuration => Tuning.Crawler.RefuseTime;
     }
 
     public record ContrabandExpiredInteraction(
@@ -197,6 +215,8 @@ public class CustomsComponent : ActorComponentBase {
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
+
+        public override long ExpectedDuration => 0; // Auto-trigger, no time consumed
     }
 }
 
@@ -317,6 +337,11 @@ public class TradeOfferComponent : ActorComponentBase {
                 performed++;
             }
 
+            // Time consumption for trading
+            long tradeDuration = ExpectedDuration * performed;
+            Mechanic.ConsumeTime("Trading", 300, tradeDuration);
+            Subject.ConsumeTime("Trading", 300, tradeDuration);
+
             return performed;
         }
 
@@ -326,6 +351,8 @@ public class TradeOfferComponent : ActorComponentBase {
             }
             return Immediacy.Failed;
         }
+
+        public override long ExpectedDuration => Tuning.Crawler.TradeTime;
     }
 }
 
@@ -390,7 +417,7 @@ public class RepairComponent : ActorComponentBase {
             };
 
             // Lock both actors for the duration
-            (Subject as ActorScheduled)?.ConsumeTime("Repairing", 300, duration, post: () => {
+            (Subject as ActorScheduled)?.ConsumeTime("Repairing", 300, ExpectedDuration, post: () => {
                 // Complete the repair
                 SegmentToRepair.Hits = 0;
                 Subject.Message($"Repair of {SegmentToRepair.Name} completed");
@@ -399,7 +426,7 @@ public class RepairComponent : ActorComponentBase {
                 Mechanic.To(Subject).Ultimatum = null;
             });
 
-            (Mechanic as ActorScheduled)?.ConsumeTime("Repaired", 300, duration, post: () => {
+            (Mechanic as ActorScheduled)?.ConsumeTime("Repaired", 300, ExpectedDuration, post: () => {
                 Mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
             });
 
@@ -430,6 +457,8 @@ public class RepairComponent : ActorComponentBase {
         }
 
         static bool IsRepairable(Segment segment) => segment is { Hits: > 0, IsDestroyed: false };
+
+        public override long ExpectedDuration => 3600; // 1 hour repair time
     }
 }
 
@@ -518,6 +547,10 @@ public class LicenseComponent : ActorComponentBase {
             licenseOffer.PerformOn(Mechanic, Subject);
             scrapOffer.PerformOn(Subject, Mechanic);
 
+            // Time consumption for license purchase
+            Mechanic.ConsumeTime("SellingLicense", 300, ExpectedDuration);
+            Subject.ConsumeTime("BuyingLicense", 300, ExpectedDuration);
+
             return 1;
         }
 
@@ -525,6 +558,8 @@ public class LicenseComponent : ActorComponentBase {
             if (Subject.Supplies[Commodity.Scrap] < Price) return Immediacy.Failed;
             return Immediacy.Menu;
         }
+
+        public override long ExpectedDuration => Tuning.Crawler.LicenseTime;
     }
 }
 
@@ -569,6 +604,9 @@ public class HarvestComponent : ActorComponentBase {
             inventoryOffer.PerformOn(Resource, Harvester);
             Resource.End(EEndState.Looted, $"harvested by {Harvester.Name}");
 
+            // Time consumption for harvesting (only harvester consumes time, resource is static)
+            Harvester.ConsumeTime("Harvesting", 300, ExpectedDuration);
+
             return 1;
         }
 
@@ -578,6 +616,8 @@ public class HarvestComponent : ActorComponentBase {
             if (inventoryOffer.DisabledFor(Resource, Harvester) != null) return Immediacy.Failed;
             return Immediacy.Menu;
         }
+
+        public override long ExpectedDuration => Tuning.Crawler.HarvestTime;
     }
 }
 
@@ -656,6 +696,9 @@ public class HazardComponent : ActorComponentBase {
 
             Hazard.End(EEndState.Looted, $"explored by {Explorer.Name}");
 
+            // Time consumption for exploring hazard (only explorer consumes time, hazard is static)
+            Explorer.ConsumeTime("Exploring", 300, ExpectedDuration);
+
             return 1;
         }
 
@@ -674,6 +717,8 @@ public class HazardComponent : ActorComponentBase {
 
             return Immediacy.Menu;
         }
+
+        public override long ExpectedDuration => Tuning.Crawler.HazardTime;
     }
 }
 

@@ -176,6 +176,18 @@ public static partial class Tuning {
         public static float RepairScrapPerHp = 50.0f;
         public static float RepairTime = 3600.0f;
 
+        // Interaction durations (in seconds)
+        public static long HostilityTime = 60;           // Declaring hostility
+        public static long TradeTime = 300;              // Per trade transaction (5 minutes)
+        public static long SurrenderTime = 600;          // Processing surrender (10 minutes)
+        public static long ExtortionTime = 300;          // Handing over extorted goods (5 minutes)
+        public static long RefuseTime = 60;              // Refusing demands/searches (1 minute)
+        public static long ContrabandSearchClean = 3600;  // Clean contraband search (1 hour)
+        public static long ContrabandSearchFound = 10800; // Contraband found (3 hours)
+        public static long LicenseTime = 300;            // License purchase paperwork (5 minutes)
+        public static long HarvestTime = 1800;           // Harvesting resources (30 minutes)
+        public static long HazardTime = 900;             // Exploring hazards (15 minutes)
+
         public static EArray<Commodity, float> DefaultCommodityWeights => [
             1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f, // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
             0.2f, 0.5f, 1.0f, // Air, Water, Rations

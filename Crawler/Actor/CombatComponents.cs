@@ -60,6 +60,8 @@ public class AttackComponent : ActorComponentBase {
             if (attacker.IsDisarmed) return Immediacy.Failed;
             return Immediacy.Menu;
         }
+
+        public override long ExpectedDuration => 0; // Duration determined by weapon delays
     }
 }
 
@@ -125,6 +127,10 @@ public class SurrenderComponent : ActorComponentBase {
             Winner.Message($"{Loser.Name} surrenders and gives you {surrenderInv}");
             Loser.Message($"You surrender to {Winner.Name} and give {surrenderInv}");
 
+            // Time consumption for processing surrender
+            Winner.ConsumeTime("AcceptSurrender", 300, ExpectedDuration);
+            Loser.ConsumeTime("Surrendered", 300, ExpectedDuration);
+
             return 1;
         }
 
@@ -134,6 +140,8 @@ public class SurrenderComponent : ActorComponentBase {
             if (Loser.To(Winner).Surrendered) return Immediacy.Failed;
             return Immediacy.Menu;
         }
+
+        public override long ExpectedDuration => Tuning.Crawler.SurrenderTime;
     }
 }
 
@@ -180,6 +188,10 @@ public static class ExtortionInteractions {
             // Mark as surrendered
             Target.To(Extortioner).Surrendered = true;
 
+            // Time consumption for handing over extorted goods
+            Extortioner.ConsumeTime("Extorting", 300, ExpectedDuration);
+            Target.ConsumeTime("Extorted", 300, ExpectedDuration);
+
             return 1;
         }
 
@@ -189,6 +201,8 @@ public static class ExtortionInteractions {
             if (Target.To(Extortioner).Surrendered) return Immediacy.Failed;
             return Immediacy.Menu;
         }
+
+        public override long ExpectedDuration => Tuning.Crawler.ExtortionTime;
     }
 
     /// <summary>
@@ -224,10 +238,16 @@ public static class ExtortionInteractions {
                 Extortioner.To(Target).Ultimatum = null;
             }
 
+            // Time consumption for refusing extortion
+            Extortioner.ConsumeTime("RefusedBy", 300, ExpectedDuration);
+            Target.ConsumeTime("Refusing", 300, ExpectedDuration);
+
             return 1;
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Menu;
+
+        public override long ExpectedDuration => Tuning.Crawler.RefuseTime;
     }
 
     /// <summary>
@@ -253,6 +273,8 @@ public static class ExtortionInteractions {
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
+
+        public override long ExpectedDuration => 0; // Auto-trigger, no time consumed
     }
 }
 
