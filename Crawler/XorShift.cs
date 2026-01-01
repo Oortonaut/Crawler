@@ -23,6 +23,7 @@ public struct XorShift {
     public ulong Seed() => _Sample() * 2517221091 + 23;
     // returns a new generator from Seed
     public XorShift Branch() => new XorShift(Seed());
+    public bool NextBool() => (_Sample() & 1024) != 0;
     // Returns [0, endValue)
     public int NextInt(int endValue) {
         if (endValue <= 0) throw new ArgumentOutOfRangeException(nameof(endValue), "endValue must be positive");
