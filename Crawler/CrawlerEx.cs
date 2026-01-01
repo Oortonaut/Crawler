@@ -268,13 +268,25 @@ public static partial class CrawlerEx {
             .SetTag("AgentToSubject", agent.To(subject).ToString())
             .SetTag("SubjectToAgent", subject.To(agent).ToString());
 
+        LogCat.Log.LogInformation($"InteractionsWith: agent={agent.Name}, subject={subject.Name}, agent is ActorBase={agent is ActorBase}");
+
         // Get interactions from agent's components (works for ActorBase and Crawler)
         if (agent is ActorBase agentBase) {
-            foreach (var component in agentBase.Components) {
-                foreach (var interaction in component.EnumerateInteractions(subject)) {
+            var componentsList = agentBase.Components.ToList();
+            LogCat.Log.LogInformation($"InteractionsWith: {agent.Name} has {componentsList.Count} components: {string.Join(", ", componentsList.Select(c => c.GetType().Name))}");
+
+            foreach (var component in componentsList) {
+                LogCat.Log.LogInformation($"InteractionsWith: Calling EnumerateInteractions on {component.GetType().Name}");
+                var interactionsList = component.EnumerateInteractions(subject).ToList();
+                LogCat.Log.LogInformation($"InteractionsWith: {component.GetType().Name} yielded {interactionsList.Count} interactions");
+
+                foreach (var interaction in interactionsList) {
+                    LogCat.Log.LogInformation($"InteractionsWith: Yielding {interaction.GetType().Name} from {component.GetType().Name}");
                     yield return interaction;
                 }
             }
+        } else {
+            LogCat.Log.LogInformation($"InteractionsWith: {agent.Name} is not an ActorBase!");
         }
     }
     public static bool Ended(this IActor actor) => actor.EndState != null;

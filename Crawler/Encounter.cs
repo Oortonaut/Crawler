@@ -80,12 +80,24 @@ public sealed class Encounter : IComparable<Encounter> {
             string prefix = "C" + (char)('A' + index);
             using var activityOther = Scope($"Menu {prefix}")?
                 .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("Subject.Faction", subject.Faction);
+
+            LogCat.Log.LogInformation($"Encounter.MenuItems: Processing {prefix} - agent={agent.Name}, subject={subject.Name}");
+
             // Collect interactions from both directions: agent->subject and subject->agent
-            var interactions = agent.InteractionsWith(subject)
-                .Concat(subject.InteractionsWith(agent))
-                .ToList();
+            LogCat.Log.LogInformation($"Encounter.MenuItems: Calling agent.InteractionsWith(subject)");
+            var agentToSubject = agent.InteractionsWith(subject).ToList();
+            LogCat.Log.LogInformation($"Encounter.MenuItems: agent->subject yielded {agentToSubject.Count} interactions");
+
+            LogCat.Log.LogInformation($"Encounter.MenuItems: Calling subject.InteractionsWith(agent)");
+            var subjectToAgent = subject.InteractionsWith(agent).ToList();
+            LogCat.Log.LogInformation($"Encounter.MenuItems: subject->agent yielded {subjectToAgent.Count} interactions");
+
+            var interactions = agentToSubject.Concat(subjectToAgent).ToList();
+            LogCat.Log.LogInformation($"Encounter.MenuItems: Total interactions for {prefix}: {interactions.Count}");
+
             ap += interactions.TickInteractions(agent, prefix);
             var agentActorMenus = agent.InteractionMenuItems(interactions, subject.Brief(agent), prefix);
+            LogCat.Log.LogInformation($"Encounter.MenuItems: Generated {agentActorMenus.Count} menu items for {prefix}");
             result.AddRange(agentActorMenus);
         }
         return result;

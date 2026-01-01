@@ -25,7 +25,7 @@ public class AttackComponent : ActorComponentBase {
             LogCat.Log.LogInformation($"AttackComponent: Owner is not player (Owner={Owner?.Name}, Player={Game.Instance?.Player?.Name})");
             yield break;
         }
-        if (subject is not Crawler) {
+        if (subject is not Crawler _) {
             LogCat.Log.LogInformation($"AttackComponent: Subject {subject?.Name} is not a Crawler");
             yield break;
         }
