@@ -6,8 +6,8 @@ public interface ISchedulerEvent<TElement, TTime>
     where TElement: IComparable<TElement>
     where TTime: struct, IComparable<TTime> {
     TElement Tag { get; }
-    int Priority { get; }
     TTime Time { get; }
+    int Priority { get; }
 }
 public class Scheduler<TContext, TEvent, TElement, TTime>(TContext Context)
     where TEvent: class, ISchedulerEvent<TElement, TTime>
