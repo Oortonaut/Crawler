@@ -507,7 +507,7 @@ public class Map {
         var worldMapWidth = Width * 3 + 2;
         var header = defaultStyle + "┌[" + titleStyle + "Global Map" + defaultStyle + "]";
         header += new string('─', Math.Max(0, worldMapWidth - 12)) + "╖";
-        header += Faction1(Factions.Independent) + "\n";
+        header += FactionLine1(Factions.Independent) + "\n";
         var footer = defaultStyle + $"╘{new string('═', worldMapWidth)}╝\n";
 
         string result = header;
@@ -517,7 +517,7 @@ public class Map {
             result += $"{x,3}";
         }
         result += defaultStyle + "║";
-        result += Faction2(Factions.Independent) + "\n";
+        result += FactionLine2(Factions.Independent) + "\n";
         for (int y = 0; y < Height; y++) {
             string map = defaultStyle + "│" + titleStyle + (char)('A' + y) + defaultStyle + ":";
             string map2 = defaultStyle + "│ :";
@@ -557,8 +557,8 @@ public class Map {
                 var option = Style.MenuOption.Format($"{y + 1}");
                 var capitalString = faction.GetColor().On(Color.Black) + data.Name + defaultStyle;
                 var policy = faction.GetPolicy();
-                map += Faction1(faction);
-                map2 += Faction2(faction);
+                map += FactionLine1(faction);
+                map2 += FactionLine2(faction);
             }
 
             result += $"{map}\n{map2}\n";
@@ -566,19 +566,19 @@ public class Map {
         result += footer;
         return result;
     }
-    string Faction1(Factions faction) {
+    string FactionLine1(Factions faction) {
         var data = FactionData[faction]!;
         var index = faction.CivilianIndex();
         var option = Style.MenuOption.Format($"{index + 1}");
         var policy = faction.GetPolicy().Description;
         if (data.Capital is { } capital) {
-            var capitalString = faction.GetColor().On(Color.Black) + $"{data.Name}" + Style.MenuNormal.StyleString();
+            var capitalString = faction.GetColor().On(Color.Black) + $"{data.Name} {faction.GetFlag()}" + Style.MenuNormal.StyleString();
             return $" [{option}] {capitalString}: {capital.Name} at {capital.Location.GetEncounter().Name} | {policy}";
         } else {
             return $" [{option}] {data.Name} {policy}";
         }
     }
-    string Faction2(Factions faction) {
+    string FactionLine2(Factions faction) {
         string result = " ";
         var policy = faction.GetPolicy();
 

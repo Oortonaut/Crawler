@@ -98,6 +98,7 @@ public static partial class AnsiEx {
 
     // Color transformations
     public static Color Dark(this Color c) => Color.FromArgb(c.A, c.R / 2, c.G / 2, c.B / 2);
+    public static Color Bright(this Color c) => Color.FromArgb(c.A, 1 - ( 1 - c.R) / 2, 1 - (1 - c.G) / 2, 1 - ( 1 - c.B) / 2);
     public static Color Scale(this Color c, float s) => Color.FromArgb(
         c.A,
         (byte)Math.Clamp(c.R * s, 0, 255),
