@@ -79,6 +79,72 @@ public static partial class FactionEx {
     public static Crawler? Capital(this Factions faction) => faction.GetData()?.Capital?.Settlement;
     public static FactionData? GetData(this Factions faction) => Game.Instance?.Map.FactionData[faction];
 
+    public static string GetFlag(this Factions faction) {
+        var rng = new XorShift((ulong)faction + 12345);
+
+        // Character classes
+        char[] centerChars = ['☺', '☻', '♠', '♣', '♥', '♦', '∙', '∞', 'Ω', '◊', '○', '◘', '◙', '#', '*', '+', ' ', ' ', ' ', ' ', ' '];
+        char[] sideChars = ['▀', '▄', '▲', '▼', '▬', '█', '▓', '▒', '░', '/', '\\', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', .. centerChars];
+        char[] horzChars = ['▀', '▄', '▬', '-', '∞', '=', ' ', ' ', ' ', ' '];
+        (char, char)[] pairedChars = [('◄', '►'), ('▐', '▌'), (' ', ' ')];
+
+        // Select pattern: 0=SCS, 1=LCR, 2=RCL
+        int choice = rng.NextInt(100);
+        bool scs = choice < 70;
+        bool cleft = choice < 80 && !scs;
+
+        char c1, c2, c3;
+        if (scs) {
+            // SCS
+            char side = sideChars[(int)(rng.NextSingle() * sideChars.Length)];
+            c1 = side;
+            c2 = centerChars[(int)(rng.NextSingle() * centerChars.Length)];
+            c3 = side;
+        } else if (cleft) {
+            // SCS
+            char horz = horzChars[(int)(rng.NextSingle() * horzChars.Length)];
+            char c = centerChars[(int)(rng.NextSingle() * centerChars.Length)];
+            if (rng.NextBool()) {
+                c1 = c;
+                c2 = horz;
+                c3 = horz;
+            } else {
+                c1 = horz;
+                c2 = horz;
+                c3 = c;
+            }
+        } else {
+            var pair = pairedChars[(int)(rng.NextSingle() * pairedChars.Length)];
+            c2 = centerChars[(int)(rng.NextSingle() * centerChars.Length)];
+            if (rng.NextBool()) { // LCR
+                c1 = pair.Item1;
+                c3 = pair.Item2;
+            } else { // RCL
+                c1 = pair.Item2;
+                c3 = pair.Item1;
+            }
+        }
+
+        // Color template: 0=FFF+BBB, 1=FGF+BBB
+        int colorTemplate = rng.NextInt(100) < 75 ? 0 : 1;
+
+        Color factionColor = faction.GetColor();
+        Color bgColor = _factionColors[(Factions)(int)(rng.NextSingle() * _factionColors.Count)];
+
+        if (rng.NextBool()) {
+            bgColor = bgColor.Dark();
+        } else {
+            (bgColor, factionColor) = (factionColor, bgColor.Bright());
+        }
+
+        if (colorTemplate == 0) { // FFF on BBB
+            return $"{factionColor.On(bgColor)}{c1}{c2}{c3}{AnsiEx.StyleDefault}";
+        } else { // FGF on BBB
+            Color otherColor = _factionColors[(Factions)(int)(rng.NextSingle() * _factionColors.Count)];
+            return $"{factionColor.On(bgColor)}{c1}{otherColor.On(bgColor)}{c2}{factionColor.On(bgColor)}{c3}{AnsiEx.StyleDefault}";
+        }
+    }
+
     public static EArray<Factions, Color> _factionColors = [
         Color.Red,
         Color.Blue,
