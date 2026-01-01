@@ -164,6 +164,281 @@ public class Game {
         return ap;
     }
 
+    /// <summary>
+    /// Build complete MenuContext with all available actions.
+    /// Organizes actions into categories for panel-based TUI display.
+    /// </summary>
+    MenuContext BuildMenuContext() {
+        var context = new MenuContext { Agent = Player };
+
+        // System actions
+        context.SystemActions.AddRange([
+            new MenuAction("M", _SectorMapName(), _ => SectorMap()),
+            new MenuAction("G", "Global Map", _ => WorldMap()),
+            new MenuAction("R", "Status Report", _ => Report()),
+            new MenuAction("K", "Skip Turn/Wait", args => Turn(args)),
+            new MenuAction("Q", "Save and Quit", _ => Save() + Quit()),
+            new MenuAction("QQ", "Quit", _ => Quit()),
+            new MenuAction("TEST", "Test Menu", _ => TestMenu()),
+            new MenuAction("GG", "Give 1000 scrap", args => { Player.ScrapInv += 1000; return 0; }, IsVisible: false),
+            new MenuAction("GIVE", "Give commodity", args => GiveCommodity(args), IsVisible: false),
+            new MenuAction("DMG", "Damage segment", args => DamageSegment(args), IsVisible: false),
+        ]);
+
+        // Register system actions
+        foreach (var action in context.SystemActions) {
+            context.RegisterAction(action.OptionCode, action);
+        }
+
+        // Player actions (segment management)
+        BuildPlayerActions(context);
+
+        // Navigation actions
+        BuildNavigationActions(context);
+
+        // Interaction groups from encounter
+        BuildInteractionGroups(context);
+
+        return context;
+    }
+
+    void BuildPlayerActions(MenuContext context) {
+        // Power menu actions
+        var segments = Player.Segments;
+        for (int i = 0; i < segments.Count; i++) {
+            var segment = segments[i];
+            int index = i;
+            string toggleLabel = segment.Activated ? "Deactivate" : "Activate";
+            var code = $"PP{index + 1}";
+            var action = new MenuAction(
+                code,
+                $"{segment.StateName} - {toggleLabel}",
+                _ => ToggleSegmentPower(index),
+                segment.IsUsable,
+                false // Hidden in main menu
+            );
+            context.PlayerActions.Add(action);
+            context.RegisterAction(code, action);
+        }
+
+        // Packaging menu actions
+        for (int i = 0; i < segments.Count; i++) {
+            var segment = segments[i];
+            int index = i;
+            string packageLabel = segment.Packaged ? "Unpackage" : "Package";
+            string label = $"{packageLabel} {segment.Name}";
+            bool canPackage = segment.Packaged || segment.IsPristine;
+            if (!canPackage) label += " (Damaged)";
+
+            var code = $"PK{index + 1}";
+            var action = new MenuAction(code, label, _ => TogglePackage(index), canPackage, false);
+            context.PlayerActions.Add(action);
+            context.RegisterAction(code, action);
+        }
+
+        // Add submenu actions for power and packaging
+        context.PlayerActions.Insert(0, new MenuAction("PP", "Seg Power", _ => PowerMenu()));
+        context.PlayerActions.Insert(1, new MenuAction("PK", "Seg Packaging", _ => PackagingMenu()));
+        context.PlayerActions.Insert(2, new MenuAction("PT", "Supplies<->Cargo", _ => TradeInventoryMenu()));
+        context.PlayerActions.Insert(3, new MenuAction("PR", "Repair", _ => RepairMenu()));
+
+        context.RegisterAction("PP", context.PlayerActions[0]);
+        context.RegisterAction("PK", context.PlayerActions[1]);
+        context.RegisterAction("PT", context.PlayerActions[2]);
+        context.RegisterAction("PR", context.PlayerActions[3]);
+
+        // TODO: Add inventory transfer actions (PT*, PS*, PC*)
+    }
+
+    void BuildNavigationActions(MenuContext context) {
+        var sector = PlayerLocation.Sector;
+        bool isPinned = Player.Pinned();
+        if (isPinned) {
+            Player.Message("You are pinned.");
+        }
+
+        // Sector navigation
+        var sectorGroup = new NavigationGroup {
+            GroupName = "Sector Map",
+            Prefix = "M"
+        };
+
+        int index = 0;
+        foreach (var location in sector.Locations) {
+            ++index;
+            float dist = PlayerLocation.Distance(location);
+            string locationName = location.EncounterName(Player);
+            if (!location.HasEncounter || !Player.Visited(location)) {
+                locationName = Style.MenuUnvisited.Format(locationName);
+            }
+
+            var (fuel, time) = Player.FuelTimeTo(location);
+            bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
+            var code = $"M{index}";
+            var action = new MenuAction(
+                code,
+                $"To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU",
+                _ => GoTo(location),
+                enabled,
+                false // Hidden in main menu, shown in sector map
+            );
+            sectorGroup.Destinations.Add(action);
+            context.RegisterAction(code, action);
+        }
+        context.NavigationGroups.Add(sectorGroup);
+
+        // Globe navigation
+        var globeGroup = new NavigationGroup {
+            GroupName = "Global Map",
+            Prefix = "G"
+        };
+
+        foreach (var neighbor in sector.Neighbors) {
+            if (!neighbor.Locations.Any()) continue;
+
+            var locations = string.Join(", ", neighbor.Locations.Select(x => x.Type.ToString().Substring(0, 1)).Distinct());
+            var destinations = neighbor.Settlements.ToList();
+            if (destinations.Count == 0) continue;
+
+            var location = destinations.MinBy(x => PlayerLocation.Distance(x))!;
+            var (fuel, time) = Player.FuelTimeTo(location);
+
+            // Calculate direction
+            string dir = "N";
+            var D = neighbor.Offset(sector);
+            var DX = D.X;
+            var DY = D.Y;
+            if (DX < 0 && DY < 0) dir = "NW";
+            if (DX < 0 && DY == 0) dir = "W";
+            if (DX < 0 && DY > 0) dir = "SW";
+            if (DX == 0 && DY < 0) dir = "N";
+            if (DX == 0 && DY == 0) dir = "KK";
+            if (DX == 0 && DY > 0) dir = "S";
+            if (DX > 0 && DY < 0) dir = "NE";
+            if (DX > 0 && DY == 0) dir = "E";
+            if (DX > 0 && DY > 0) dir = "SE";
+
+            string neighborName = $"{neighbor.Name} ({neighbor.Terrain})";
+            int visits = Player.Visits(neighbor);
+            if (!neighbor.Locations.Any()) {
+                neighborName = Style.MenuEmpty.Format(neighborName);
+            } else if (visits == 0) {
+                neighborName = Style.MenuUnvisited.Format(neighborName);
+            } else if (visits == neighbor.Locations.Count) {
+                neighborName = Style.MenuVisited.Format(neighborName);
+            }
+
+            bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
+            string desc = fuel > 0 ?
+                $"to {neighborName} ({locations}) {time:F0}h Fuel: {fuel:F1}" :
+                $"to {neighborName} ({locations})";
+
+            var action = new MenuAction(dir, desc, _ => GoTo(location), enabled, false);
+            globeGroup.Destinations.Add(action);
+            context.RegisterAction(dir, action);
+        }
+        context.NavigationGroups.Add(globeGroup);
+    }
+
+    void BuildInteractionGroups(MenuContext context) {
+        var encounter = PlayerEncounter();
+
+        foreach (var (index, subject) in encounter.ActorsExcept(Player)
+                     .OrderBy(a => a.Faction)
+                     .Index()) {
+            string prefix = "C" + (char)('A' + index);
+
+            // Collect interactions
+            var agentToSubject = Player.InteractionsWith(subject).ToList();
+            var subjectToAgent = subject.InteractionsWith(Player).ToList();
+            var interactions = agentToSubject.Concat(subjectToAgent).ToList();
+
+            // Get trade offers if available
+            List<TradeOffer>? tradeOffers = null;
+            if (subject is ActorBase subjectBase) {
+                var tradeComponent = subjectBase.Components.OfType<TradeOfferComponent>().FirstOrDefault();
+                tradeOffers = tradeComponent?.GetOrCreateOffers();
+            }
+
+            // Create interaction actions
+            var actions = new List<InteractionAction>();
+            int counter = 1;
+            foreach (var interaction in interactions) {
+                var code = $"{prefix}{counter}";
+                var action = new InteractionAction(interaction, code) {
+                    IsVisible = interactions.Count <= 4 // Show directly if 4 or fewer
+                };
+                actions.Add(action);
+                context.RegisterAction(code, action);
+                counter++;
+            }
+
+            var group = new InteractionGroupEx {
+                Subject = subject,
+                Label = subject.Brief(Player),
+                Prefix = prefix,
+                Actions = actions,
+                RawInteractions = interactions,
+                TradeOffers = tradeOffers
+            };
+
+            context.InteractionGroups.Add(group);
+
+            // Register group prefix for submenu
+            var summaryAction = new MenuAction(
+                prefix,
+                group.Label,
+                args => ShowInteractionSubmenu(group),
+                group.HasEnabledActions
+            );
+            context.RegisterAction(prefix, summaryAction);
+        }
+    }
+
+    int ShowInteractionSubmenu(InteractionGroupEx group) {
+        // Show submenu for this interaction group
+        var items = new List<MenuItem> { MenuItem.Cancel };
+        items.AddRange(group.Actions.Select((a, i) =>
+            new ActionMenuItem(
+                a.OptionCode,
+                a.Description,
+                args => a.Perform(args),
+                a.IsEnabled ? EnableArg.Enabled : EnableArg.Disabled,
+                ShowArg.Show
+            )
+        ));
+        var (selected, ap) = CrawlerEx.MenuRun($"{group.Label}", items.ToArray());
+        return ap;
+    }
+
+    /// <summary>
+    /// Alternative game menu using InteractionContext and IMenuRenderer.
+    /// Demonstrates new architecture for future TUI migration.
+    /// Currently unused - keeping old ShowGameMenu() for stability.
+    /// </summary>
+    int ShowGameMenuWithContext() {
+        Look();
+
+        // Build complete menu context
+        var context = BuildMenuContext();
+
+        // Use console renderer (could be injected for TUI in future)
+        var renderer = new ConsoleMenuRenderer();
+        var selection = renderer.Render(context, "Game Menu", "");
+
+        int ap = 0;
+        if (selection.SelectedInteraction != null) {
+            ap = selection.SelectedInteraction.Perform(selection.Arguments);
+        }
+
+        // If time was consumed, schedule the player
+        if (ap > 0) {
+            Player.ConsumeTime("PlayerAction", 0, ap);
+        }
+
+        return ap;
+    }
+
     public void Run() {
         while (!quit && crawlerTravelScheduler.Any()) {
             // Get the next crawler event time

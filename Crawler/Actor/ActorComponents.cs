@@ -219,7 +219,11 @@ public class TradeOfferComponent : ActorComponentBase {
         if (spread.HasValue) Spread = spread.Value;
     }
 
-    List<TradeOffer> GetOrCreateOffers() {
+    /// <summary>
+    /// Get cached trade offers, generating them on first call.
+    /// Public to allow InteractionContext to access offers for market display in TUI.
+    /// </summary>
+    public List<TradeOffer> GetOrCreateOffers() {
         if (_offers == null) {
             _offers = Owner.MakeTradeOffers(_seed, _wealthFraction);
         }

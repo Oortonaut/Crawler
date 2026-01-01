@@ -58,21 +58,18 @@ public sealed class Encounter : IComparable<Encounter> {
         // }));
         return result;
     }
-    public IEnumerable<MenuItem> MenuItems(IActor agent) {
-        var result = new List<MenuItem>();
-        result.Add(new MenuItem("", "<Interactions>"));
-        result.Add(MenuItem.Sep);
-
-        // Display mandatory interactions at the top with highlighting
-        result.AddRange(menuItems);
-
-        int ap = 0;
-
-        using var activity = Scope($"{nameof(MenuItems)}({agent.Name})")?
+    /// <summary>
+    /// Build interaction context for the agent (typically player).
+    /// Groups interactions by subject actor and includes trade offers for market display.
+    /// </summary>
+    public InteractionContext BuildInteractionContext(IActor agent) {
+        using var activity = Scope($"{nameof(BuildInteractionContext)}({agent.Name})")?
             .SetTag("Agent", agent.Name).SetTag("Agent.Faction", agent.Faction);
         if (agent is Crawler ac) {
             activity?.SetTag("About", ac.About);
         }
+
+        var context = new InteractionContext { Agent = agent };
 
         foreach (var (index, subject) in ActorsExcept(agent)
                      .OrderBy(a => a.Faction)
@@ -81,25 +78,75 @@ public sealed class Encounter : IComparable<Encounter> {
             using var activityOther = Scope($"Menu {prefix}")?
                 .SetTag("Agent", agent.Name).SetTag("Subject", subject.Name).SetTag("Subject.Faction", subject.Faction);
 
-            LogCat.Log.LogInformation($"Encounter.MenuItems: Processing {prefix} - agent={agent.Name}, subject={subject.Name}");
+            LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: Processing {prefix} - agent={agent.Name}, subject={subject.Name}");
 
             // Collect interactions from both directions: agent->subject and subject->agent
-            LogCat.Log.LogInformation($"Encounter.MenuItems: Calling agent.InteractionsWith(subject)");
+            LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: Calling agent.InteractionsWith(subject)");
             var agentToSubject = agent.InteractionsWith(subject).ToList();
-            LogCat.Log.LogInformation($"Encounter.MenuItems: agent->subject yielded {agentToSubject.Count} interactions");
+            LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: agent->subject yielded {agentToSubject.Count} interactions");
 
-            LogCat.Log.LogInformation($"Encounter.MenuItems: Calling subject.InteractionsWith(agent)");
+            LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: Calling subject.InteractionsWith(agent)");
             var subjectToAgent = subject.InteractionsWith(agent).ToList();
-            LogCat.Log.LogInformation($"Encounter.MenuItems: subject->agent yielded {subjectToAgent.Count} interactions");
+            LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: subject->agent yielded {subjectToAgent.Count} interactions");
 
             var interactions = agentToSubject.Concat(subjectToAgent).ToList();
-            LogCat.Log.LogInformation($"Encounter.MenuItems: Total interactions for {prefix}: {interactions.Count}");
+            LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: Total interactions for {prefix}: {interactions.Count}");
 
-            ap += interactions.TickInteractions(agent, prefix);
-            var agentActorMenus = agent.InteractionMenuItems(interactions, subject.Brief(agent), prefix);
-            LogCat.Log.LogInformation($"Encounter.MenuItems: Generated {agentActorMenus.Count} menu items for {prefix}");
+            // Get trade offers if subject has TradeOfferComponent
+            List<TradeOffer>? tradeOffers = null;
+            if (subject is ActorBase subjectBase) {
+                var tradeComponent = subjectBase.Components.OfType<TradeOfferComponent>().FirstOrDefault();
+                if (tradeComponent != null) {
+                    tradeOffers = tradeComponent.GetOrCreateOffers();
+                    LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: Subject {subject.Name} has {tradeOffers.Count} trade offers");
+                }
+            }
+
+            var group = new InteractionGroup {
+                Subject = subject,
+                Label = subject.Brief(agent),
+                Prefix = prefix,
+                Interactions = interactions,
+                TradeOffers = tradeOffers
+            };
+
+            context.Groups.Add(group);
+            LogCat.Log.LogInformation($"Encounter.BuildInteractionContext: Added group {prefix} with {interactions.Count} interactions");
+        }
+
+        return context;
+    }
+
+    /// <summary>
+    /// Legacy method for backward compatibility.
+    /// Builds InteractionContext and converts to MenuItem list using ConsoleMenuRenderer logic.
+    /// </summary>
+    public IEnumerable<MenuItem> MenuItems(IActor agent) {
+        var result = new List<MenuItem>();
+        result.Add(new MenuItem("", "<Interactions>"));
+        result.Add(MenuItem.Sep);
+
+        // Display mandatory interactions at the top with highlighting
+        result.AddRange(menuItems);
+
+        var context = BuildInteractionContext(agent);
+
+        // Process immediate interactions and build menu items
+        foreach (var group in context.Groups) {
+            // Process immediate interactions
+            foreach (var interaction in group.Interactions) {
+                var msg = interaction.MessageFor(agent);
+                if (!string.IsNullOrEmpty(msg)) {
+                    agent.Message(Style.Em.Format(msg));
+                }
+                // Note: Immediate interactions are now handled by renderer
+            }
+
+            // Generate menu items for this group (using old helper method)
+            var agentActorMenus = agent.InteractionMenuItems(group.Interactions, group.Label, group.Prefix);
             result.AddRange(agentActorMenus);
         }
+
         return result;
     }
 
