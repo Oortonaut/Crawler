@@ -1,3 +1,6 @@
+using Crawler.Logging;
+using Microsoft.Extensions.Logging;
+
 namespace Crawler;
 
 /// <summary>
@@ -16,10 +19,22 @@ public class AttackComponent : ActorComponentBase {
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
         // Feasibility: only player can attack, target must be alive crawler
-        if (Owner != Game.Instance?.Player) yield break;
-        //if (subject is not Crawler) yield break;
-        if (!subject.Lives()) yield break;
+        LogCat.Log.LogInformation($"AttackComponent.EnumerateInteractions: Owner={Owner?.Name}, Subject={subject?.Name}");
 
+        if (Owner != Game.Instance?.Player) {
+            LogCat.Log.LogInformation($"AttackComponent: Owner is not player (Owner={Owner?.Name}, Player={Game.Instance?.Player?.Name})");
+            yield break;
+        }
+        if (subject is not Crawler) {
+            LogCat.Log.LogInformation($"AttackComponent: Subject {subject?.Name} is not a Crawler");
+            yield break;
+        }
+        if (!subject.Lives()) {
+            LogCat.Log.LogInformation($"AttackComponent: Subject {subject?.Name} is not alive (EndState={subject?.EndState})");
+            yield break;
+        }
+
+        LogCat.Log.LogInformation($"AttackComponent: Yielding AttackInteraction for {Owner?.Name} -> {subject?.Name}");
         yield return new AttackInteraction(Owner, subject, _optionCode);
     }
 

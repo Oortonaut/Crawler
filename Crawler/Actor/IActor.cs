@@ -319,7 +319,12 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     List<IActorComponent> _newComponents = new();
     bool _componentsDirty = false;
 
-    public IEnumerable<IActorComponent> Components => _components;
+    public IEnumerable<IActorComponent> Components {
+        get {
+            LogCat.Log.LogInformation($"ActorBase.Components accessed for {Name}: _components.Count={_components.Count}, _newComponents.Count={_newComponents.Count}, IsLoading={IsLoading}");
+            return _components;
+        }
+    }
 
     protected void CleanComponents(bool notify) {
         if (_componentsDirty) {
@@ -335,7 +340,17 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
 
     public void AddComponent(IActorComponent component) {
         component.Attach(this);
-        _newComponents.Add(component);
+
+        // If we're not in Loading state, component system is already initialized
+        // so add directly to _components instead of _newComponents
+        if (!IsLoading) {
+            LogCat.Log.LogInformation($"AddComponent: {Name} not loading, adding {component.GetType().Name} directly to _components");
+            component.Enter(Encounter);
+            _components.Add(component);
+        } else {
+            LogCat.Log.LogInformation($"AddComponent: {Name} is loading, adding {component.GetType().Name} to _newComponents");
+            _newComponents.Add(component);
+        }
         _componentsDirty = true; // Mark for re-sort
     }
 
