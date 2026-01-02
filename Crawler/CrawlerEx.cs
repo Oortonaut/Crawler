@@ -387,7 +387,9 @@ public static partial class CrawlerEx {
                 agent.Message(Style.Em.Format(msg));
             }
             if (interaction.GetImmediacy() == Immediacy.Immediate) {
-                result += interaction.Perform();
+                if (interaction.Perform()) {
+                    result++;
+                }
             }
         }
         return result;
@@ -395,7 +397,7 @@ public static partial class CrawlerEx {
     public static List<MenuItem> InteractionMenuItems(this IActor agent, List<Interaction> interactions, string title, string prefix) {
         List<MenuItem> result = new();
         if (interactions.Count == 0) {
-            result.Add(new ActionMenuItem(prefix, $"{title}\n", _ => 0, EnableArg.Disabled, ShowArg.Show));
+            result.Add(new ActionMenuItem(prefix, $"{title}\n", _ => false, EnableArg.Disabled, ShowArg.Show));
         } else {
             var show = interactions.Count > 4 ? ShowArg.Hide : ShowArg.Show;
             result.AddRange(interactions.DetailMenuItems(prefix, show));
@@ -404,7 +406,7 @@ public static partial class CrawlerEx {
             bool anyEnabled = interactions.Any(i => i.GetImmediacy() == Immediacy.Menu);
             result.Add(new ActionMenuItem(prefix,
                 title,
-                args => interactions.InteractionMenu(title, prefix, args).turns,
+                args => interactions.InteractionMenu(title, prefix, args).scheduled,
                 anyEnabled ? EnableArg.Enabled : EnableArg.Disabled,
                 ShowArg.Show));
             result.Add(MenuItem.Sep);
@@ -436,7 +438,7 @@ public static partial class CrawlerEx {
                 show);
         }
     }
-    public static (MenuItem item, int turns) InteractionMenu(this List<Interaction> interactions, string Name, string prefix, string args) {
+    public static (MenuItem item, bool scheduled) InteractionMenu(this List<Interaction> interactions, string Name, string prefix, string args) {
         List<MenuItem> interactionsMenu = [
             MenuItem.Cancel,
             .. interactions.DetailMenuItems(prefix, ShowArg.Show, args),
@@ -474,13 +476,10 @@ public static partial class CrawlerEx {
         }
         return chance;
     }
-    public static ScheduleEvent NewEventFor(this IActor actor, string tag, int Priority, long Duration, Action? Pre = null, Action? Post = null) {
-        var evt = new ScheduleEvent(tag, Priority, actor.Time, actor.Time + Duration, Pre, Post);
-        if (actor is ActorScheduled scheduled) {
-            evt = evt with { Actor = scheduled };
-        }
+    public static ActorEvent NewEventFor(this IActor actor, string tag, int Priority, long Duration, Action? Pre = null, Action? Post = null) {
+        var evt = new ActorEvent.EncounterEvent(actor, actor.Time + Duration, tag, Pre, Post, Priority);
         return evt;
     }
-    public static ScheduleEvent NewIdleEvent(this IActor actor) => actor.NewEventFor("Idle", 0, Tuning.MaxDelay);
+    public static ActorEvent NewIdleEvent(this IActor actor) => actor.NewEventFor("Idle", 0, Tuning.MaxDelay);
 
 }

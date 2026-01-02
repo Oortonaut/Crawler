@@ -214,7 +214,7 @@ public class CrawlerArena {
                 new ActionMenuItem("T", "Run Tournament", _ => RunTournament()),
                 new ActionMenuItem("S", "View Statistics", _ => ViewStatistics()),
                 new ActionMenuItem("D", "View Designs", _ => ViewDesigns()),
-                new ActionMenuItem("Q", "Return to Main Menu", _ => { quit = true; return 0; })
+                new ActionMenuItem("Q", "Return to Main Menu", _ => { quit = true; return false; })
             );
 
             if (selected is ActionMenuItem action) {
@@ -223,7 +223,7 @@ public class CrawlerArena {
         }
     }
 
-    int RunTournament() {
+    bool RunTournament() {
         Console.WriteLine("Starting Tournament...\n");
 
         // Run all vs all matches
@@ -269,7 +269,7 @@ public class CrawlerArena {
         UpdateTournamentStats(results);
 
         Console.WriteLine("Tournament complete!");
-        return 0;
+        return false;
     }
 
     MatchResult RunMatch(CrawlerDesign design1, CrawlerDesign design2, bool design1First = true) {
@@ -442,7 +442,7 @@ public class CrawlerArena {
         }
     }
 
-    int ViewStatistics() {
+    bool ViewStatistics() {
         Console.Clear();
         Console.WriteLine("Tournament Statistics:\n");
 
@@ -475,7 +475,7 @@ public class CrawlerArena {
             Console.WriteLine("\n\nHead-to-Head Win Matrix (Row vs Column):");
             DisplayHeadToHeadMatrix();
         }
-        return 0;
+        return false;
     }
 
     void DisplayHeadToHeadMatrix() {
@@ -528,7 +528,7 @@ public class CrawlerArena {
         Console.WriteLine("\nMatrix shows wins/total matches. Row design vs Column design.");
     }
 
-    int ViewDesigns() {
+    bool ViewDesigns() {
         Console.Clear();
         Console.WriteLine("Available Crawler Designs:\n");
 
@@ -545,7 +545,7 @@ public class CrawlerArena {
             Console.WriteLine($"  Total Cost: {design.Inventory.Segments.Sum(s => s.Cost)}¢¢");
             Console.WriteLine();
         }
-        return 0;
+        return false;
     }
 }
 

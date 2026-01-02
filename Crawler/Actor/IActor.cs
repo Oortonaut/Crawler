@@ -54,10 +54,15 @@ public delegate void InitializedHandler();
 /// Common interface for all interactive entities (Crawlers, Settlements, Resources).
 /// See: docs/DATA-MODEL.md#iactor-interface
 /// </summary>
-public interface IActor {
+public interface IActor: IComparable, IComparable<IActor> {
     // ===== Identity =====
     /// <summary>Display name (not unique)</summary>
     string Name { get; }
+
+    /// <summary>
+    /// Random number seed - unique
+    /// </summary>
+    ulong Seed { get; }
 
     /// <summary>Political allegiance</summary>
     Factions Faction { get; }
@@ -126,10 +131,9 @@ public interface IActor {
     // ===== Interactions =====
     // ===== Simulation =====
     /// <summary>Update this actor (called every game second)</summary>
-    /// <param name="time"></param>
+    /// <param name="evt"></param>
     /// <returns>Elapsed time</returns>
-    void TickTo(long time);
-    void TickTo(long time, ScheduleEvent evt);
+    void HandleEvent(ActorEvent evt);
 
     /// <summary>
     /// Advances actor's internal time without processing events or thinking.
@@ -141,6 +145,10 @@ public interface IActor {
     /// - SimulateTo(time) directly advances time without scheduling or processing
     /// </summary>
     void SimulateTo(long time);
+
+    void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null);
+
+    void IdleUntil(string tag, long time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
     void Think();
@@ -300,6 +308,16 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public Roles Role { get; set; } = Roles.None;
     public bool Harvested => EndState == EEndState.Looted;
     public virtual string Brief(IActor viewer) => brief;
+    public int CompareTo(IActor? other) {
+        if (other == null) return 1;
+
+        return Seed.CompareTo(other.Seed);
+    }
+    public int CompareTo(object? obj) {
+        if (obj == null) return 1;
+        if (obj is IActor actor) return CompareTo(actor);
+        throw new ArgumentException("Object is not an IActor");
+    }
     public override string ToString() => $"{Name} ({Faction}/{Role})";
     public virtual string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";
@@ -393,20 +411,13 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public long LastTime { get; protected set; }
     public long Time { get; protected set; } = 0;
     public int Elapsed => (int)(LastTime > 0 ? Time - LastTime : 0);
-    public void TickTo(long encounterTime) {
-        SimulateTo(encounterTime);
+    public void HandleEvent(ActorEvent evt) {
+        SimulateTo(evt.Time);
+        evt.OnEnd();
         Think();
-        PostTick(encounterTime);
+        PostTick();
     }
-
-    public void TickTo(long encounterTime, ScheduleEvent evt) {
-        Debug.Assert(evt.End == encounterTime);
-        SimulateTo(encounterTime);
-        evt.Post?.Invoke();
-        Think();
-        PostTick(encounterTime);
-    }
-    protected virtual void PostTick(long encounterTime) {}
+    protected virtual void PostTick() {}
 
     /// <summary>
     /// Advances actor's internal time without processing events or thinking.
@@ -422,6 +433,8 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
             throw new InvalidOperationException($"Tried to simulate {Name} during loading.");
         (LastTime, Time) = (Time, time);
     }
+    public virtual void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null) {}
+    public virtual void IdleUntil(string tag, long time) {}
     public virtual void Think() { }
     public virtual void ReceiveFire(IActor from, List<HitRecord> fire) {
         // Notify components that we're receiving fire

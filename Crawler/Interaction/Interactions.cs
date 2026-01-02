@@ -15,8 +15,8 @@ public abstract record Interaction(IActor Mechanic, IActor Subject, string MenuO
     /// <summary>Can this interaction be performed right now?</summary>
     public abstract Immediacy GetImmediacy(string args = "");
 
-    /// <summary>Execute the interaction. Returns AP cost (0 for instant).</summary>
-    public abstract int Perform(string args = "");
+    /// <summary>Execute the interaction. Returns true if successful.</summary>
+    public abstract bool Perform(string args = "");
 
     /// <summary>Display message for viewer. Primarily used for customs and extortion demands.</summary>
     public virtual string? MessageFor(IActor viewer) => null;
@@ -29,12 +29,22 @@ public abstract record Interaction(IActor Mechanic, IActor Subject, string MenuO
 
     /// <summary>Expected duration in seconds for this interaction. Used for UI display and planning.</summary>
     public virtual long ExpectedDuration => 0;
+
+    /// <summary>Synchronize both actors to a common time before multi-actor interaction.</summary>
+    protected void SynchronizeActors() {
+        long commonTime = Math.Max(Mechanic.Time, Subject.Time);
+        if (Mechanic.Time < commonTime) Mechanic.SimulateTo(commonTime);
+        if (Subject.Time < commonTime) Subject.SimulateTo(commonTime);
+        System.Diagnostics.Debug.Assert(Mechanic.Time == Subject.Time);
+    }
 }
 
 // Simple consequence: mark as hostile
 public record HostilityInteraction(IActor Attacker, IActor Subject, string Reason): Interaction(Attacker, Subject, "H") {
     public override Immediacy GetImmediacy(string args = "") => global::Crawler.Immediacy.Menu;
-    public override int Perform(string args = "") {
+    public override bool Perform(string args = "") {
+        SynchronizeActors();
+
         Mechanic.SetHostileTo(Subject, true);
         Subject.SetHostileTo(Mechanic, true);
         Mechanic.Message($"{Subject.Name} {Reason}. You are now hostile.");
@@ -45,7 +55,7 @@ public record HostilityInteraction(IActor Attacker, IActor Subject, string Reaso
         Mechanic.ConsumeTime("DeclareHostile", 300, ExpectedDuration);
         Subject.ConsumeTime("BecomeHostile", 300, ExpectedDuration);
 
-        return 1;
+        return true;
     }
     public override string Description => $"Turn hostile against {Subject.Name}";
     public override long ExpectedDuration => Tuning.Crawler.HostilityTime;
@@ -90,7 +100,9 @@ public record ExchangeInteraction: Interaction {
         }
     }
 
-    public override int Perform(string args = "") {
+    public override bool Perform(string args = "") {
+        SynchronizeActors();
+
         int count = 1;
         if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args, out int parsed)) {
             count = Math.Max(1, parsed);
@@ -110,7 +122,7 @@ public record ExchangeInteraction: Interaction {
         Mechanic.ConsumeTime("Trading", 300, tradeDuration);
         Subject.ConsumeTime("Trading", 300, tradeDuration);
 
-        return performed;
+        return true;
     }
     public override string Description { get; }
     public override string ToString() => Description;

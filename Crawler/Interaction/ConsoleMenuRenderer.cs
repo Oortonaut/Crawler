@@ -278,7 +278,7 @@ public class ConsoleMenuRenderer : IMenuRenderer {
             result.Add(new ActionMenuItem(
                 group.Prefix,
                 $"{group.Label}\n",
-                _ => 0,
+                _ => false,
                 EnableArg.Disabled,
                 ShowArg.Show));
             return result;

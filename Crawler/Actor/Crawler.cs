@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;
@@ -378,8 +379,8 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
 
         UpdateSegmentCache();
     }
-    protected override void PostTick(long time) {
-        base.PostTick(time);
+    protected override void PostTick() {
+        base.PostTick();
         TestEnded();
     }
     public override void Travel(Location loc) {
@@ -389,65 +390,50 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
             return;
         }
 
-        Location.GetEncounter().RemoveActor(this);
+        // TODO: Make this a flag on the actor or maybe Loading
+        if (Location.GetEncounter().Actors.Contains(this)) {
+            Location.GetEncounter().RemoveActor(this);
+        }
 
         FuelInv -= fuel;
         int delay = (int)(time * 3600);
         var arrivalTime = Time + delay;
 
         // Schedule this crawler in the game's traveling crawlers queue
-        Game.Instance!.ScheduleCrawler(this, arrivalTime);
-
-        // Update location and add to encounter
-        Location = loc;
-        Location.GetEncounter().AddActor(this);
-    }
-
-    // Track next scheduled time for this crawler
-    private long _nextScheduledTime = 0;
-    public long NextScheduledTime => _nextScheduledTime > 0 ? _nextScheduledTime : Time;
-
-    // Scheduling API methods - now schedule at Game level instead of Encounter level
-    public void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null) {
-        var arrivalTime = Time + duration;
-
-        // Execute pre-action immediately
-        pre?.Invoke();
-
-        // Schedule this crawler at Game level
-        Game.Instance!.ScheduleCrawler(this, arrivalTime);
-        _nextScheduledTime = arrivalTime;
-
-        // Store post-action to execute on arrival (if needed in future)
-        // For now, post actions are executed immediately after scheduling
-        post?.Invoke();
-    }
-
-    public void PassTimeUntil(string tag, long time) {
-        var duration = time - Time;
-        if (duration > 0) {
-            Game.Instance!.ScheduleCrawler(this, time);
-            _nextScheduledTime = time;
-        }
+        // Location will be updated by TravelEvent.OnEnd()
+        Game.Instance!.ScheduleTravel(this, arrivalTime, loc);
     }
 
     public override void Think() {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
         if (Flags.HasFlag(ActorFlags.Player)) {
+            LogCat.Log.LogInformation("Think: {Name} is player, returning without scheduling", Name);
             return;
         }
 
         // Let components provide proactive behaviors
         CleanComponents(true);
+        ActorEvent? nextEvent = null;
         foreach (var component in Components) {
             var componentEvent = component.GetNextEvent();
             if (componentEvent != null) {
-                // Execute the component's scheduled action
-                ConsumeTime(componentEvent.tag, componentEvent.Priority,
-                    componentEvent.End - componentEvent.Start,
-                    componentEvent.Pre, componentEvent.Post);
+                // Take the earliest event from all components
+                if (nextEvent == null || componentEvent.Time < nextEvent.Time) {
+                    nextEvent = componentEvent;
+                }
             }
         }
+
+        // If no component scheduled an action, generate default idle event
+        if (nextEvent == null) {
+            nextEvent = this.NewIdleEvent();
+            LogCat.Log.LogInformation("Think: {Name} generating idle event at {Time}", Name, Game.TimeString(nextEvent.Time));
+        } else {
+            LogCat.Log.LogInformation("Think: {Name} scheduling component event {Event} at {Time}",
+                Name, nextEvent, Game.TimeString(nextEvent.Time));
+        }
+
+        Game.Instance!.Schedule(nextEvent);
 
         base.Think();
     }
@@ -744,15 +730,16 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         ];
         string result = coloredSegments.TransposeJoinStyled();
         var Adjs = StateString(viewer);
-        var nameString = Style.Name.Format(Name) + $", {Faction.Name()}";
+        var nameString = Style.Name.Format(Name);
+        var factionName = Faction.Name();
         if (Flags.HasFlag(ActorFlags.Settlement)) {
             if (Flags.HasFlag(ActorFlags.Capital)) {
-                nameString += $" Capital";
+                nameString += $", {factionName} Capital";
             } else {
-                nameString += $" Settlement";
+                nameString += $", {factionName} Settlement";
             }
         } else {
-            nameString += $" {Role}";
+            nameString += $", {factionName}, {Role}";
         }
         return $"{nameString}{Adjs}\n{result}";
     }

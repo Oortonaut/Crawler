@@ -41,7 +41,7 @@ public class Game {
         Rng = new XorShift(seed);
 
         // Initialize crawler scheduler
-        crawlerTravelScheduler = new Scheduler<Game, CrawlerTravelEvent, Crawler, long>(this);
+        scheduler = new (this);
 
         Welcome();
     }
@@ -60,10 +60,10 @@ public class Game {
         var currentLocation = Map.GetStartingLocation();
         _player = currentLocation.GetEncounter().GeneratePlayerActor(Rng.Seed());
         _player.Name = crawlerName;
-        currentLocation.GetEncounter().AddActorAt(_player, GameTime);
+        _player.Location = currentLocation;
 
-        // Schedule the player's first turn so the game loop starts
-        ScheduleCrawler(_player, GameTime);
+        // Schedule the player's first turn so the game loop starts (ProcessCrawlerArrivals will add them)
+        ScheduleTravel(_player, GameTime, currentLocation);
     }
     void Construct(SaveGameData saveData) {
         Seed = saveData.Seed;
@@ -85,63 +85,79 @@ public class Game {
         _player = saveData.Player.ToGameCrawler(Map);
         _player.Location = currentLocation;
 
-        // Add player to map
+        // Schedule player at saved game time (ProcessCrawlerArrivals will add them to encounter)
         // TODO SAVE TIME
         var saveGameTime = 0;
-        currentLocation.GetEncounter().AddActorAt(Player, saveGameTime);
+        ScheduleTravel(_player, saveGameTime, currentLocation);
     }
 
     bool quit = false;
 
     // Use generic Scheduler for crawler travel scheduling
-    Scheduler<Game, CrawlerTravelEvent, Crawler, long> crawlerTravelScheduler;
+    Scheduler<Game, ActorEvent, IActor, long> scheduler;
 
     // TODO: use this for log scoping too
     static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => null; // LogCat.Game.StartActivity(name, kind);
     static ILogger Log => LogCat.Log;
     static Meter Metrics => LogCat.GameMetrics;
 
-    public void ScheduleCrawler(Crawler crawler, long time) {
-        Log.LogInformation($"ScheduleCrawler: {crawler.Name} scheduled for {time}");
+    public void ScheduleTravel(IActor crawler, long time, Location location) {
+        Log.LogInformation($"ScheduleCrawlerTravel: {crawler.Name} will arrive to {location} at {time}");
 
         // Use the generic Scheduler
-        var travelEvent = new CrawlerTravelEvent(crawler, time);
-        crawlerTravelScheduler.Schedule(travelEvent);
+        var travelEvent = new ActorEvent.TravelEvent(crawler, time, location);
+        Schedule(travelEvent);
+    }
+    public void ScheduleEncounter(IActor crawler, long time, string description, Action? pre = null, Action? post = null, int priority = ActorEvent.DefaultPriority) {
+        Log.LogInformation($"ScheduleCrawlerEncounter: {crawler.Name} scheduled {description} until {time}");
+
+        // Use the generic Scheduler
+        var encounterEvent = new ActorEvent.EncounterEvent(crawler, time, description, pre, post, priority);
+        Schedule(encounterEvent);
     }
 
-    void ProcessCrawlerArrivals() {
-        while (crawlerTravelScheduler.Peek(out var evt, out var time)) {
+    public void Schedule(ActorEvent evt) {
+        Log.LogInformation("Game.Schedule: {Actor} event {Evt} at {Time}, scheduler has {Any} events",
+            evt.Tag.Name, evt, Game.TimeString(evt.Time), scheduler.Any());
+        evt.OnStart();
+        scheduler.Schedule(evt);
+        Log.LogInformation("Game.Schedule: after scheduling, scheduler has {Any} events", scheduler.Any());
+    }
+
+    void ProcessSchedule() {
+        while (!quit && scheduler.Peek(out var evt, out var time)) {
             if (time!.Value > GameTime) {
                 break;
             }
 
-            var travelEvent = crawlerTravelScheduler.Dequeue();
-            if (travelEvent != null) {
-                Log.LogInformation($"ProcessCrawlerArrivals: {travelEvent.Crawler.Name} arrived at {travelEvent.ArrivalTime}");
+            var nextEvent = scheduler.Dequeue();
+            if (nextEvent != null) {
+                Log.LogInformation($"ProcessCrawlerArrivals: {nextEvent.Tag.Name} arrived at {nextEvent.Time}");
 
-                var crawler = travelEvent.Crawler;
+                var actor = nextEvent.Tag;
 
-                // Tick the crawler to the current game time
-                crawler.TickTo(travelEvent.ArrivalTime);
-
-                // Update the crawler's encounter to current game time
-                // This spawns dynamic crawlers and fires EncounterTicked
-                var encounter = crawler.Location.GetEncounter();
+                // Update the crawler's encounter to current game time FIRST
+                // This spawns dynamic crawlers and fires EncounterTicked before player enters
+                var encounter = actor.Location.GetEncounter();
                 encounter.UpdateTo(GameTime);
 
+                // Then tick the crawler to the current game time
+                actor.HandleEvent(nextEvent);
+
                 // If this is the player, show the game menu repeatedly until they consume time or quit
-                if (crawler == Player) {
-                    int ap = 0;
-                    do {
-                        ap = ShowGameMenu();
-                        // Loop until player takes an action that consumes time or quits
-                    } while (ap <= 0 && !quit);
+                if (actor == Player) {
+                    while (!ShowGameMenu()) { }
+                }
+
+                if (!scheduler.Any(actor)) {
+                    ScheduleEncounter(actor, Tuning.MaxDelay, "Idle", null, null, 0);
                 }
             }
         }
     }
 
-    int ShowGameMenu() {
+    // return true to advance time.
+    bool ShowGameMenu() {
         List<MenuItem> items = [
             .. GameMenuItems(),
             .. PlayerMenuItems(),
@@ -155,11 +171,6 @@ public class Game {
         Look();
 
         var (selected, ap) = CrawlerEx.MenuRun("Game Menu", items.ToArray());
-
-        // If time was consumed, schedule the player using ConsumeTime
-        if (ap > 0) {
-            Player.ConsumeTime("PlayerAction", 0, ap);
-        }
 
         return ap;
     }
@@ -177,10 +188,10 @@ public class Game {
             new MenuAction("G", "Global Map", _ => WorldMap()),
             new MenuAction("R", "Status Report", _ => Report()),
             new MenuAction("K", "Skip Turn/Wait", args => Turn(args)),
-            new MenuAction("Q", "Save and Quit", _ => Save() + Quit()),
+            new MenuAction("Q", "Save and Quit", _ => { Save(); return Quit(); }),
             new MenuAction("QQ", "Quit", _ => Quit()),
             new MenuAction("TEST", "Test Menu", _ => TestMenu()),
-            new MenuAction("GG", "Give 1000 scrap", args => { Player.ScrapInv += 1000; return 0; }, IsVisible: false),
+            new MenuAction("GG", "Give 1000 scrap", args => { Player.ScrapInv += 1000; return false; }, IsVisible: false),
             new MenuAction("GIVE", "Give commodity", args => GiveCommodity(args), IsVisible: false),
             new MenuAction("DMG", "Damage segment", args => DamageSegment(args), IsVisible: false),
         ]);
@@ -395,7 +406,7 @@ public class Game {
         }
     }
 
-    int ShowInteractionSubmenu(InteractionGroupEx group) {
+    bool ShowInteractionSubmenu(InteractionGroupEx group) {
         // Show submenu for this interaction group
         var items = new List<MenuItem> { MenuItem.Cancel };
         items.AddRange(group.Actions.Select((a, i) =>
@@ -416,7 +427,7 @@ public class Game {
     /// Demonstrates new architecture for future TUI migration.
     /// Currently unused - keeping old ShowGameMenu() for stability.
     /// </summary>
-    int ShowGameMenuWithContext() {
+    bool ShowGameMenuWithContext() {
         Look();
 
         // Build complete menu context
@@ -426,38 +437,41 @@ public class Game {
         var renderer = new ConsoleMenuRenderer();
         var selection = renderer.Render(context, "Game Menu", "");
 
-        int ap = 0;
+        bool ap = false;
         if (selection.SelectedInteraction != null) {
             ap = selection.SelectedInteraction.Perform(selection.Arguments);
-        }
-
-        // If time was consumed, schedule the player
-        if (ap > 0) {
-            Player.ConsumeTime("PlayerAction", 0, ap);
         }
 
         return ap;
     }
 
     public void Run() {
-        while (!quit && crawlerTravelScheduler.Any()) {
+        while (!quit) {
             // Get the next crawler event time
-            if (!crawlerTravelScheduler.Peek(out var evt, out var nextTime)) {
+            if (!scheduler.Peek(out var evt, out var nextTime)) {
+                Log.LogInformation("Game.Run: scheduler.Peek returned false, breaking");
                 break;
             }
+
+            Log.LogInformation("Game.Run: processing events at {Time}, scheduler has {Any} events",
+                Game.TimeString(nextTime!.Value), scheduler.Any());
 
             GameTime = nextTime!.Value;
 
             using var activity = Scope($"Game::Turn")?
                 .AddTag("start", GameTime);
 
-            ProcessCrawlerArrivals();
+            ProcessSchedule();
+
+            Log.LogInformation("Game.Run: after ProcessSchedule, scheduler has {Any} events, quit={Quit}, won={Won}, lost={Lost}",
+                scheduler.Any(), quit, PlayerWon, PlayerLost);
 
             if (PlayerWon || PlayerLost) {
                 Save();
                 break;
             }
         }
+        Log.LogInformation("Game.Run: exited loop, quit={Quit}, scheduler.Any={Any}", quit, scheduler.Any());
         if (PlayerLost) {
             Console.WriteLine($"You lost! {Player?.EndMessage}");
         } else if (PlayerWon) {
@@ -472,12 +486,12 @@ public class Game {
     public Location PlayerLocation => _player!.Location;
     public TerrainType CurrentTerrain => PlayerLocation.Terrain;
 
-    int Report() {
+    bool Report() {
         Player.Message(Player.Report());
-        return 10;
+        return false;
     }
 
-    int SegmentDefinitionsReport() {
+    bool SegmentDefinitionsReport() {
         IEnumerable<SegmentDef> Variants(SegmentDef def) {
             yield return def;
             yield return def.Resize(2);
@@ -489,7 +503,7 @@ public class Game {
         var rng = new XorShift(999);
         var segments = SegmentEx.AllDefs.SelectMany(def => Variants(def)).Select(def => def.NewSegment(rng.Seed())).ToList();
         Player.Message(segments.SegmentReport(PlayerLocation));
-        return 10;
+        return false;
     }
 
     IEnumerable<MenuItem> EncounterMenuItems() {
@@ -524,9 +538,9 @@ public class Game {
             yield return new ActionMenuItem($"M{index}", $"To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
         }
     }
-    int GoTo(Location loc) {
+    bool GoTo(Location loc) {
         Player.Travel(loc);
-        return 0;
+        return false;
     }
 
     IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
@@ -623,7 +637,7 @@ public class Game {
     }
     public string TimeString() => TimeString(GameTime);
 
-    int Look() {
+    bool Look() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
 
@@ -631,7 +645,7 @@ public class Game {
         Console.WriteLine(PlayerEncounter().ViewFrom(Player));
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
-        return 0;
+        return false;
     }
     string DrawSectorMap() {
         var height = 10;
@@ -644,9 +658,11 @@ public class Game {
         var mapLines = sectorMapLines.Select(line => $"│{line}║").StringJoin("\n");
         return $"{header}\n{mapLines}\n{footer}";
     }
-    int Turn(string args) {
+    bool Turn(string args) {
         float count = float.TryParse(args, out float parsed) ? parsed * 60 : 3600;
-        return (int) count;
+        long duration = (int)count;
+        Player.ConsumeTime("Wait", 0, duration);
+        return true;
     }
 
     public void RegisterEncounter(Encounter encounter) {
@@ -665,7 +681,7 @@ public class Game {
 
     public static long SafeTime => Instance?.GameTime ?? 0;
 
-    int SectorMap() {
+    bool SectorMap() {
         var sector = PlayerLocation.Sector;
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine(DrawSectorMap());
@@ -679,7 +695,7 @@ public class Game {
         ]);
         return ap;
     }
-    int WorldMap() {
+    bool WorldMap() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine(Map.DumpMap(Player));
         Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
@@ -706,12 +722,12 @@ public class Game {
         new ActionMenuItem("G", "Global Map", _ => WorldMap()),
         new ActionMenuItem("R", "Status Report", _ => Report()),
         new ActionMenuItem("K", "Skip Turn/Wait", args => Turn(args)),
-        new ActionMenuItem("Q", "Save and Quit", _ => Save() + Quit()),
+        new ActionMenuItem("Q", "Save and Quit", _ => { Save(); return Quit(); }),
         new ActionMenuItem("QQ", "Quit ", _ => Quit()),
         new ActionMenuItem("TEST", "Test Menu", _ => TestMenu()),
         new ActionMenuItem("GG", "", args => {
             Player.ScrapInv += 1000;
-            return 0;
+            return false;
         }, EnableArg.Enabled, ShowArg.Hide),
         new ActionMenuItem("GIVE", "", args => GiveCommodity(args), EnableArg.Enabled, ShowArg.Hide),
         new ActionMenuItem("DMG", "", args => DamageSegment(args), EnableArg.Enabled, ShowArg.Hide),
@@ -738,7 +754,7 @@ public class Game {
         }
     }
 
-    int PowerMenu() {
+    bool PowerMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Power Menu", [
             MenuItem.Cancel,
             .. PowerMenuItems(),
@@ -757,15 +773,15 @@ public class Game {
         }
     }
 
-    int ToggleSegmentPower(int index) {
+    bool ToggleSegmentPower(int index) {
         var segment = Player.Segments[index];
         segment.Activated = !segment.Activated;
         Player.Message($"{segment.Name} {(segment.Activated ? "activated" : "deactivated")}");
         Player.UpdateSegmentCache();
-        return 10;
+        return true;
     }
 
-    int RepairMenu() {
+    bool RepairMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Repair Menu", [
             MenuItem.Cancel,
             .. RepairMenuItems(),
@@ -780,22 +796,22 @@ public class Game {
         yield return new ActionMenuItem("PR2", $"Repair Highest {(repairMode == RepairMode.RepairHighest ? "[Active]" : "")}", _ => SetRepairMode(RepairMode.RepairHighest), EnableArg.Enabled, show);
     }
 
-    int SetRepairMode(RepairMode mode) {
+    bool SetRepairMode(RepairMode mode) {
         var repairComponent = Player.Components.OfType<AutoRepairComponent>().FirstOrDefault();
         if (repairComponent == null) {
             Player.Message($"No self repair system.");
-            return 0;
+            return false;
         } else if (repairComponent.RepairMode == mode) {
             Player.Message($"Repair mode unchanged: {mode}");
-            return 2;
+            return true;
         } else {
             repairComponent.RepairMode = mode;
             Player.Message($"Repair mode set to: {mode}");
-            return 5;
+            return true;
         }
     }
 
-    int PackagingMenu() {
+    bool PackagingMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Packaging Menu", [
             MenuItem.Cancel,
             .. PackagingMenuItems(),
@@ -819,15 +835,15 @@ public class Game {
         }
     }
 
-    int TogglePackage(int index) {
+    bool TogglePackage(int index) {
         var segment = Player.Segments[index];
         segment.Packaged = !segment.Packaged;
         Player.Message($"{segment.Name} {(segment.Packaged ? "packaged" : "unpackaged")}");
         Player.UpdateSegmentCache();
-        return 3600 * 3;
+        return true;
     }
 
-    int TradeInventoryMenu() {
+    bool TradeInventoryMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Trade Cargo Menu", [
             MenuItem.Cancel,
             .. TradeInventoryMenuItems(),
@@ -875,15 +891,15 @@ public class Game {
         }
     }
 
-    int MoveToCargo(Segment segment) {
+    bool MoveToCargo(Segment segment) {
         Player.Supplies.Remove(segment);
         Player.Cargo.Add(segment);
         Player.Message($"{segment.Name} moved to cargo");
         Player.UpdateSegmentCache();
-        return 1200;
+        return true;
     }
 
-    int MoveToCargo(Commodity commodity, string amount) {
+    bool MoveToCargo(Commodity commodity, string amount) {
         var amt = Player.Cargo[commodity];
 
         if (float.TryParse(amount, out float parsed)) {
@@ -893,24 +909,22 @@ public class Game {
         return MoveToCargo(commodity, amt);
     }
 
-    int MoveToCargo(Commodity commodity, float amount) {
+    bool MoveToCargo(Commodity commodity, float amount) {
         Player.Supplies[commodity] -= amount;
         Player.Cargo[commodity] += amount;
         Player.Message($"{amount} {commodity} moved to cargo");
-        // 3 tons/hr
-        int time = (int)(commodity.Mass() * amount / 1200);
-        return Math.Max(time, 1);
+        return true;
     }
 
-    int MoveFromCargo(Segment segment) {
+    bool MoveFromCargo(Segment segment) {
         Player.Cargo.Remove(segment);
         Player.Supplies.Add(segment);
         Player.Message($"{segment.Name} returned from cargo");
         Player.UpdateSegmentCache();
-        return 1200;
+        return true;
     }
 
-    int MoveFromCargo(Commodity commodity, string amount) {
+    bool MoveFromCargo(Commodity commodity, string amount) {
         var amt = Player.Cargo[commodity];
         if (float.TryParse(amount, out float parsed)) {
             amt = Math.Min(parsed, amt);
@@ -919,33 +933,32 @@ public class Game {
         return MoveFromCargo(commodity, amt);
     }
 
-    int MoveFromCargo(Commodity commodity, float amount) {
+    bool MoveFromCargo(Commodity commodity, float amount) {
         Player.Cargo[commodity] -= amount;
         Player.Supplies[commodity] += amount;
         Player.Message($"{amount} {commodity} moved to cargo");
-        int time = (int)(commodity.Mass() * amount / 1200);
-        return Math.Max(time, 1);
+        return true;
     }
 
-    int InstallSegment(Segment segment) {
+    bool InstallSegment(Segment segment) {
         Player.InstallSegment(segment);
         Player.Message($"{segment.Name} installed");
-        return 1800; // Installation takes time
+        return true;
     }
 
-    int PackageToSupplies(Segment segment) {
+    bool PackageToSupplies(Segment segment) {
         Player.PackageToSupplies(segment);
         Player.Message($"{segment.Name} packaged to supplies");
-        return 1800; // Packaging takes time
+        return true;
     }
 
-    int PackageToCargo(Segment segment) {
+    bool PackageToCargo(Segment segment) {
         Player.PackageToCargo(segment);
         Player.Message($"{segment.Name} packaged to cargo");
-        return 1800; // Packaging takes time
+        return true;
     }
 
-    int Save() {
+    bool Save() {
         try {
             var serializer = new YamlDotNet.Serialization.Serializer();
             var saveData = this.ToSaveData();
@@ -960,29 +973,30 @@ public class Game {
             serializer.Serialize(writer, saveData);
 
             Console.WriteLine($"Game saved to: {filePath}");
+            return true;
         } catch (Exception ex) {
             Console.WriteLine($"Failed to save game: {ex.Message}");
+            return false;
         }
-        return 0;
     }
 
-    int Quit() {
+    bool Quit() {
         Console.WriteLine("Quitting...");
         quit = true;
-        return 0;
+        return false;
     }
 
-    int GiveCommodity(string args) {
+    bool GiveCommodity(string args) {
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2) {
             Player.Message("Usage: give <commodity> <amount>");
-            return 0;
+            return false;
         }
 
         string commodityPrefix = parts[0].ToLower();
         if (!float.TryParse(parts[1], out float amount)) {
             Player.Message($"Invalid amount: {parts[1]}");
-            return 0;
+            return false;
         }
 
         // Find first commodity that starts with the input
@@ -991,44 +1005,44 @@ public class Game {
 
         if (matchingCommodity == default(Commodity) && !commodityPrefix.StartsWith("scrap")) {
             Player.Message($"No commodity found starting with '{parts[0]}'");
-            return 0;
+            return false;
         }
 
         Player.Supplies[matchingCommodity] += amount;
         Player.Message($"Added {amount} {matchingCommodity}");
-        return 0;
+        return true;
     }
 
-    int DamageSegment(string args) {
+    bool DamageSegment(string args) {
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2) {
             Player.Message("Usage: DMG <segment index> <damage amount>");
-            return 0;
+            return false;
         }
 
         if (!int.TryParse(parts[0], out int segmentIndex)) {
             Player.Message($"Invalid segment index: {parts[0]}");
-            return 0;
+            return false;
         }
 
         if (!int.TryParse(parts[1], out int damageAmount)) {
             Player.Message($"Invalid damage amount: {parts[1]}");
-            return 0;
+            return false;
         }
 
         if (segmentIndex < 0 || segmentIndex >= Player.Segments.Count) {
             Player.Message($"Segment index {segmentIndex} out of range (0-{Player.Segments.Count - 1})");
-            return 0;
+            return false;
         }
 
         var segment = Player.Segments[segmentIndex];
         segment.Hits += damageAmount;
         Player.Message($"Applied {damageAmount} damage to {segment.Name} (HP: {segment.Health:F1}/{segment.MaxHits})");
         Player.UpdateSegmentCache();
-        return 0;
+        return true;
     }
 
-    int TestMenu() {
+    bool TestMenu() {
         var (selected, ap) = CrawlerEx.MenuRun("Test Menu", [
             MenuItem.Cancel,
             new ActionMenuItem("SD", "Segment Definitions", _ => SegmentDefinitionsReport()),
@@ -1038,7 +1052,7 @@ public class Game {
         return ap;
     }
 
-    int XorShiftTests() {
+    bool XorShiftTests() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine("XorShift Random Number Generator - Comprehensive Unit Tests");
         Console.WriteLine(new string('=', 70));
@@ -1434,10 +1448,10 @@ public class Game {
         Console.WriteLine();
         Console.WriteLine("Press any key to continue...");
         Console.ReadKey(true);
-        return 0;
+        return false;
     }
 
-    int PriceStatisticsReport() {
+    bool PriceStatisticsReport() {
         XorShift rng = new XorShift(1);
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine("Surveying all locations for price statistics...");
@@ -1562,7 +1576,7 @@ public class Game {
 
         Console.WriteLine("\nPress any key to continue...");
         Console.ReadKey(true);
-        return 0;
+        return false;
     }
 
     double CalculateStandardDeviation(List<float> values) {

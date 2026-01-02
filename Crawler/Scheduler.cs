@@ -41,9 +41,8 @@ public class Scheduler<TContext, TEvent, TElement, TTime>(TContext Context)
         }
         return false;
     }
-    public bool Any() {
-        return Peek(out var evt, out var time);
-    }
+    public bool Any() => eventQueue.Count > 0;
+    public int Count => eventQueue.Count;
     public bool Peek(out TEvent? evtOut, out TTime? timeOut) {
         evtOut = null;
         timeOut = null;
@@ -81,6 +80,7 @@ public class Scheduler<TContext, TEvent, TElement, TTime>(TContext Context)
         }
         return null;
     }
+    public bool Any(TElement tag) => schedEventForTag.ContainsKey(tag);
 
     public delegate void HeadChangedHandler(TContext ctx, TEvent evt);
     public event HeadChangedHandler? MinChanged;

@@ -17,7 +17,7 @@ public class CustomsComponent : ActorComponentBase {
         // Scan all actors already present in the encounter
         foreach (var actor in encounter.Actors) {
             if (actor != Owner) {
-                SetupContrabandUltimatum(actor, Game.SafeTime);
+                SetupContrabandUltimatum(actor, encounter[actor].ArrivalTime);
             }
         }
     }
@@ -134,7 +134,9 @@ public class CustomsComponent : ActorComponentBase {
             return $"{Owner.Name} demands customs inspection. You have until {Game.TimeString(ultimatum.ExpirationTime)} to comply.";
         }
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
+            SynchronizeActors();
+
             Owner.Message($"{Target.Name} allows search and surrenders {Contraband}");
             Target.Message($"You allow {Owner.Name} to search and seize {Contraband}");
 
@@ -150,7 +152,7 @@ public class CustomsComponent : ActorComponentBase {
             Owner.ConsumeTime("Searching", 300, ExpectedDuration);
             Target.ConsumeTime("Searched", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -177,7 +179,7 @@ public class CustomsComponent : ActorComponentBase {
 
         public override string? MessageFor(IActor viewer) => null;
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             Owner.Message($"{Target.Name} refuses search!");
             Target.Message($"You refuse {Owner.Name}'s search - now hostile!");
 
@@ -188,7 +190,7 @@ public class CustomsComponent : ActorComponentBase {
             Owner.ConsumeTime("RefusedBy", 300, ExpectedDuration);
             Target.ConsumeTime("Refusing", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Menu;
@@ -204,14 +206,14 @@ public class CustomsComponent : ActorComponentBase {
 
         public override string Description => $"Search refused - {Owner.Name} turns hostile!";
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             Owner.Message($"{Target.Name} has passed the deadline!");
             Target.Message($"You wait out {Owner.Name}'s search.");
 
             Owner.To(Target).Ultimatum = null;
             Owner.SetHostileTo(Target, true);
 
-            return 0;
+            return false;
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
@@ -318,7 +320,9 @@ public class TradeOfferComponent : ActorComponentBase {
     ) : Interaction(Attacker, Subject, MenuOption) {
         public override string Description => Desc;
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
+            SynchronizeActors();
+
             int count = 1;
             if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args, out int parsed)) {
                 count = Math.Max(1, parsed);
@@ -342,7 +346,7 @@ public class TradeOfferComponent : ActorComponentBase {
             Mechanic.ConsumeTime("Trading", 300, tradeDuration);
             Subject.ConsumeTime("Trading", 300, tradeDuration);
 
-            return performed;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -399,7 +403,9 @@ public class RepairComponent : ActorComponentBase {
 
         public override string Description => $"Repair {SegmentToRepair.Name} for {Price}¢¢";
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
+            SynchronizeActors();
+
             int duration = 3600; // 1 hour to repair
             long endTime = Game.SafeTime + duration;
 
@@ -417,7 +423,7 @@ public class RepairComponent : ActorComponentBase {
             };
 
             // Lock both actors for the duration
-            (Subject as ActorScheduled)?.ConsumeTime("Repairing", 300, ExpectedDuration, post: () => {
+            Subject.ConsumeTime("Repairing", 300, ExpectedDuration, post: () => {
                 // Complete the repair
                 SegmentToRepair.Hits = 0;
                 Subject.Message($"Repair of {SegmentToRepair.Name} completed");
@@ -426,7 +432,7 @@ public class RepairComponent : ActorComponentBase {
                 Mechanic.To(Subject).Ultimatum = null;
             });
 
-            (Mechanic as ActorScheduled)?.ConsumeTime("Repaired", 300, ExpectedDuration, post: () => {
+            Mechanic.ConsumeTime("Repaired", 300, ExpectedDuration, post: () => {
                 Mechanic.Message($"Finished repairing {Subject.Name}'s vehicle");
             });
 
@@ -437,7 +443,7 @@ public class RepairComponent : ActorComponentBase {
             Mechanic.Message($"Starting repair of {Subject.Name}'s {SegmentToRepair.Name}...");
             Subject.Message($"{Mechanic.Name} begins repairing your {SegmentToRepair.Name}");
 
-            return (int)duration;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -537,7 +543,7 @@ public class LicenseComponent : ActorComponentBase {
             }
         }
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             var licenseOffer = new LicenseOffer(LicenseFaction, Category, Tier, Price);
             var scrapOffer = new ScrapOffer(Price);
 
@@ -551,7 +557,7 @@ public class LicenseComponent : ActorComponentBase {
             Mechanic.ConsumeTime("SellingLicense", 300, ExpectedDuration);
             Subject.ConsumeTime("BuyingLicense", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -595,7 +601,7 @@ public class HarvestComponent : ActorComponentBase {
 
         public override string Description => Verb;
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             var inventoryOffer = new InventoryOffer(false, Amount);
 
             Resource.Message($"{Harvester.Name} harvests you");
@@ -607,7 +613,7 @@ public class HarvestComponent : ActorComponentBase {
             // Time consumption for harvesting (only harvester consumes time, resource is static)
             Harvester.ConsumeTime("Harvesting", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -660,7 +666,7 @@ public class HazardComponent : ActorComponentBase {
 
         public override string Description => Desc;
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             // Determine loss amount
             var risked = Risk.Loot(Rng/1, RiskChance);
 
@@ -699,7 +705,7 @@ public class HazardComponent : ActorComponentBase {
             // Time consumption for exploring hazard (only explorer consumes time, hazard is static)
             Explorer.ConsumeTime("Exploring", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -818,7 +824,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         base.OnComponentsDirty();
     }
 
-    public override ScheduleEvent? GetNextEvent() {
+    public override ActorEvent? GetNextEvent() {
         Owner.Message($"{Owner.Name} think action");
         return base.GetNextEvent();
     }

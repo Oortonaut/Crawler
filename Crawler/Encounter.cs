@@ -242,6 +242,13 @@ public sealed class Encounter : IComparable<Encounter> {
     public EncounterActor this[IActor actor] => actors.GetOrAddNew(actor);
 
     public List<IActor> OrderedActors() => actors.Keys.OrderBy(a => a.Faction).ToList();
+    public bool TryRemoveActor(IActor actor) {
+        if (actors.ContainsKey(actor)) {
+            RemoveActor(actor);
+            return true;
+        }
+        return false;
+    }
     public void RemoveActor(IActor actor) {
         // Raise ActorLeaving event
         ActorLeaving?.Invoke(actor, EncounterTime);

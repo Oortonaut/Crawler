@@ -61,7 +61,7 @@ public interface IActorComponent {
     /// Components are evaluated in priority order (highest first).
     /// Returns AP cost if action was scheduled, null otherwise.
     /// </summary>
-    ScheduleEvent? GetNextEvent();
+    ActorEvent? GetNextEvent();
 }
 
 /// <summary>
@@ -89,7 +89,7 @@ public abstract class ActorComponentBase : IActorComponent {
 
     public virtual void Leave(Encounter encounter) { }
 
-    public virtual ScheduleEvent? GetNextEvent() => null;
+    public virtual ActorEvent? GetNextEvent() => null;
     public override string ToString() => $"{GetType().Name} on {Owner?.Name}";
 
     protected Encounter GetEncounter() => Owner.Location.GetEncounter();

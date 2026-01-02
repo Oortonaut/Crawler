@@ -38,23 +38,23 @@ public static partial class EnumEx {
     public static EnableArg ToEnableArg(this Immediacy mode) => mode == Immediacy.Failed ? EnableArg.Disabled : EnableArg.Enabled;
 }
 
-public record ActionMenuItem(string Option, string Item, Func<string, int> Run, EnableArg Enabled = EnableArg.Enabled, ShowArg Show = ShowArg.Show): MenuItem(Option, Item) {
-    public ActionMenuItem(string Option, string Item, Func<int> Run, EnableArg Enabled, ShowArg Show): this(Option, Item, _ => Run(), Enabled, Show) { }
+public record ActionMenuItem(string Option, string Item, Func<string, bool> Run, EnableArg Enabled = EnableArg.Enabled, ShowArg Show = ShowArg.Show): MenuItem(Option, Item) {
+    public ActionMenuItem(string Option, string Item, Func<bool> Run, EnableArg Enabled, ShowArg Show): this(Option, Item, _ => Run(), Enabled, Show) { }
     public override bool IsEnabled => Enabled is EnableArg.Enabled;
     public override bool IsShow => Show is ShowArg.Show;
 }
 
 public static partial class CrawlerEx {
-    public static (MenuItem, int) MenuRun(string Title, params MenuItem[] items) {
+    public static (MenuItem, bool) MenuRun(string Title, params MenuItem[] items) {
         return MenuRun(Title, "", items);
     }
-    public static (MenuItem, int) MenuRun(string Title, string Dflt, params MenuItem[] items) {
+    public static (MenuItem, bool) MenuRun(string Title, string Dflt, params MenuItem[] items) {
         var (item, args) = Menu(Title, Dflt, items);
-        int turns = 0;
+        bool did = false;
         if (item is ActionMenuItem action && action.IsEnabled) {
-            turns = action.Run(args);
+            did = action.Run(args);
         }
-        return (item, turns);
+        return (item, did);
     }
     public static (MenuItem, string) Menu(string Title, params MenuItem[] items) {
         return Menu(Title, "", items);

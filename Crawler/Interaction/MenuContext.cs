@@ -56,8 +56,8 @@ public interface IMenuAction {
     /// <summary>Whether to show in menu (some items hidden until submenu)</summary>
     bool IsVisible { get; }
 
-    /// <summary>Execute the action, returning AP cost (0 for instant)</summary>
-    int Perform(string args = "");
+    /// <summary>Execute the action, returning true if successful</summary>
+    bool Perform(string args = "");
 }
 
 /// <summary>
@@ -66,11 +66,11 @@ public interface IMenuAction {
 public record MenuAction(
     string OptionCode,
     string Description,
-    Func<string, int> Action,
+    Func<string, bool> Action,
     bool IsEnabled = true,
     bool IsVisible = true
 ) : IMenuAction {
-    public int Perform(string args = "") => Action(args);
+    public bool Perform(string args = "") => Action(args);
 }
 
 /// <summary>
@@ -89,7 +89,7 @@ public class InteractionAction : IMenuAction {
     public bool IsEnabled => _interaction.GetImmediacy() != Immediacy.Failed;
     public bool IsVisible { get; init; } = true;
 
-    public int Perform(string args = "") => _interaction.Perform(args);
+    public bool Perform(string args = "") => _interaction.Perform(args);
 
     public Interaction Interaction => _interaction;
 }

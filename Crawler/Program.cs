@@ -83,7 +83,7 @@ var newGame = new ActionMenuItem("N", "New Game", args => {
     var seedStr = CrawlerEx.Input($"Seed: ", seed.ToString());
     ulong.TryParse(seedStr, out seed);
     Game.NewGame(seed, name, size);
-    return 0;
+    return false;
 });
 var loadGame = new ActionMenuItem("L", "Load Game", _ => {
     return LoadGame();
@@ -91,7 +91,7 @@ var loadGame = new ActionMenuItem("L", "Load Game", _ => {
 var arena = new ActionMenuItem("A", "Crawler Arena", _ => {
     var crawlerArena = new CrawlerArena();
     crawlerArena.Run();
-    return 0;
+    return false;
 });
 var quit = new MenuItem("Q", "Quit");
 
@@ -115,7 +115,7 @@ Console.WriteLine("Like and Subscribe!");
 return;
 ///////////////////////////////////////////////
 
-int LoadGame() {
+bool LoadGame() {
     var quit = new MenuItem("Q", "Quit");
     string loadPath = CrawlerEx.SavesPath;
     Directory.CreateDirectory(loadPath);
@@ -123,7 +123,7 @@ int LoadGame() {
     var menuItems = saveFiles.Index().Select(
         f => new ActionMenuItem($"{f.Index+1}", Path.GetFileNameWithoutExtension(f.Item), _ => {
             Game.LoadGame(f.Item);
-            return 1;
+            return true;
         }));
     var (item, result) = CrawlerEx.MenuRun("Load Menu", [ .. menuItems, quit ]);
     return result;

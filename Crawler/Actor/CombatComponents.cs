@@ -35,7 +35,7 @@ public class AttackComponent : ActorComponentBase {
         }
 
         LogCat.Log.LogInformation($"AttackComponent: Yielding AttackInteraction for {Owner?.Name} -> {subject?.Name}");
-        yield return new AttackInteraction(Owner, subject, _optionCode);
+        yield return new AttackInteraction(Owner!, subject!, _optionCode);
     }
 
     /// <summary>
@@ -46,11 +46,12 @@ public class AttackComponent : ActorComponentBase {
 
         public override string Description => $"Attack {Subject.Name}";
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             if (Mechanic is Crawler attacker) {
-                return attacker.Attack(Subject);
+                attacker.Attack(Subject);
+                return true;
             }
-            return 0;
+            return false;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -112,7 +113,7 @@ public class SurrenderComponent : ActorComponentBase {
             return surrenderInv;
         }
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             var surrenderInv = MakeSurrenderInv();
 
             Winner.Message($"{Loser.Name} has surrendered to you . {Tuning.Crawler.MoraleSurrenderedTo} Morale");
@@ -131,7 +132,7 @@ public class SurrenderComponent : ActorComponentBase {
             Winner.ConsumeTime("AcceptSurrender", 300, ExpectedDuration);
             Loser.ConsumeTime("Surrendered", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -172,7 +173,7 @@ public static class ExtortionInteractions {
             return null;
         }
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             var demand = MakeDemand();
 
             Extortioner.Message($"{Target.Name} hands over {demand.Description}");
@@ -192,7 +193,7 @@ public static class ExtortionInteractions {
             Extortioner.ConsumeTime("Extorting", 300, ExpectedDuration);
             Target.ConsumeTime("Extorted", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") {
@@ -226,7 +227,7 @@ public static class ExtortionInteractions {
             return null;
         }
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             Extortioner.SetHostileTo(Target, true);
             Target.SetHostileTo(Extortioner, true);
 
@@ -242,7 +243,7 @@ public static class ExtortionInteractions {
             Extortioner.ConsumeTime("RefusedBy", 300, ExpectedDuration);
             Target.ConsumeTime("Refusing", 300, ExpectedDuration);
 
-            return 1;
+            return true;
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Menu;
@@ -262,14 +263,14 @@ public static class ExtortionInteractions {
 
         public override string Description => $"Extortion expired - {Extortioner.Name} attacks!";
 
-        public override int Perform(string args = "") {
+        public override bool Perform(string args = "") {
             Extortioner.To(Target).Ultimatum = null;
             if (Extortioner is Crawler extortioner) {
                 extortioner.SetHostileTo(Target, true);
             }
 
 
-            return 0;
+            return false;
         }
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
@@ -358,7 +359,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
     /// Attempt to attack the current or selected target.
     /// Returns AP cost if attack was performed, null otherwise.
     /// </summary>
-    protected ScheduleEvent? AttackTarget(IActor target) {
+    protected ActorEvent? AttackTarget(IActor target) {
         if (Owner is not Crawler attacker) return null;
         if (attacker.IsDisarmed) return null;
 
@@ -388,7 +389,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
         Owner.SetHostileTo(actor, true);
         if (actor is ActorScheduled scheduled &&
             Owner is ActorScheduled ownerScheduled) {
-            ownerScheduled.PassTimeUntil("ReceivingFire", scheduled.Time);
+            ownerScheduled.IdleUntil("ReceivingFire", scheduled.Time);
         }
     }
 
@@ -425,7 +426,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
         return CurrentTarget;
     }
 
-    public override ScheduleEvent? GetNextEvent() {
+    public override ActorEvent? GetNextEvent() {
         var target = ChooseTarget();
         if (target is not null) {
             return AttackTarget(target);

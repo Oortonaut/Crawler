@@ -7,7 +7,7 @@ namespace Crawler;
 public class RetreatComponent : ActorComponentBase {
     public override int Priority => 1000; // Highest priority - survival first
 
-    public override ScheduleEvent? GetNextEvent() {
+    public override ActorEvent? GetNextEvent() {
         if (Owner is not Crawler crawler) return null;
 
         // Check if depowered first
