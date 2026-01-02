@@ -19,13 +19,13 @@ using var tracerProvider = Sdk.CreateTracerProviderBuilder()
     .AddSource(LogCat.Console.Name)
     .AddSource(LogCat.Encounter.Name)
     .AddDebugExporter()
-    .AddOtlpExporter()
+    //.AddOtlpExporter()
     .Build();
 
 using var meterProvider = Sdk.CreateMeterProviderBuilder()
     .AddMeter(LogCat.GameMetrics.Name)
     .AddMeter(LogCat.EncounterMetrics.Name)
-    .AddOtlpExporter()
+    //.AddOtlpExporter()
     .Build();
 
 //using var loggerProvider = Sdk.CreateLoggerProviderBuilder()
@@ -35,7 +35,7 @@ using var meterProvider = Sdk.CreateMeterProviderBuilder()
 
 var loggerFactory = LoggerFactory.Create(builder => {
     builder.AddProvider(new DebugLoggerProvider());
-    builder.AddOpenTelemetry( /*...*/);
+    //builder.AddOpenTelemetry( /*...*/);
 });
 
 

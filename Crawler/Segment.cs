@@ -79,7 +79,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
     public float Weight => SegmentDef.Weight;
     public float Drain => SegmentDef.Drain;
     public float Cost => SegmentDef.Cost;
-    public int MaxHits => SegmentDef.MaxHits;
+    public int MaxHealth => SegmentDef.MaxHits;
     public char ClassCode => SegmentDef.ClassCode;
     public int Cycle { get; set; } = 0;
     public XorShift Rng = new(seed);
@@ -132,10 +132,10 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         Packaged, // Packed up tight for trade purposes; cannot be used or repaired
     }
     public Working State =>
-        Hits >= MaxHits ? Working.Destroyed :
+        Hits >= MaxHealth ? Working.Destroyed :
         Packaged ? Working.Packaged :
         !Activated ? Working.Deactivated :
-        Hits > MaxHits / 2 ? Working.Damaged :
+        Hits > MaxHealth / 2 ? Working.Damaged :
         Hits > 0 ? Working.Running :
         Working.Pristine;
     // Active segments are usable until they take half damage, rounded down
@@ -161,7 +161,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
     public string StateString => $" ({State})";
     public string StateName => Name + StateString;
 
-    public int Health => MaxHits - Hits;
+    public int Health => MaxHealth - Hits;
 
     protected Style GetStyle() {
         Style result = Style.None;
@@ -718,7 +718,7 @@ public static class SegmentEx {
                         powerTable.AddRow(
                             segment.NameSize,
                             segment.StatusLine(location),
-                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Health}/{segment.MaxHealth}",
                             $"{segment.Weight:F1}",
                             $"{segment.Length:F1}",
                             $"{segment.Drain:F2}",
@@ -748,7 +748,7 @@ public static class SegmentEx {
                         tractionTable.AddRow(
                             segment.NameSize,
                             segment.StatusLine(location),
-                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Health}/{segment.MaxHealth}",
                             $"{segment.Weight:F1}",
                             $"{segment.Length:F1}",
                             $"{segment.Drain:F2}",
@@ -791,7 +791,7 @@ public static class SegmentEx {
                         offenseTable.AddRow(
                             segment.NameSize,
                             segment.StatusLine(location),
-                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Health}/{segment.MaxHealth}",
                             $"{segment.Weight:F1}",
                             $"{segment.Length:F1}",
                             $"{segment.Drain:F2}",
@@ -833,7 +833,7 @@ public static class SegmentEx {
                         defenseTable.AddRow(
                             segment.NameSize,
                             segment.StatusLine(location),
-                            $"{segment.Health}/{segment.MaxHits}",
+                            $"{segment.Health}/{segment.MaxHealth}",
                             $"{segment.Weight:F1}",
                             $"{segment.Length:F1}",
                             $"{segment.Drain:F2}",

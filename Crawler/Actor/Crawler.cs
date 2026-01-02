@@ -172,6 +172,7 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
             .WithLocation(here)
             .WithSupplies(newInv)
             .WithSegments(workingSegments)
+            .WithComponentInitialization(false)
             .Build();
 
         return crawler;
@@ -246,7 +247,7 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
     public float AirLeakagePerHr {
         get {
             float hitSegments = UndestroyedSegments
-                .Sum(s => s.Hits / (float)s.MaxHits);
+                .Sum(s => s.Hits / (float)s.MaxHealth);
             return TotalPeople * Tuning.Crawler.AirLeakagePerDamagedSegment * hitSegments;
         }
     }
@@ -276,6 +277,8 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
     /// Called after crawler creation to set up role-specific behaviors.
     /// </summary>
     public void InitializeComponents(ulong seed) {
+        Debug.Assert(!Flags.HasFlag(ActorFlags.Initialized), "InitializeComponents called twice or after components already added");
+        Flags |= ActorFlags.Initialized;
         var rng = new XorShift(seed);
 
         AddComponent(new LifeSupportComponent());
@@ -317,7 +320,7 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f,
                 Tuning.Trade.TradeMarkup(traderGaussian),
                 Tuning.Trade.TradeSpread(traderGaussian)));
-            AddComponent(new CombatComponentDefense(rng.Seed())); // Can defend themselves
+            // Note: CombatComponentDefense already added at line 293 for all non-Bandits
             break;
 
         case Roles.Customs:
@@ -372,7 +375,7 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         //    .SetTag("crawler.name", Name)
         //    .SetTag("crawler.faction", Faction)
         //    .SetTag("elapsed_seconds", elapsed);
-        Log.LogInformation($"Ticking {Name} at {Location.Description} time {time}, elapsed {elapsed}");
+        //Log.LogInformation($"Ticking {Name} at {Location.Description} time {time}, elapsed {elapsed}");
 
         Recharge(elapsed);
         Decay(elapsed);
@@ -424,18 +427,13 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
             }
         }
 
-        // If no component scheduled an action, generate default idle event
-        if (nextEvent == null) {
-            nextEvent = this.NewIdleEvent();
-            LogCat.Log.LogInformation("Think: {Name} generating idle event at {Time}", Name, Game.TimeString(nextEvent.Time));
+        if (nextEvent != null) {
+            //LogCat.Log.LogInformation("Think: {Name} scheduling component event {Event} at {Time}",
+              //  Name, nextEvent, Game.TimeString(nextEvent.Time));
+            Game.Instance!.Schedule(nextEvent);
         } else {
-            LogCat.Log.LogInformation("Think: {Name} scheduling component event {Event} at {Time}",
-                Name, nextEvent, Game.TimeString(nextEvent.Time));
+            base.Think();
         }
-
-        Game.Instance!.Schedule(nextEvent);
-
-        base.Think();
     }
 
     public override void Message(string message) {
@@ -444,8 +442,17 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
             CrawlerEx.Message(Game.TimeString(Time) + ": " + message);
         }
     }
-    public IEnumerable<int> WeaponDelays() {
-        return _activeSegments.Where(seg => seg.CycleLength > 0).Select(seg => seg.Cycle).Distinct();
+    // Only returns cycling segments with CycleLength > 0
+    // TODO: add charging delays, if any. This the becomes kind of a prefiring simulation
+    public (Segment[] ready, Segment[] waiting) CycleDelays() {
+        // doesn't have to keep track of all delays, just CycleLength > 0 and
+        // * Cycle == 0: Ready (keep track of segments)
+        // * Smallest delay with Cycle > 0 (with count)
+
+        var cycling = _activeSegments.Where(seg => seg.CycleLength > 0);
+        var ready = cycling.Where(seg => seg.Cycle == 0);
+        var waiting = cycling.Where(seg => seg.Cycle > 0).OrderBy(seg => seg.Cycle);
+        return (ready.ToArray(), waiting.ToArray());
     }
 
     public int? WeaponDelay() {
@@ -698,6 +705,15 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         if (Flags.HasFlag(ActorFlags.Settlement)) {
             Adjs.Add($"{Domes} Domes");
         }
+
+        int totalHealth = Segments.Sum(s => s.Health);
+        int totalCap = Segments.Sum(s => s.MaxHealth);
+        if (totalHealth < totalCap) {
+            Adjs.Add($"{totalHealth}/{totalCap}");
+        }
+
+        Adjs.Add($"{CrewInv} Crew");
+
         if (Adjs.Any()) {
             return " (" + string.Join(", ", Adjs) + ")";
         } else {
@@ -835,12 +851,6 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         if (autoRepair != null) {
             excessPower = autoRepair.PerformRepair(excessPower, elapsed);
         }
-
-        // Use LifeSupportComponent if available, otherwise use old method
-        var lifeSupport = Components.OfType<LifeSupportComponent>().FirstOrDefault();
-        if (lifeSupport != null) {
-            lifeSupport.ConsumeResources(this, elapsed);
-        }
     }
     // Returns excess (wasted) power
     float FeedPower(float energy) {
@@ -891,69 +901,65 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
     }
 
     void Decay(int elapsed) {
-        // Use LifeSupportComponent if available, otherwise use old method
-        var lifeSupport = Components.OfType<LifeSupportComponent>().FirstOrDefault();
-        if (lifeSupport != null) {
-            lifeSupport.ProcessSurvival(this, elapsed);
-        } else {
-            // Check rations
-            if (RationsInv <= 0) {
-                Message("You are out of rations and your crew is starving.");
-                float liveRate = 0.99f;
-                liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
-                CrewInv *= liveRate;
-                RationsInv = 0;
-            }
+        // Check rations
+        if (RationsInv <= 0) {
+            Message("You are out of rations and your crew is starving.");
+            float liveRate = 0.99f;
+            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
+            CrewInv *= liveRate;
+            RationsInv = 0;
+        }
 
-            // Check water
-            if (WaterInv <= 0) {
-                Message("You are out of water. People are dying of dehydration.");
-                float keepRate = 0.98f;
-                keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
-                CrewInv *= keepRate;
-                WaterInv = 0;
-            }
+        // Check water
+        if (WaterInv <= 0) {
+            Message("You are out of water. People are dying of dehydration.");
+            float keepRate = 0.98f;
+            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
+            CrewInv *= keepRate;
+            WaterInv = 0;
+        }
 
-            // Check air
-            float maxPopulation = (int)(AirInv / Tuning.Crawler.AirPerPerson);
-            if (maxPopulation < TotalPeople) {
-                Message("You are out of air. People are suffocating.");
-                var died = TotalPeople - maxPopulation;
-                if (died >= CrewInv) {
-                    died -= CrewInv;
-                    CrewInv = 0;
-                } else {
-                    CrewInv -= died;
-                    died = 0;
-                }
-            }
-
-            if (IsDepowered) {
-                Message("Your life support systems are offline.");
-                MoraleInv -= 1.0f;
+        // Check air
+        float maxPopulation = (int)(AirInv / Tuning.Crawler.AirPerPerson);
+        if (maxPopulation < TotalPeople) {
+            Message("You are out of air. People are suffocating.");
+            var died = TotalPeople - maxPopulation;
+            if (died >= CrewInv) {
+                died -= CrewInv;
+                CrewInv = 0;
+            } else {
+                CrewInv -= died;
+                died = 0;
             }
         }
 
+        if (IsDepowered) {
+            Message("Your life support systems are offline.");
+            MoraleInv -= 1.0f;
+        }
     }
 
     void TestEnded() {
+        if (EndState != null) {
+            return;
+        }
         if (CrewInv == 0) {
             // TODO: List killers
             if (RationsInv == 0) {
-                End(EEndState.Starved, "All the crew have starved.");
+                SetEndState(EEndState.Starved, "All the crew have starved.");
             } else if (WaterInv == 0) {
-                End(EEndState.Killed, "All the crew have died of dehydration.");
+                SetEndState(EEndState.Killed, "All the crew have died of dehydration.");
             } else if (AirInv == 0) {
-                End(EEndState.Killed, "All the crew have suffocated.");
+                SetEndState(EEndState.Killed, "All the crew have suffocated.");
             } else {
-                End(EEndState.Killed, "The crew have been killed.");
+                SetEndState(EEndState.Killed, "The crew have been killed.");
             }
         }
         if (MoraleInv == 0) {
-            End(EEndState.Revolt, "The crew has revolted.");
+            SetEndState(EEndState.Revolt, "The crew has revolted.");
         }
         if (!UndestroyedSegments.Any()) {
-            End(EEndState.Destroyed, "Your crawler has been utterly destroyed.");
+            SetEndState(EEndState.Destroyed, "Your crawler has been utterly destroyed.");
         }
     }
 
@@ -1057,6 +1063,7 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         Message(msg.TrimEnd());
         if (totalDamageDealt > 0) {
             UpdateSegmentCache();
+            TestEnded();
         }
     }
 

@@ -1,0 +1,6 @@
+n
+TestPlayer
+6
+1
+k 0
+qq

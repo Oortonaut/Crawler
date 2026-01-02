@@ -41,6 +41,8 @@ public interface IActorComponent {
     /// <summary>Initialize the component with its owner</summary>
     void Attach(IActor owner);
 
+    void Tick();
+
     void Detach();
 
     /// <summary>Enumerate interactions this component provides between owner and subject</summary>
@@ -77,6 +79,7 @@ public abstract class ActorComponentBase : IActorComponent {
     public virtual void Attach(IActor owner) {
         Owner = owner;
     }
+    public virtual void Tick() { }
     public virtual void Detach() {
         Owner = null!;
     }

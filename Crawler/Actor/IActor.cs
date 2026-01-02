@@ -45,6 +45,8 @@ public enum ActorFlags: ulong {
     Settlement = 1 << 2,
     Creature = 1 << 3,
     Capital = 1 << 4,
+    Initialized = 1ul << 61,
+    Destroyed = 1ul << 62,
     Loading = 1ul << 63,
 }
 public delegate void HostilityChangedHandler(IActor other, bool hostile);
@@ -92,6 +94,8 @@ public interface IActor: IComparable, IComparable<IActor> {
 
     /// <summary>End condition (Destroyed, Revolt, etc.) or null if still active</summary>
     EEndState? EndState { get; }
+
+    void Destroy();
 
     // ===== Simulation ====
     long LastTime { get; }
@@ -157,7 +161,7 @@ public interface IActor: IComparable, IComparable<IActor> {
     void ReceiveFire(IActor from, List<HitRecord> fire);
 
     /// <summary>End this actor's existence (game over, destruction)</summary>
-    void End(EEndState state, string message = "");
+    void SetEndState(EEndState state, string message = "");
 
     // ===== Display =====
     /// <summary>One-line summary (context-aware based on viewer)</summary>
@@ -318,7 +322,10 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         if (obj is IActor actor) return CompareTo(actor);
         throw new ArgumentException("Object is not an IActor");
     }
-    public override string ToString() => $"{Name} ({Faction}/{Role})";
+    public override string ToString() => $"{Name} ({Faction}/{Role})" + EndState switch {
+        null => "",
+        _ => $" [{EndState}]",
+    };
     public virtual string Report() {
         return $"{Name}\n{Brief(this)}\n{Supplies}";
     }
@@ -328,6 +335,16 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     protected XorShift Rng = new(seed);
     protected GaussianSampler Gaussian = new GaussianSampler(seed * 3 + 7);
 
+    public virtual void Destroy() {
+        Log.LogInformation("Destroy {Name}",  Name);
+        Debug.Assert(!Flags.HasFlag(ActorFlags.Destroyed));
+        Flags |= ActorFlags.Destroyed;
+        if (_encounter != null) {
+            _encounter.RemoveActor(this);
+            _encounter = null;
+        }
+        Game.Instance!.Unschedule(this);
+    }
     public bool IsDestroyed => EndState is not null;
     public bool IsSettlement => Flags.HasFlag(ActorFlags.Settlement);
     public bool IsLoading => Flags.HasFlag(ActorFlags.Loading);
@@ -337,12 +354,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     List<IActorComponent> _newComponents = new();
     bool _componentsDirty = false;
 
-    public IEnumerable<IActorComponent> Components {
-        get {
-            LogCat.Log.LogInformation($"ActorBase.Components accessed for {Name}: _components.Count={_components.Count}, _newComponents.Count={_newComponents.Count}, IsLoading={IsLoading}");
-            return _components;
-        }
-    }
+    public IEnumerable<IActorComponent> Components => _components;
 
     protected void CleanComponents(bool notify) {
         if (_componentsDirty) {
@@ -362,11 +374,11 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         // If we're not in Loading state, component system is already initialized
         // so add directly to _components instead of _newComponents
         if (!IsLoading) {
-            LogCat.Log.LogInformation($"AddComponent: {Name} not loading, adding {component.GetType().Name} directly to _components");
+            //LogCat.Log.LogInformation($"AddComponent: {Name} not loading, adding {component.GetType().Name} directly to _components");
             component.Enter(Encounter);
             _components.Add(component);
         } else {
-            LogCat.Log.LogInformation($"AddComponent: {Name} is loading, adding {component.GetType().Name} to _newComponents");
+            //LogCat.Log.LogInformation($"AddComponent: {Name} is loading, adding {component.GetType().Name} to _newComponents");
             _newComponents.Add(component);
         }
         _componentsDirty = true; // Mark for re-sort
@@ -414,7 +426,9 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public void HandleEvent(ActorEvent evt) {
         SimulateTo(evt.Time);
         evt.OnEnd();
-        Think();
+        if (!Flags.HasFlag(ActorFlags.Loading | ActorFlags.Destroyed)) {
+            Think();
+        }
         PostTick();
     }
     protected virtual void PostTick() {}
@@ -432,6 +446,9 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         if (Flags.HasFlag(ActorFlags.Loading))
             throw new InvalidOperationException($"Tried to simulate {Name} during loading.");
         (LastTime, Time) = (Time, time);
+        foreach (var component in _components) {
+            component.Tick();
+        }
     }
     public virtual void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null) {}
     public virtual void IdleUntil(string tag, long time) {}
@@ -443,7 +460,9 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public virtual void Message(string message) {}
     public int Domes { get; set; } = 0;
 
+    Encounter? _encounter;
     public void Arrived(Encounter encounter) {
+        _encounter = encounter;
         foreach (var component in _newComponents) {
             component.Enter(encounter);
         }
@@ -451,16 +470,22 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     }
 
     public void Left(Encounter encounter) {
-        foreach (var component in Components) {
-            component.Leave(encounter);
+        if (_encounter != null) {
+            Debug.Assert(_encounter == encounter);
+            _encounter = null;
+            foreach (var component in Components) {
+                component.Leave(encounter);
+            }
         }
     }
 
-    public void End(EEndState state, string message = "") {
+    public void SetEndState(EEndState state, string message = "") {
+        Debug.Assert(EndState == null);
         EndMessage = $"{state}: {message}";
         EndState = state;
         Message($"Game Over: {message} ({state})");
-        GetOrAddComponent<LeaveEncounterComponent>().ExitAfter(36000);
+        Game.Instance!.ScheduleEncounter(this, Time + 7200, "Dissolves", null, Destroy, 1000);
+        LogCat.Log.LogInformation("ActorBase.End {message} {state}", message, state);
     }
     public string EndMessage { get; set; } = string.Empty;
     public EEndState? EndState { get; set; }

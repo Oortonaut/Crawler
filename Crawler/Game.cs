@@ -102,14 +102,14 @@ public class Game {
     static Meter Metrics => LogCat.GameMetrics;
 
     public void ScheduleTravel(IActor crawler, long time, Location location) {
-        Log.LogInformation($"ScheduleCrawlerTravel: {crawler.Name} will arrive to {location} at {time}");
+        //Log.LogInformation($"ScheduleCrawlerTravel: {crawler.Name} will arrive to {location} at {time}");
 
         // Use the generic Scheduler
         var travelEvent = new ActorEvent.TravelEvent(crawler, time, location);
         Schedule(travelEvent);
     }
     public void ScheduleEncounter(IActor crawler, long time, string description, Action? pre = null, Action? post = null, int priority = ActorEvent.DefaultPriority) {
-        Log.LogInformation($"ScheduleCrawlerEncounter: {crawler.Name} scheduled {description} until {time}");
+        //Log.LogInformation($"ScheduleCrawlerEncounter: {crawler.Name} scheduled {description} until {time}");
 
         // Use the generic Scheduler
         var encounterEvent = new ActorEvent.EncounterEvent(crawler, time, description, pre, post, priority);
@@ -117,14 +117,26 @@ public class Game {
     }
 
     public void Schedule(ActorEvent evt) {
-        Log.LogInformation("Game.Schedule: {Actor} event {Evt} at {Time}, scheduler has {Any} events",
-            evt.Tag.Name, evt, Game.TimeString(evt.Time), scheduler.Any());
+        Log.LogInformation("Game.Schedule: event {Evt} , {Count} pending", evt, scheduler.Count);
+        if (evt.Tag.HasFlag(ActorFlags.Destroyed)) {
+            Log.LogInformation("Tried to schedule destroyed actor {Actor}", evt.Tag);
+            return;
+        }
         evt.OnStart();
         scheduler.Schedule(evt);
-        Log.LogInformation("Game.Schedule: after scheduling, scheduler has {Any} events", scheduler.Any());
+        //Log.LogInformation("Game.Schedule: after scheduling, scheduler has {Count} events", scheduler.Count);
     }
 
+    public void Unschedule(IActor Actor) {
+        scheduler.Unschedule(Actor);
+    }
+
+    HashSet<Encounter> updatedEncounters = new();
+
     void ProcessSchedule() {
+        // Track which encounters we've already updated this tick to avoid redundant updates
+        // Note: This HashSet is cleared when the player gets control (start of their turn)
+
         while (!quit && scheduler.Peek(out var evt, out var time)) {
             if (time!.Value > GameTime) {
                 break;
@@ -132,25 +144,29 @@ public class Game {
 
             var nextEvent = scheduler.Dequeue();
             if (nextEvent != null) {
-                Log.LogInformation($"ProcessCrawlerArrivals: {nextEvent.Tag.Name} arrived at {nextEvent.Time}");
+                //Log.LogInformation($"ProcessCrawlerArrivals: {nextEvent.Tag.Name} arrived at {nextEvent.Time}");
 
                 var actor = nextEvent.Tag;
 
-                // Update the crawler's encounter to current game time FIRST
+                // Update the actor's encounter to current game time FIRST, but only once per encounter per turn
                 // This spawns dynamic crawlers and fires EncounterTicked before player enters
                 var encounter = actor.Location.GetEncounter();
-                encounter.UpdateTo(GameTime);
+                if (updatedEncounters.Add(encounter)) {
+                    encounter.UpdateTo(GameTime);
+                }
 
                 // Then tick the crawler to the current game time
                 actor.HandleEvent(nextEvent);
 
                 // If this is the player, show the game menu repeatedly until they consume time or quit
                 if (actor == Player) {
+                    // Clear encounter update tracking when player gets control
+                    updatedEncounters.Clear();
                     while (!ShowGameMenu()) { }
                 }
 
-                if (!scheduler.Any(actor)) {
-                    ScheduleEncounter(actor, Tuning.MaxDelay, "Idle", null, null, 0);
+                if (!actor.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(actor)) {
+                    Schedule(actor.NewIdleEvent());
                 }
             }
         }
@@ -453,8 +469,7 @@ public class Game {
                 break;
             }
 
-            Log.LogInformation("Game.Run: processing events at {Time}, scheduler has {Any} events",
-                Game.TimeString(nextTime!.Value), scheduler.Any());
+            //Log.LogInformation("Game.Run: processing events at {Time}, scheduler has {Count} events", Game.TimeString(nextTime!.Value), scheduler.Count);
 
             GameTime = nextTime!.Value;
 
@@ -463,15 +478,14 @@ public class Game {
 
             ProcessSchedule();
 
-            Log.LogInformation("Game.Run: after ProcessSchedule, scheduler has {Any} events, quit={Quit}, won={Won}, lost={Lost}",
-                scheduler.Any(), quit, PlayerWon, PlayerLost);
+            // Log.LogInformation("Game.Run: after ProcessSchedule, scheduler has {Count} events, quit={Quit}, won={Won}, lost={Lost}", scheduler.Count, quit, PlayerWon, PlayerLost);
 
             if (PlayerWon || PlayerLost) {
                 Save();
                 break;
             }
         }
-        Log.LogInformation("Game.Run: exited loop, quit={Quit}, scheduler.Any={Any}", quit, scheduler.Any());
+        Log.LogInformation("Game.Run: exited loop, quit={Quit}, scheduler.Any={Count}", quit, scheduler.Count);
         if (PlayerLost) {
             Console.WriteLine($"You lost! {Player?.EndMessage}");
         } else if (PlayerWon) {
@@ -1037,7 +1051,7 @@ public class Game {
 
         var segment = Player.Segments[segmentIndex];
         segment.Hits += damageAmount;
-        Player.Message($"Applied {damageAmount} damage to {segment.Name} (HP: {segment.Health:F1}/{segment.MaxHits})");
+        Player.Message($"Applied {damageAmount} damage to {segment.Name} (HP: {segment.Health:F1}/{segment.MaxHealth})");
         Player.UpdateSegmentCache();
         return true;
     }

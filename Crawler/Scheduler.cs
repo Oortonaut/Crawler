@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using Crawler.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
@@ -95,5 +97,9 @@ public class Scheduler<TContext, TEvent, TElement, TTime>(TContext Context)
             lastMin = evt.Time;
             MinChanged?.Invoke(Context, evt);
         }
+    }
+    public bool Unschedule(TElement tag) {
+        LogCat.Log.LogInformation("Unschedule {Tag}", tag);
+        return schedEventForTag.Remove(tag);
     }
 }

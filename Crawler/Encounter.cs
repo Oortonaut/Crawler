@@ -157,18 +157,8 @@ public sealed class Encounter : IComparable<Encounter> {
         var faction = Location.ChooseRandomFaction();
         var crawler = GenerateFactionActor(seed, faction);
 
-        // Pick a random adjacent location as the origin
-        var adjacentSector = Rng.ChooseRandom(Location.Sector.Neighbors);
-        Location originLocation;
-        if (adjacentSector != null && adjacentSector.Locations.Count > 0) {
-            originLocation = Rng.ChooseRandom(adjacentSector.Locations)!;
-        } else {
-            // Fallback: use a location in current sector if no neighbors
-            originLocation = Location;
-        }
-
-        // Set crawler's initial location to origin
-        crawler.Location = originLocation;
+        // Dynamic crawlers spawn directly at this encounter's location
+        crawler.Location = Location;
 
         // Note: GenerateFactionActor creates the crawler with the Loading flag set
         // and calls InitializeComponents. TravelEvent.OnEnd will call AddActorAt when

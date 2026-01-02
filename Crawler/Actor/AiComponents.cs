@@ -17,22 +17,24 @@ public class RetreatComponent : ActorComponentBase {
         }
 
         float hits = crawler.Segments.Sum(s  => s.Hits);
-        float maxHits = crawler.Segments.Sum(s  => s.MaxHits);
+        float maxHits = crawler.Segments.Sum(s  => s.MaxHealth);
         float damageRatio =  hits / maxHits;
-        float escapeChance = crawler.EscapeChance();
 
         int fleeTime = 60;
         // Flee if vulnerable and not pinned
-        if (crawler.IsVulnerable && escapeChance > 0 && damageRatio > 0.75f) {
-            return crawler.NewEventFor("Flee", Priority, fleeTime, Post: () => {
-                if (crawler.GetRng().NextSingle() < escapeChance) {
-                    crawler.Message($"{crawler.Name} fled.");
-                    crawler.Location.GetEncounter().RemoveActor(crawler);
-                } else {
-                    crawler.Message($"{crawler.Name} couldn't escape.");
+        if (crawler.IsVulnerable && damageRatio > 0.75f) {
+            float escapeChance = crawler.EscapeChance(); // Slow, O(N) in encounter crawlers
+            if (escapeChance > 0) {
+                return crawler.NewEventFor("Flee", Priority, fleeTime, Post: () => {
+                    if (crawler.GetRng().NextSingle() < escapeChance) {
+                        crawler.Message($"{crawler.Name} fled.");
+                        crawler.Location.GetEncounter().RemoveActor(crawler);
+                    } else {
+                        crawler.Message($"{crawler.Name} couldn't escape.");
 
-                }
-            }); // Consumed time to flee
+                    }
+                }); // Consumed time to flee
+            }
         }
 
         return null; // Not vulnerable, let lower priority components handle it

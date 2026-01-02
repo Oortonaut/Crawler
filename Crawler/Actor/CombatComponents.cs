@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 
@@ -103,7 +104,7 @@ public class SurrenderComponent : ActorComponentBase {
             float ratio = 0;
             if (Loser is Crawler loser) {
                 float totalHits = loser.Segments.Sum(s => s.Hits);
-                float totalMaxHits = loser.Segments.Sum(s => s.MaxHits);
+                float totalMaxHits = loser.Segments.Sum(s => s.MaxHealth);
                 ratio = totalHits / (totalMaxHits + 1e-8f);
             }
             surrenderInv.Add(Loser.Supplies.Loot(Rng/1, ratio));
@@ -363,16 +364,25 @@ public abstract class CombatComponentBase : ActorComponentBase {
         if (Owner is not Crawler attacker) return null;
         if (attacker.IsDisarmed) return null;
 
-        var countdowns = attacker.WeaponDelays().ToArray();
-        if (countdowns.Length == 0) return null;
-        if (countdowns[0] != 0) {
-            return Owner.NewEventFor("Charging", 0, countdowns[0]);
+        var (ready, waiting) = attacker.CycleDelays();
+        bool preFire = ready.Length > 0;
+        bool postFire = waiting.Length > 0;
+        int duration = 0;
+        if (preFire) {
+            duration = ready[0].CycleLength;
+            if (postFire) {
+                duration = Math.Min(duration, waiting[0].Cycle);
+            }
+        } else if (postFire) {
+            // Just wait
+            duration = waiting[0].Cycle;
+        } else {
+            // No weapons
+            return null;
         }
-        // Try to attack current target if still valid
-        var duration = attacker.Attack(target);
-        return Owner.NewEventFor("Volley", Priority, duration, Pre: () => {
-            attacker.Attack(target);
-        });
+        Debug.Assert(duration > 0);
+        return Owner.NewEventFor($"Volley at {target}", Priority, duration,
+            preFire ? () => attacker.Attack(target) : null);
     }
 
     public override void Attach(IActor owner) {

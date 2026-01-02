@@ -3,7 +3,7 @@ namespace Crawler;
 public partial class Crawler {
     public new record class Init : ActorBase.Init {
         public Roles Role { get; set; }
-        public bool InitializeComponents { get; set; } = true;
+        public bool InitializeComponents { get; set; } = false;
         public List<Segment> WorkingSegments { get; set; } = new();
     }
 

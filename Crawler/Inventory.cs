@@ -61,6 +61,7 @@ public class Inventory {
     }
     public void Add(Commodity commodity, float addCount) {
         _commodities[commodity] = commodity.Round(_commodities[commodity] + addCount);
+        Mass = 0;
     }
     public void Remove(Commodity commodity, float removeCount) {
         var currentValue = _commodities[commodity];
@@ -77,15 +78,18 @@ public class Inventory {
                 Overdraft.Remove(commodity, deficit); // Recursive call
             }
         }
+        Mass = 0;
     }
     public void Add(Segment s) {
         // Segments in inventory storage should be packaged
         Debug.Assert(s.IsPackaged, "Segments added to Inventory should be packaged");
         Segments.Add(s);
+        Mass = 0;
     }
     public void Remove(Segment s) {
         if (Segments.Contains(s)) {
             Segments.Remove(s);
+            Mass = 0;
         } else if (Overdraft != null) {
             Overdraft.Remove(s);
         } else {
@@ -132,6 +136,7 @@ public class Inventory {
             .Pairs()
             .Do(ii => _commodities[ii.Key] = ii.Key.Round(_commodities[ii.Key] + ii.Value));
         Segments.AddRange(other.Segments);
+        Mass = 0;
     }
     public void Remove(Inventory other) {
         var containsResult = Contains(other);
@@ -152,7 +157,17 @@ public class Inventory {
         }
     }
 
-    public float Mass => Segments.Sum(s => s.Weight) + _commodities.Pairs().Sum(ii => ii.Key.Mass() * ii.Value);
+    float CalcMass() => Segments.Sum(s => s.Weight) + _commodities.Pairs().Sum(ii => ii.Key.Mass() * ii.Value);
+    float mass = 0;
+    public float Mass { 
+        get {
+            if (mass == 0) {
+                mass = CalcMass();
+            }
+            return mass;
+        }
+        private set { mass = value; }
+    }
     public float ItemValueAt(Location loc) => _commodities.Pairs().Sum(ii => ii.Key.CostAt(loc) * ii.Value);
     public float SegmentValueAt(Location loc) => Segments.Sum(s => s.Cost * Tuning.Economy.LocalMarkup(s.SegmentKind, loc));
     public float ValueAt(Location loc) => ItemValueAt(loc) + SegmentValueAt(loc);

@@ -289,8 +289,8 @@ public static partial class CrawlerEx {
             LogCat.Log.LogInformation($"InteractionsWith: {agent.Name} is not an ActorBase!");
         }
     }
-    public static bool Ended(this IActor actor) => actor.EndState != null;
-    public static bool Lives(this IActor actor) => actor.EndState == null;
+    public static bool Ended(this IActor actor) => !actor.Lives();
+    public static bool Lives(this IActor actor) => actor.EndState == null && !actor.HasFlag(ActorFlags.Destroyed);
     public static int Length<ENUM>() where ENUM: struct, Enum => Enum.GetValues<ENUM>().Length;
     public static ENUM ChooseRandom<ENUM>(ref this XorShift rng) where ENUM: struct, Enum => Enum.GetValues<ENUM>()[rng.NextInt(Length<ENUM>())];
     static List<string> _messages = new();
@@ -312,7 +312,7 @@ public static partial class CrawlerEx {
     public static bool IsPlayer(this IActor agent) => agent.HasFlag(ActorFlags.Player);
     public static bool HasFlag(this IActor agent, ActorFlags flags) => agent.Flags.HasFlag(flags);
     public static bool SurrenderedTo(this IActor agent, IActor other) => agent.To(other).Surrendered;
-    public static int Attack(this Crawler attacker, IActor defender) {
+    public static bool Attack(this Crawler attacker, IActor defender) {
         var fire = attacker.CreateFire();
         if (fire.Any()) {
             attacker.Message($"{attacker.Name} attacks {defender.Name}:");
@@ -327,14 +327,10 @@ public static partial class CrawlerEx {
             }
 
             defender.ReceiveFire(attacker, fire);
-
-            // Schedule weapon cooldown delay with follow-up attack
-            var delay = attacker.WeaponDelay();
-            Debug.Assert(delay.HasValue);
-            return delay.Value;
+            return true;
         } else {
             attacker.Message($"No fire on {defender.Name} ({attacker.StateString(defender)}");
-            return 60;
+            return false;
         }
     }
     public static bool Visited(this IActor actor, Location location) => actor.Knows(location) && actor.To(location).Visited;
@@ -464,7 +460,6 @@ public static partial class CrawlerEx {
         // are there any faster enemies?
         var encounter = crawler.Location.GetEncounter();
         var enemies = encounter.CrawlersExcept(crawler)
-            .OfType<Crawler>()
             .Where(e => e.To(crawler).Hostile && !e.IsDisarmed);
 
         foreach (var enemy in enemies) {

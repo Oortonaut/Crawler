@@ -608,7 +608,7 @@ public class HarvestComponent : ActorComponentBase {
             Harvester.Message($"You harvest {Resource.Name} and take {Amount}");
 
             inventoryOffer.PerformOn(Resource, Harvester);
-            Resource.End(EEndState.Looted, $"harvested by {Harvester.Name}");
+            Resource.SetEndState(EEndState.Looted, $"harvested by {Harvester.Name}");
 
             // Time consumption for harvesting (only harvester consumes time, resource is static)
             Harvester.ConsumeTime("Harvesting", 300, ExpectedDuration);
@@ -700,7 +700,7 @@ public class HazardComponent : ActorComponentBase {
                 Explorer.Message($"You couldn't afford the full loss and gain nothing from {Hazard.Name}");
             }
 
-            Hazard.End(EEndState.Looted, $"explored by {Explorer.Name}");
+            Hazard.SetEndState(EEndState.Looted, $"explored by {Explorer.Name}");
 
             // Time consumption for exploring hazard (only explorer consumes time, hazard is static)
             Explorer.ConsumeTime("Exploring", 300, ExpectedDuration);
@@ -755,7 +755,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         // TODO: Add message levels
         var thenString = Game.TimeString(then);
         var nowString = Game.TimeString(now);
-        Owner.Message($"Encounter ticked {thenString}->{nowString}");
+        Owner.Message($"{Owner?.Location.GetEncounter()} ticked {thenString}->{nowString}");
     }
 
     void OnActorArrived(IActor actor, long time) {
@@ -869,37 +869,36 @@ public class RelationPrunerComponent : ActorComponentBase {
 /// </summary>
 public class LeaveEncounterComponent : ActorComponentBase {
     long _exitTime;
-    Encounter? _encounter;
+    ActorEvent? _leaveEvent;
 
     public LeaveEncounterComponent() {
         _exitTime = 0;
     }
 
     public LeaveEncounterComponent(long exitTime) {
-        _exitTime = exitTime;
+        ExitAt(exitTime);
     }
 
-    public long ExitTime { get; set; }
+    public long ExitTime => _exitTime;
 
-    public override void Enter(Encounter encounter) {
-        _encounter = encounter;
-        encounter.EncounterTicked += OnEncounterTicked;
-    }
-
-    public override void Leave(Encounter encounter) {
-        encounter.EncounterTicked -= OnEncounterTicked;
-        _encounter = null;
-    }
-
-    void OnEncounterTicked(long then, long now) {
-        if (now >= _exitTime) {
-            Debug.Assert(_encounter != null);
-            _encounter!.RemoveActor(Owner);
+    public override ActorEvent? GetNextEvent() {
+        if (_exitTime > 0 && _leaveEvent == null) {
+            _leaveEvent = new ActorEvent.EncounterEvent(Owner, _exitTime, "LeaveEncounter", null,
+                () => Owner.Destroy(), 10);
         }
+        return _leaveEvent;
     }
 
     public void ExitAfter(int duration) {
-        _exitTime = Math.Min(_exitTime, Owner.Time + duration);
+        ExitAt(Owner.Time + duration);
+    }
+
+    public void ExitAt(long exitTime) {
+        if (_exitTime > 0 && exitTime == _exitTime) {
+            return;
+        }
+        _exitTime = exitTime;
+        _leaveEvent = null;
     }
 }
 
@@ -909,18 +908,15 @@ public class LeaveEncounterComponent : ActorComponentBase {
 /// </summary>
 public class LifeSupportComponent : ActorComponentBase {
     public override void Enter(Encounter encounter) {
-        encounter.EncounterTicked += OnEncounterTicked;
     }
 
     public override void Leave(Encounter encounter) {
-        encounter.EncounterTicked -= OnEncounterTicked;
     }
 
-    void OnEncounterTicked(long then, long now) {
+    public override void Tick() {
         if (Owner is not Crawler crawler) return;
 
-        // This runs during Tick, which already calculates elapsed
-        // We'll handle this in a direct call from Crawler.Tick instead
+        ConsumeResources(crawler, Owner.Elapsed);
     }
 
     /// <summary>
@@ -934,48 +930,6 @@ public class LifeSupportComponent : ActorComponentBase {
         crawler.WaterInv -= crawler.WaterRecyclingLossPerHr * hours;
         crawler.AirInv -= crawler.AirLeakagePerHr * hours;
         crawler.FuelInv -= crawler.FuelPerHr * hours;
-    }
-
-    /// <summary>
-    /// Handle crew death from resource deprivation
-    /// </summary>
-    public void ProcessSurvival(Crawler crawler, int elapsed) {
-        // Check rations
-        if (crawler.RationsInv <= 0) {
-            crawler.Message("You are out of rations and your crew is starving.");
-            float liveRate = 0.99f;
-            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
-            crawler.CrewInv *= liveRate;
-            crawler.RationsInv = 0;
-        }
-
-        // Check water
-        if (crawler.WaterInv <= 0) {
-            crawler.Message("You are out of water. People are dying of dehydration.");
-            float keepRate = 0.98f;
-            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
-            crawler.CrewInv *= keepRate;
-            crawler.WaterInv = 0;
-        }
-
-        // Check air
-        float maxPopulation = (int)(crawler.AirInv / Tuning.Crawler.AirPerPerson);
-        if (maxPopulation < crawler.TotalPeople) {
-            crawler.Message("You are out of air. People are suffocating.");
-            var died = crawler.TotalPeople - maxPopulation;
-            if (died >= crawler.CrewInv) {
-                died -= crawler.CrewInv;
-                crawler.CrewInv = 0;
-            } else {
-                crawler.CrewInv -= died;
-                died = 0;
-            }
-        }
-
-        if (crawler.IsDepowered) {
-            crawler.Message("Your life support systems are offline.");
-            crawler.MoraleInv -= 1.0f;
-        }
     }
 }
 
