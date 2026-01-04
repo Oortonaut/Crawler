@@ -20,12 +20,11 @@ public class RetreatComponent : ActorComponentBase {
         float maxHits = crawler.Segments.Sum(s  => s.MaxHealth);
         float damageRatio =  hits / maxHits;
 
-        int fleeTime = 60;
         // Flee if vulnerable and not pinned
         if (crawler.IsVulnerable && damageRatio > 0.75f) {
             float escapeChance = crawler.EscapeChance(); // Slow, O(N) in encounter crawlers
             if (escapeChance > 0) {
-                return crawler.NewEventFor("Flee", Priority, fleeTime, Post: () => {
+                return crawler.NewEventFor("Flee", Priority, Tuning.Crawler.FleeTime, Post: () => {
                     if (crawler.GetRng().NextSingle() < escapeChance) {
                         crawler.Message($"{crawler.Name} fled.");
                         crawler.Location.GetEncounter().RemoveActor(crawler);
@@ -77,7 +76,7 @@ public class BanditComponent : ActorComponentBase {
         Owner.To(actor).Ultimatum = null;
     }
 
-    void SetupExtortion(IActor target, long time) {
+    void SetupExtortion(IActor target, TimePoint time) {
         if (Owner == target) return;
         if (Owner is not Crawler bandit) return;
 
@@ -92,7 +91,7 @@ public class BanditComponent : ActorComponentBase {
 
             // Set ultimatum with timeout
             bandit.To(target).Ultimatum = new ActorToActor.UltimatumState {
-                ExpirationTime = time + 300,
+                ExpirationTime = time + Tuning.Crawler.UltimatumTimeout,
                 Type = "BanditExtortion",
                 Data = _demandFraction
             };
@@ -103,9 +102,9 @@ public class BanditComponent : ActorComponentBase {
         var relation = Owner.To(subject);
         if (relation.Ultimatum?.Type != "BanditExtortion") yield break;
 
-        long expirationTime = relation.Ultimatum.ExpirationTime;
+        var expirationTime = relation.Ultimatum.ExpirationTime;
         float demandFraction = relation.Ultimatum.Data as float? ?? _demandFraction;
-        bool expired = expirationTime > 0 && Owner.Time > expirationTime;
+        bool expired = expirationTime.IsValid && Owner.Time > expirationTime;
 
         if (!expired) {
             // Use shared extortion interactions

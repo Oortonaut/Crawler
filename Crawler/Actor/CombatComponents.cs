@@ -63,7 +63,7 @@ public class AttackComponent : ActorComponentBase {
             return Immediacy.Menu;
         }
 
-        public override TimeDuration ExpectedDuration => 0; // Duration determined by weapon delays
+        public override TimeDuration ExpectedDuration => TimeDuration.Zero; // Duration determined by weapon delays
     }
 }
 
@@ -168,7 +168,7 @@ public static class ExtortionInteractions {
         public override string? MessageFor(IActor viewer) {
             if (viewer != Target) return null;
             var ultimatum = Extortioner.To(Target).Ultimatum;
-            if (ultimatum?.ExpirationTime > 0) {
+            if (ultimatum?.ExpirationTime.IsValid == true) {
                 return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to surrender goods";
             }
             return null;
@@ -222,7 +222,7 @@ public static class ExtortionInteractions {
         public override string? MessageFor(IActor viewer) {
             if (viewer != Target) return null;
             var ultimatum = Extortioner.To(Target).Ultimatum;
-            if (ultimatum?.ExpirationTime > 0) {
+            if (ultimatum?.ExpirationTime.IsValid == true) {
                 return $"You have until {Game.TimeString(ultimatum.ExpirationTime)} to surrender goods";
             }
             return null;
@@ -276,7 +276,7 @@ public static class ExtortionInteractions {
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
 
-        public override TimeDuration ExpectedDuration => 0; // Auto-trigger, no time consumed
+        public override TimeDuration ExpectedDuration => TimeDuration.Zero; // Auto-trigger, no time consumed
     }
 }
 
@@ -367,21 +367,21 @@ public abstract class CombatComponentBase : ActorComponentBase {
         var (ready, waiting) = attacker.CycleDelays();
         bool preFire = ready.Length > 0;
         bool postFire = waiting.Length > 0;
-        int duration = 0;
+        int durationSeconds = 0;
         if (preFire) {
-            duration = ready[0].CycleLength;
+            durationSeconds = ready[0].CycleLength;
             if (postFire) {
-                duration = Math.Min(duration, waiting[0].Cycle);
+                durationSeconds = Math.Min(durationSeconds, waiting[0].Cycle);
             }
         } else if (postFire) {
             // Just wait
-            duration = waiting[0].Cycle;
+            durationSeconds = waiting[0].Cycle;
         } else {
             // No weapons
             return null;
         }
-        Debug.Assert(duration > 0);
-        return Owner.NewEventFor($"Volley at {target}", Priority, duration,
+        Debug.Assert(durationSeconds > 0);
+        return Owner.NewEventFor($"Volley at {target}", Priority, TimeDuration.FromSeconds(durationSeconds),
             preFire ? () => attacker.Attack(target) : null);
     }
 

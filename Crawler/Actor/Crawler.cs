@@ -58,7 +58,7 @@ public class ActorToActor {
 
     // Ultimatum state for demands/threats with timeout
     public class UltimatumState {
-        public long ExpirationTime { get; set; }
+        public TimePoint ExpirationTime { get; set; }
         public string Type { get; set; } = "";
         public object? Data { get; set; }
     }
@@ -399,8 +399,8 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         }
 
         FuelInv -= fuel;
-        int delay = (int)(time * 3600);
-        var arrivalTime = Time + delay;
+        var travelDuration = TimeDuration.FromSeconds((long)(time * TimePoint.SecondsPerHour));
+        var arrivalTime = Time + travelDuration;
 
         // Schedule this crawler in the game's traveling crawlers queue
         // Location will be updated by TravelEvent.OnEnd()

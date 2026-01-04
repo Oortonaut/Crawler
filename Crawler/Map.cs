@@ -270,7 +270,7 @@ public class Map {
             float wealth = 300 * ( float ) Math.Pow(50, tLat);
 
             // Encounters are created at map generation time, use initial time
-            var newEncounter = (Location loc) => new Encounter(Rng.Seed(), loc).Create(100_000_000_000);
+            var newEncounter = (Location loc) => new Encounter(Rng.Seed(), loc).Create(Tuning.StartGameTime);
             var locationSeed = ( ulong ) loc.Z;
             var encounterLocation = new Location(locationSeed,
                 sector, new(loc.X, loc.Y), encounterType, wealth, newEncounter);
@@ -331,8 +331,8 @@ public class Map {
             var crawler = encounter.CreateCapital(Rng.Seed());
             encounter.AddActorAt(crawler, encounter.EncounterTime);
             // Capital creation happens at map generation, use initial time
-            encounter.SpawnDynamicCrawlers(encounter.EncounterTime, 100_000_000_000);
-            var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
+            //encounter.SpawnDynamicCrawlers(encounter.EncounterTime, Tuning.StartGameTime);
+            //var sectorPopulation = sector.Locations.Sum(loc => loc.Population);
             float influence = 5 + crawler.Domes;
             var factionName = crawler.Name.MakeFactionName(Rng.Seed());
             var capitalName = encounter.Name.MakeCapitalName(Rng.Seed());

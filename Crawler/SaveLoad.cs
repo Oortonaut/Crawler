@@ -491,8 +491,11 @@ public static class SaveLoadExtensions {
     }
 
     public static Location ToGameLocation(this SavedLocation savedLocation, Sector sector) {
+        var encounterTime = Tuning.StartGameTime; // TODO: Save this time, THIS IS BAD
         var location = new Location(savedLocation.Seed,
-            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth, loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(savedLocation.Seed, loc).Create(100_000_000_000));
+            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth,
+            loc => savedLocation.Encounter?.ToGameEncounter(loc) ??
+                   new Encounter(savedLocation.Seed, loc).Create(encounterTime));
         return location;
     }
 

@@ -177,7 +177,7 @@ public static partial class Tuning {
         public static float RepairTime = 3600.0f;
 
         // Interaction durations
-        public static TimeDuration HostilityTime = TimeDuration.FromSeconds(60);           // Declaring hostility
+        public static TimeDuration HostilityTime = TimeDuration.FromSeconds(60);           // Declaring hostility (1 minute)
         public static TimeDuration TradeTime = TimeDuration.FromSeconds(300);              // Per trade transaction (5 minutes)
         public static TimeDuration SurrenderTime = TimeDuration.FromSeconds(600);          // Processing surrender (10 minutes)
         public static TimeDuration ExtortionTime = TimeDuration.FromSeconds(300);          // Handing over extorted goods (5 minutes)
@@ -187,6 +187,10 @@ public static partial class Tuning {
         public static TimeDuration LicenseTime = TimeDuration.FromSeconds(300);            // License purchase paperwork (5 minutes)
         public static TimeDuration HarvestTime = TimeDuration.FromSeconds(1800);           // Harvesting resources (30 minutes)
         public static TimeDuration HazardTime = TimeDuration.FromSeconds(900);             // Exploring hazards (15 minutes)
+        public static TimeDuration RepairDuration = TimeDuration.FromSeconds(3600);        // Repair interaction duration (1 hour)
+        public static TimeDuration AttackTime = TimeDuration.FromSeconds(10);              // Combat attack action (10 seconds)
+        public static TimeDuration UltimatumTimeout = TimeDuration.FromSeconds(300);       // Default ultimatum timeout (5 minutes)
+        public static TimeDuration FleeTime = TimeDuration.FromSeconds(60);                // Time to attempt fleeing (1 minute)
 
         public static EArray<Commodity, float> DefaultCommodityWeights => [
             1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f, // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
@@ -445,6 +449,8 @@ public static partial class Tuning {
     public static float CostAt(this Segment segment, Location location) {
         return Commodity.Scrap.Round(segment.Cost * Economy.LocalMarkup(segment.SegmentKind, location));
     }
+
+    public static TimePoint StartGameTime = new(3126, 0, 0, 0, 0, 0);
 }
 
 // Power scaling for segments uses tiers or levels for each value which map onto the

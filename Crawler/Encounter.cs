@@ -32,8 +32,7 @@ public sealed class Encounter : IComparable<Encounter> {
         long offset = (Rng / "StartTime").NextInt64(3600);
         // Initialize encounter time to a time in the past before any actors exist
         // Will be updated when first actor arrives
-        EncounterTime = new TimePoint(100_000_000_000 - offset -
-                        (long)CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f));
+        EncounterTime = Tuning.StartGameTime - new TimeDuration(CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f));
 
         Game.Instance!.RegisterEncounter(this);
     }
@@ -571,7 +570,7 @@ public sealed class Encounter : IComparable<Encounter> {
             "H"));
         return hazardActor;
     }
-    public Encounter Create(long currentTime) {
+    public Encounter Create(TimePoint currentTime) {
         using var activity = Scope($"Create {nameof(Encounter)}");
         var seed = Rng.Seed();
         IActor? actor = null;

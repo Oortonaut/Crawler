@@ -52,7 +52,7 @@ public class CustomsComponent : ActorComponentBase {
     }
 
     List<IActor> Targets = new();
-    void SetupContrabandUltimatum(IActor target, long time) {
+    void SetupContrabandUltimatum(IActor target, TimePoint time) {
         LogCat.Log.LogInformation($"CustomsComponent.SetupContrabandUltimatum: target={target.Name}, time={Game.TimeString(time)}, isPlayer={target.IsPlayer()}, fighting={Owner.Fighting(target)}");
         if (!target.IsPlayer()) {
             LogCat.Log.LogInformation($"CustomsComponent: {target.Name} is not player, skipping");
@@ -62,12 +62,12 @@ public class CustomsComponent : ActorComponentBase {
         if (!Owner.Fighting(target)) {
             // CRITICAL: Event handlers receive historical time but owner may have advanced
             // Use owner's current time for ultimatum expiration
-            long effectiveTime = Math.Max(time, Owner.Time);
-            long expirationTime = effectiveTime + 300;
+            var effectiveTime = time > Owner.Time ? time : Owner.Time;
+            var expirationTime = effectiveTime + Tuning.Crawler.UltimatumTimeout;
 
-            long timeDelta = Owner.Time - time;
-            if (timeDelta > 60) {
-                LogCat.Log.LogWarning($"CustomsComponent: WARNING! Event fired {timeDelta}s ({Game.TimeString(timeDelta)}) after arrival. event time={Game.TimeString(time)}, owner time={Game.TimeString(Owner.Time)}");
+            var timeDelta = Owner.Time - time;
+            if (timeDelta.TotalSeconds > 60) {
+                LogCat.Log.LogWarning($"CustomsComponent: WARNING! Event fired {timeDelta} after arrival. event time={Game.TimeString(time)}, owner time={Game.TimeString(Owner.Time)}");
             }
 
             LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} setting ultimatum on {target.Name}, event time={Game.TimeString(time)}, effective time={Game.TimeString(effectiveTime)}, expires at {Game.TimeString(expirationTime)} (owner time: {Game.TimeString(Owner.Time)})");
@@ -131,8 +131,8 @@ public class CustomsComponent : ActorComponentBase {
 
         // Rescan to update the interaction text
         var contraband = Scan(subject);
-        long expirationTime = relation.Ultimatum.ExpirationTime;
-        bool expired = expirationTime > 0 && Owner.Time > expirationTime;
+        var expirationTime = relation.Ultimatum.ExpirationTime;
+        bool expired = expirationTime.IsValid && Owner.Time > expirationTime;
 
         LogCat.Log.LogInformation($"CustomsComponent.EnumerateInteractions: Owner={Owner.Name}, subject={subject.Name}, expirationTime={Game.TimeString(expirationTime)}, currentTime={Game.TimeString(Owner.Time)}, expired={expired}");
 
@@ -161,7 +161,7 @@ public class CustomsComponent : ActorComponentBase {
         public override string? MessageFor(IActor viewer) {
             if (viewer != Target) return null;
             var ultimatum = Owner.To(Target).Ultimatum;
-            if (ultimatum == null || ultimatum.ExpirationTime == 0) return null;
+            if (ultimatum == null || !ultimatum.ExpirationTime.IsValid) return null;
 
             return $"{Owner.Name} demands customs inspection. You have until {Game.TimeString(ultimatum.ExpirationTime)} to comply.";
         }
@@ -250,7 +250,7 @@ public class CustomsComponent : ActorComponentBase {
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
 
-        public override TimeDuration ExpectedDuration => 0; // Auto-trigger, no time consumed
+        public override TimeDuration ExpectedDuration => TimeDuration.Zero; // Auto-trigger, no time consumed
     }
 }
 
@@ -374,7 +374,7 @@ public class TradeOfferComponent : ActorComponentBase {
             }
 
             // Time consumption for trading
-            long tradeDuration = ExpectedDuration * performed;
+            var tradeDuration = ExpectedDuration * performed;
             Mechanic.ConsumeTime("Trading", 300, tradeDuration);
             Subject.ConsumeTime("Trading", 300, tradeDuration);
 
@@ -438,8 +438,8 @@ public class RepairComponent : ActorComponentBase {
         public override bool Perform(string args = "") {
             SynchronizeActors();
 
-            int duration = 3600; // 1 hour to repair
-            long endTime = Mechanic.Time + duration;
+            var duration = Tuning.Crawler.RepairDuration;
+            var endTime = Mechanic.Time + duration;
 
             // Create bidirectional Ultimatums to track the repair relationship
             Subject.To(Mechanic).Ultimatum = new ActorToActor.UltimatumState {
@@ -496,7 +496,7 @@ public class RepairComponent : ActorComponentBase {
 
         static bool IsRepairable(Segment segment) => segment is { Hits: > 0, IsDestroyed: false };
 
-        public override TimeDuration ExpectedDuration => 3600; // 1 hour repair time
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.RepairDuration;
     }
 }
 
@@ -950,8 +950,8 @@ public class LifeSupportComponent : ActorComponentBase {
     /// <summary>
     /// Consume life support resources based on elapsed time
     /// </summary>
-    public void ConsumeResources(Crawler crawler, int elapsed) {
-        float hours = elapsed / 3600f;
+    public void ConsumeResources(Crawler crawler, TimeDuration elapsed) {
+        float hours = (float)elapsed.TotalHours;
 
         crawler.ScrapInv -= crawler.WagesPerHr * hours;
         crawler.RationsInv -= crawler.RationsPerHr * hours;
