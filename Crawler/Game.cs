@@ -63,7 +63,8 @@ public class Game {
         _player.Location = currentLocation;
 
         // Schedule the player's first turn so the game loop starts (ProcessCrawlerArrivals will add them)
-        ScheduleTravel(_player, GameTime, currentLocation);
+        // Use initial time from the encounter
+        ScheduleTravel(_player, currentLocation.GetEncounter().EncounterTime, currentLocation);
     }
     void Construct(SaveGameData saveData) {
         Seed = saveData.Seed;
@@ -72,7 +73,6 @@ public class Game {
         Gaussian.SetPrimed(saveData.GaussianPrimed);
         Gaussian.SetZSin(saveData.GaussianZSin);
 
-        GameTime = saveData.Hour;
         quit = saveData.Quit;
 
         // Reconstruct the map from save data
@@ -85,30 +85,28 @@ public class Game {
         _player = saveData.Player.ToGameCrawler(Map);
         _player.Location = currentLocation;
 
-        // Schedule player at saved game time (ProcessCrawlerArrivals will add them to encounter)
-        // TODO SAVE TIME
-        var saveGameTime = 0;
-        ScheduleTravel(_player, saveGameTime, currentLocation);
+        // Schedule player at their saved time (ProcessCrawlerArrivals will add them to encounter)
+        ScheduleTravel(_player, _player.Time, currentLocation);
     }
 
     bool quit = false;
 
     // Use generic Scheduler for crawler travel scheduling
-    Scheduler<Game, ActorEvent, IActor, long> scheduler;
+    Scheduler<Game, ActorEvent, IActor, TimePoint> scheduler;
 
     // TODO: use this for log scoping too
     static Activity? Scope(string name, ActivityKind kind = ActivityKind.Internal) => null; // LogCat.Game.StartActivity(name, kind);
     static ILogger Log => LogCat.Log;
     static Meter Metrics => LogCat.GameMetrics;
 
-    public void ScheduleTravel(IActor crawler, long time, Location location) {
+    public void ScheduleTravel(IActor crawler, TimePoint time, Location location) {
         //Log.LogInformation($"ScheduleCrawlerTravel: {crawler.Name} will arrive to {location} at {time}");
 
         // Use the generic Scheduler
         var travelEvent = new ActorEvent.TravelEvent(crawler, time, location);
         Schedule(travelEvent);
     }
-    public void ScheduleEncounter(IActor crawler, long time, string description, Action? pre = null, Action? post = null, int priority = ActorEvent.DefaultPriority) {
+    public void ScheduleEncounter(IActor crawler, TimePoint time, string description, Action? pre = null, Action? post = null, int priority = ActorEvent.DefaultPriority) {
         //Log.LogInformation($"ScheduleCrawlerEncounter: {crawler.Name} scheduled {description} until {time}");
 
         // Use the generic Scheduler
@@ -133,12 +131,12 @@ public class Game {
 
     HashSet<Encounter> updatedEncounters = new();
 
-    void ProcessSchedule() {
+    void ProcessSchedule(TimePoint currentTime) {
         // Track which encounters we've already updated this tick to avoid redundant updates
         // Note: This HashSet is cleared when the player gets control (start of their turn)
 
         while (!quit && scheduler.Peek(out var evt, out var time)) {
-            if (time!.Value > GameTime) {
+            if (time!.Value > currentTime) {
                 break;
             }
 
@@ -152,17 +150,28 @@ public class Game {
                 // This spawns dynamic crawlers and fires EncounterTicked before player enters
                 var encounter = actor.Location.GetEncounter();
                 if (updatedEncounters.Add(encounter)) {
-                    encounter.UpdateTo(GameTime);
+                    encounter.UpdateTo(currentTime);
                 }
 
                 // Then tick the crawler to the current game time
                 actor.HandleEvent(nextEvent);
 
-                // If this is the player, show the game menu repeatedly until they consume time or quit
+                // If this is the player, check if all pending events are processed before giving control
                 if (actor == Player) {
-                    // Clear encounter update tracking when player gets control
+                    // Continue processing any events that are scheduled at or before current time
+                    // (e.g., dynamic crawlers spawned by UpdateTo with past arrival times)
+                    if (scheduler.Peek(out var nextEvt, out var nextTime) && nextTime!.Value <= currentTime) {
+                        // Don't give player control yet - continue processing past events
+                        if (!actor.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(actor)) {
+                            Schedule(actor.NewIdleEvent());
+                        }
+                        continue;
+                    }
+
+                    // All past events processed - give player control
                     updatedEncounters.Clear();
-                    while (!ShowGameMenu()) { }
+                    //while (!ShowGameMenu()) { }
+                    while (!ShowGameMenuWithContext()) { }
                 }
 
                 if (!actor.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(actor)) {
@@ -462,6 +471,7 @@ public class Game {
     }
 
     public void Run() {
+        TimePoint lastTime = TimePoint.Zero;
         while (!quit) {
             // Get the next crawler event time
             if (!scheduler.Peek(out var evt, out var nextTime)) {
@@ -471,12 +481,15 @@ public class Game {
 
             //Log.LogInformation("Game.Run: processing events at {Time}, scheduler has {Count} events", Game.TimeString(nextTime!.Value), scheduler.Count);
 
-            GameTime = nextTime!.Value;
+            if (nextTime!.Value < lastTime) {
+                throw new InvalidOperationException($"CRITICAL: Time moved backwards! Current={TimeString(lastTime)}, Next={TimeString(nextTime.Value)}");
+            }
+            lastTime = nextTime!.Value;
 
             using var activity = Scope($"Game::Turn")?
-                .AddTag("start", GameTime);
+                .AddTag("start", nextTime.Value);
 
-            ProcessSchedule();
+            ProcessSchedule(nextTime.Value);
 
             // Log.LogInformation("Game.Run: after ProcessSchedule, scheduler has {Count} events, quit={Quit}, won={Won}, lost={Lost}", scheduler.Count, quit, PlayerWon, PlayerLost);
 
@@ -618,38 +631,21 @@ public class Game {
     }
     Encounter PlayerEncounter() => PlayerLocation.GetEncounter();
 
-    public static string DateString(long t) {
-        if (t == 0) {
+    public static string DateString(TimePoint t) {
+        if (!t.IsValid || t == TimePoint.Zero) {
             return "----/--/--";
         }
-        long seconds = t;
-        long minutes = t / 60;
-        long hours = minutes / 60;
-        long days = hours / 24;
-        long months = days / 30;
-        long years = months / 12;
-        seconds %= 60;
-        minutes %= 60;
-        hours %= 24;
-        days %= 30;
-        months %= 12;
-        return $"{years:D4}/{months + 1:D2}/{days + 1:D2}";
+        return $"{t.Year:D4}/{t.Week:D2}/{t.Day}";
     }
-    public string DateString() => DateString(GameTime);
+    public string DateString() => DateString(Player.Time);
 
-    public static string TimeString(long t) {
-        if (t == 0) {
+    public static string TimeString(TimePoint t) {
+        if (!t.IsValid || t == TimePoint.Zero) {
             return "--:--:--";
         }
-        long seconds = t;
-        long minutes = t / 60;
-        long hours = minutes / 60;
-        seconds %= 60;
-        minutes %= 60;
-        hours %= 24;
-        return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
+        return $"{t.Hour}:{t.Minute:D2}:{t.Second:D2}";
     }
-    public string TimeString() => TimeString(GameTime);
+    public string TimeString() => TimeString(Player.Time);
 
     bool Look() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
@@ -689,11 +685,6 @@ public class Game {
 
     bool PlayerWon => false;
     bool PlayerLost => !string.IsNullOrEmpty(Player?.EndMessage);
-
-    // seconds -
-    public long GameTime { get; private set; } = 100_000_000_000; // appx 3168 years
-
-    public static long SafeTime => Instance?.GameTime ?? 0;
 
     bool SectorMap() {
         var sector = PlayerLocation.Sector;
@@ -1607,7 +1598,6 @@ public class Game {
     List<Encounter> allEncounters = new();
     // Accessor methods for save/load
     public ulong GetSeed() => Seed;
-    public long GetTime() => GameTime;
     public Crawler GetPlayer() => Player;
     public Map GetMap() => Map;
     public bool GetQuit() => quit;

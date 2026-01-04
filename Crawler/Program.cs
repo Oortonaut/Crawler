@@ -72,9 +72,9 @@ var newGame = new ActionMenuItem("N", "New Game", args => {
     if (string.IsNullOrWhiteSpace(name)) {
         name = Names.HumanName(tempRng.Seed());
     }
-    int minSize = 4;
+    int minSize = 2;
     int maxSize = 9;
-    int size = (minSize + maxSize) / 2;
+    int size = 6;
     var sizeStr = CrawlerEx.Input($"Size ({minSize}-{maxSize}): ", size.ToString());
     if (!int.TryParse(sizeStr, out size)) {
         size = minSize;

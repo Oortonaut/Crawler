@@ -77,20 +77,18 @@ Scheduler<Game, EncounterSchedulerEvent, Encounter, long> encounterScheduler;
 Scheduler<Game, CrawlerTravelEvent, Crawler, long> crawlerTravelScheduler;
 ```
 
-**GameTime:**
-- `public long GameTime { get; private set; } = 100_000_000_000;`
-- Updated as events are processed: `GameTime = evt.Time;`
-- Accessible via `Game.SafeTime` static property
-- Represents current global simulation time
+**Time Tracking:**
+- No global time variable - time flows through the scheduler
+- Each actor tracks its own time via `IActor.Time` property
+- Current simulation time obtained from scheduler events
+- Player time used for date/time display and saving
 
 **Main Loop (`Game.Run()`):**
-1. Peek at next encounter event time
-2. Peek at next crawler travel event time
-3. Process whichever is earlier:
-   - `RunEncounters()` - Tick an encounter forward
-   - `CrawlerArrival()` - Handle crawler arriving at location
-4. Update `GameTime` to the event time
-5. Repeat until game ends
+1. Peek at next scheduled event time
+2. Process the event:
+   - `ProcessSchedule(currentTime)` - Processes all events at the current time
+3. Time advances via scheduler events
+4. Repeat until game ends
 
 **Encounter Scheduling (`Game.Schedule(Encounter)`):**
 ```csharp
@@ -107,18 +105,16 @@ public void Schedule(Encounter encounter) {
 - When encounter needs to be rescheduled (actor events change), call `Game.Schedule()`
 - Encounters track their scheduled event via `Game_Scheduled` field
 
-**RunEncounters() Flow:**
+**ProcessSchedule() Flow:**
 ```csharp
-void RunEncounters() {
-    var evt = encounterScheduler.Dequeue();
-    if (evt != null) {
-        var encounter = evt.Encounter;
-        var turn = evt.Time;
-        GameTime = turn;                    // Update global time
-        encounter.Game_Scheduled = null;    // Clear cached scheduled event
-        encounter.Tick(turn);               // Process encounter up to this time
-        Schedule(encounter);                // Reschedule for next event
-    }
+void ProcessSchedule(long currentTime) {
+    if (!scheduler.Peek(out var evt, out var nextTime)) return;
+    if (nextTime != currentTime) return;
+
+    scheduler.Dequeue();
+    var encounter = evt.Subject;
+    encounter.UpdateTo(currentTime);       // Process encounter up to this time
+    Schedule(encounter);                   // Reschedule for next event
 }
 ```
 
@@ -137,10 +133,10 @@ public long EncounterTime { get; set; }  // Current time within this encounter
 - Initialized in constructor (typically in the past for retroactive simulation):
   ```csharp
   long offset = (Rng / "StartTime").NextInt64(3600);
-  EncounterTime = Game.SafeTime - offset -
+  EncounterTime = 100_000_000_000 - offset -
                   CrawlerEx.PoissonQuantileAt(..., 0.95f);
   ```
-- Advanced as actor events are processed (in `Tick()`)
+- Advanced as actor events are processed (in `UpdateTo()`)
 - **Invariant:** All scheduled actors must have `nextEvent.End >= EncounterTime`
 
 **Actor Scheduling (`ActorScheduleChanged()`):**
@@ -364,8 +360,8 @@ The scheduling system maintains two fundamental invariants:
 ### Time Relationships
 
 ```
-Game.SafeTime (GameTime)
-  ↓ (global simulation time)
+Scheduler Event Time (current simulation time)
+  ↓ (flows through events)
   |
   ├─ Encounter1.EncounterTime
   │    ↓ (encounter's current time)
@@ -388,8 +384,8 @@ Located in: `Encounter.SpawnDynamicCrawlers(long previousTime, long currentTime)
 **Purpose:** Retroactively generate "background" crawlers for time periods
 
 **When Called:**
-1. During `Encounter.Create()` - spawn from `EncounterTime` to `Game.SafeTime`
-2. During `Encounter.Tick()` - spawn for each time step as encounter advances
+1. During `Encounter.Create(currentTime)` - spawn from `EncounterTime` to `currentTime`
+2. During `Encounter.UpdateTo()` - spawn for each time step as encounter advances
 
 **Algorithm:**
 ```csharp
@@ -458,7 +454,7 @@ Map.InitializeFactionSettlements()
   ↓
 For each faction:
   ├─ new Encounter(seed, location, faction)
-  │    ├─ Calculate EncounterTime = SafeTime - offset - PoissonQuantile
+  │    ├─ Calculate EncounterTime = 100_000_000_000 - offset - PoissonQuantile
   │    ├─ Create actorScheduler
   │    └─ Game.RegisterEncounter(this)
   │
@@ -470,7 +466,7 @@ For each faction:
   │    │         └─ Updates actorScheduler and Game scheduler
   │    └─ Fires ActorArrived event
   │
-  └─ encounter.SpawnDynamicCrawlers(EncounterTime, Game.SafeTime)
+  └─ encounter.SpawnDynamicCrawlers(EncounterTime, 100_000_000_000)
        └─ Adds retroactive crawlers with various arrival times
 ```
 
@@ -483,17 +479,17 @@ Location.GetEncounter()
   ↓ (if _encounter == null)
 NewEncounter(this)
   ↓
-new Encounter(seed, location).Create()
+new Encounter(seed, location).Create(currentTime)
   ↓
 Encounter Constructor
-  ├─ EncounterTime = Game.SafeTime - offset - PoissonQuantile
-  │    ↑ (Game.SafeTime is CURRENT time, updated during gameplay)
+  ├─ EncounterTime = 100_000_000_000 - offset - PoissonQuantile
+  │    ↑ (Initial time constant, encounter starts in the "past")
   └─ Register with Game
   ↓
-Encounter.Create()
+Encounter.Create(currentTime)
   ├─ CreateSettlement/Resource/Hazard/Crossroads actor
   ├─ AddActorAt(actor, EncounterTime)
-  └─ SpawnDynamicCrawlers(EncounterTime, Game.SafeTime)
+  └─ SpawnDynamicCrawlers(EncounterTime, currentTime)
 ```
 
 **Why EncounterTime is in the past:**
@@ -571,11 +567,11 @@ public class MyComponent : ActorComponent {
 
 ## Edge Cases & Gotchas
 
-### 1. Stale EncounterTime References
+### 1. Stale Time References
 
-**Problem:** If `Game.SafeTime` doesn't advance, new encounters use stale time
+**Problem:** Encounters created without proper current time parameter
 
-**Solution:** Update `GameTime` in `RunEncounters()` and `CrawlerArrival()`
+**Solution:** Always pass explicit `currentTime` parameter when creating encounters
 
 ### 2. Actor Scheduled Before EncounterTime
 
@@ -635,7 +631,7 @@ When no actors scheduled, encounter returns idle event far in future:
 ### 1. Time Assertions Failing
 
 Check:
-- Is `GameTime` being updated?
+- Is `currentTime` being passed correctly through method calls?
 - Is `EncounterTime` initialized correctly?
 - Are actors being added at valid times?
 

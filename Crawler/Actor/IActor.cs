@@ -52,6 +52,7 @@ public enum ActorFlags: ulong {
 public delegate void HostilityChangedHandler(IActor other, bool hostile);
 public delegate void ReceivingFireHandler(IActor source, List<HitRecord> fire);
 public delegate void InitializedHandler();
+public delegate void DestroyedHandler();
 /// <summary>
 /// Common interface for all interactive entities (Crawlers, Settlements, Resources).
 /// See: docs/DATA-MODEL.md#iactor-interface
@@ -98,9 +99,9 @@ public interface IActor: IComparable, IComparable<IActor> {
     void Destroy();
 
     // ===== Simulation ====
-    long LastTime { get; }
-    long Time { get; }
-    int Elapsed { get; }
+    TimePoint LastTime { get; }
+    TimePoint Time { get; }
+    TimeDuration Elapsed { get; }
 
     // ===== Knowledge & Relations =====
     /// <summary>Has met this actor before?</summary>
@@ -148,11 +149,11 @@ public interface IActor: IComparable, IComparable<IActor> {
     /// - PassTimeUntil(time) schedules at absolute time → TickTo() processes it
     /// - SimulateTo(time) directly advances time without scheduling or processing
     /// </summary>
-    void SimulateTo(long time);
+    void SimulateTo(TimePoint time);
 
-    void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null);
+    void ConsumeTime(string tag, int priority, TimeDuration duration, Action? pre = null, Action? post = null);
 
-    void IdleUntil(string tag, long time);
+    void IdleUntil(string tag, TimePoint time);
 
     /// <summary>Update this actor with awareness of other actors (AI behavior)</summary>
     void Think();
@@ -178,6 +179,7 @@ public interface IActor: IComparable, IComparable<IActor> {
     int Domes { get; }
 
     event InitializedHandler? ActorInitialized;
+    event DestroyedHandler? ActorDestroyed;
     event HostilityChangedHandler? HostilityChanged;
     /// <summary>
     /// Event fired when this crawler receives fire from another actor.
@@ -187,6 +189,33 @@ public interface IActor: IComparable, IComparable<IActor> {
 
     void Arrived(Encounter encounter);
     void Left(Encounter encounter);
+}
+
+// Scheduler event wrappers for use with generic Scheduler<TContext, TEvent, TElement, TTime>
+
+public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.DefaultPriority): ISchedulerEvent<IActor, TimePoint> {
+    public const int DefaultPriority = 100;
+    public Crawler? AsCrawler => Tag as Crawler;
+    public ActorBase? AsActorBase => Tag as ActorBase;
+    public virtual void OnStart() { }
+    public virtual void OnEnd() { }
+    public override string ToString() => $"{Game.TimeString(Time)}.{Priority}: {Tag} {Tag.Location.Description}";
+    public record EncounterEvent(IActor Tag, TimePoint Time, string Description, Action? Start = null, Action? End = null, int Priority = DefaultPriority): ActorEvent(Tag, Time, Priority) {
+        public override string ToString() => base.ToString() + $" \"{Description}\"";
+        public override void OnStart() => Start?.Invoke();
+        public override void OnEnd() => End?.Invoke();
+    }
+
+    public record TravelEvent(IActor Tag, TimePoint Time, Location Destination): ActorEvent(Tag, Time, 0) {
+        public override string ToString() => base.ToString() + $" to {Destination}";
+        public override void OnStart() {
+            Tag.Location.GetEncounter().TryRemoveActor(Tag);
+        }
+        public override void OnEnd() {
+            Tag.Location = Destination;
+            Destination.GetEncounter().AddActorAt(Tag, Time);
+        }
+    }
 }
 
 public class ActorBase(ulong seed, string name, string brief, Factions faction, Inventory supplies, Inventory cargo, Location Location): IActor {
@@ -339,6 +368,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         Log.LogInformation("Destroy {Name}",  Name);
         Debug.Assert(!Flags.HasFlag(ActorFlags.Destroyed));
         Flags |= ActorFlags.Destroyed;
+        ActorDestroyed?.Invoke();
         if (_encounter != null) {
             _encounter.RemoveActor(this);
             _encounter = null;
@@ -386,6 +416,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
 
     public void RemoveComponent(IActorComponent component) {
         if (_components.Remove(component)) {
+            component.Detach();
             _componentsDirty = true; // Mark for re-sort (though not strictly necessary)
         } else if (_newComponents.Remove(component)) {
             Debug.Assert(_componentsDirty);
@@ -420,9 +451,9 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     }
 
     // Returns elapsed, >= 0
-    public long LastTime { get; protected set; }
-    public long Time { get; protected set; } = 0;
-    public int Elapsed => (int)(LastTime > 0 ? Time - LastTime : 0);
+    public TimePoint LastTime { get; protected set; }
+    public TimePoint Time { get; protected set; } = TimePoint.Zero;
+    public TimeDuration Elapsed => LastTime.IsValid ? Time - LastTime : TimeDuration.Zero;
     public void HandleEvent(ActorEvent evt) {
         SimulateTo(evt.Time);
         evt.OnEnd();
@@ -442,7 +473,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     /// - PassTimeUntil(time) schedules at absolute time → TickTo() processes it
     /// - SimulateTo(time) directly advances time without scheduling or processing
     /// </summary>
-    public virtual void SimulateTo(long time) {
+    public virtual void SimulateTo(TimePoint time) {
         if (Flags.HasFlag(ActorFlags.Loading))
             throw new InvalidOperationException($"Tried to simulate {Name} during loading.");
         (LastTime, Time) = (Time, time);
@@ -450,8 +481,8 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
             component.Tick();
         }
     }
-    public virtual void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null) {}
-    public virtual void IdleUntil(string tag, long time) {}
+    public virtual void ConsumeTime(string tag, int priority, TimeDuration duration, Action? pre = null, Action? post = null) {}
+    public virtual void IdleUntil(string tag, TimePoint time) {}
     public virtual void Think() { }
     public virtual void ReceiveFire(IActor from, List<HitRecord> fire) {
         // Notify components that we're receiving fire
@@ -470,8 +501,8 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     }
 
     public void Left(Encounter encounter) {
+        Debug.Assert(_encounter == encounter);
         if (_encounter != null) {
-            Debug.Assert(_encounter == encounter);
             _encounter = null;
             foreach (var component in Components) {
                 component.Leave(encounter);
@@ -484,7 +515,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         EndMessage = $"{state}: {message}";
         EndState = state;
         Message($"Game Over: {message} ({state})");
-        Game.Instance!.ScheduleEncounter(this, Time + 7200, "Dissolves", null, Destroy, 1000);
+        Game.Instance!.ScheduleEncounter(this, Time + TimeDuration.FromSeconds(7200), "Dissolves", null, Destroy, 1000);
         LogCat.Log.LogInformation("ActorBase.End {message} {state}", message, state);
     }
     public string EndMessage { get; set; } = string.Empty;
@@ -500,6 +531,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public ActorFaction To(Factions faction) => FactionRelations.GetOrAddNew(faction, () => new ActorFaction(this, faction));
 
     public event InitializedHandler? ActorInitialized;
+    public event DestroyedHandler? ActorDestroyed;
     public event HostilityChangedHandler? HostilityChanged;
     public event ReceivingFireHandler? ReceivingFire;
 
@@ -563,8 +595,8 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
             Init = init,
             Rng = this.Rng.ToData(),
             Gaussian = this.Gaussian.ToData(),
-            Time = this.Time,
-            LastTime = this.LastTime,
+            Time = this.Time.Elapsed,
+            LastTime = this.LastTime.Elapsed,
             EndState = this.EndState,
             EndMessage = this.EndMessage,
             ActorRelations = actorRelations,
@@ -578,8 +610,8 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         this.Gaussian.FromData(data.Gaussian);
 
         // Restore time tracking
-        this.Time = data.Time;
-        this.LastTime = data.LastTime;
+        this.Time = new TimePoint(data.Time);
+        this.LastTime = new TimePoint(data.LastTime);
 
         // Restore end state
         this.EndState = data.EndState;

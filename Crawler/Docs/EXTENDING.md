@@ -274,7 +274,7 @@ crawler.StoredProposals.Add(new ProposeMyAction());
 // In Crawler.CheckAndSetUltimatums() or similar
 if (/* condition met */) {
     StoredProposals.Add(new ProposeMyAction());
-    To(other).UltimatumTime = Game.SafeTime + 300; // 5 min
+    To(other).UltimatumTime = Owner.Time + 300; // 5 min
 }
 ```
 

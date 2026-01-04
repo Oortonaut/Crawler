@@ -3,22 +3,17 @@ namespace Crawler;
 /// <summary>
 /// Event handler for when an actor arrives at an encounter
 /// </summary>
-public delegate void ActorArrivedEventHandler(IActor actor, long now);
+public delegate void ActorArrivedEventHandler(IActor actor, TimePoint now);
 
 /// <summary>
-/// Event handler for when an actor is about to leave an encounter
+/// Event handler for when another actor has left an encounter
 /// </summary>
-public delegate void ActorLeavingEventHandler(IActor actor, long now);
-
-/// <summary>
-/// Event handler for when an actor has left an encounter
-/// </summary>
-public delegate void ActorLeftEventHandler(IActor actor, long now);
+public delegate void ActorLeftEventHandler(IActor actor, TimePoint now);
 
 /// <summary>
 /// Event handler for when time advances in an encounter
 /// </summary>
-public delegate void EncounterTickEventHandler(long then, long now);
+public delegate void EncounterTickEventHandler(TimePoint then, TimePoint now);
 
 /// <summary>
 /// Component-based behavior system for actors.
@@ -41,7 +36,12 @@ public interface IActorComponent {
     /// <summary>Initialize the component with its owner</summary>
     void Attach(IActor owner);
 
+    /// <summary>Subscribe this component's event handlers to an encounter</summary>
+    void Enter(Encounter encounter);
+
     void Tick();
+    /// <summary>Unsubscribe this component's event handlers from an encounter</summary>
+    void Leave(Encounter encounter);
 
     void Detach();
 
@@ -51,12 +51,6 @@ public interface IActorComponent {
     /// <summary>Called when the actors component list changes. During construction and loading,
     /// called once all components are installed.</summary>
     void OnComponentsDirty();
-
-    /// <summary>Subscribe this component's event handlers to an encounter</summary>
-    void Enter(Encounter encounter);
-
-    /// <summary>Unsubscribe this component's event handlers from an encounter</summary>
-    void Leave(Encounter encounter);
 
     /// <summary>
     /// Called during Think() to allow proactive component behaviors.

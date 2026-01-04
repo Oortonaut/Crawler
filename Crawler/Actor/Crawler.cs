@@ -359,14 +359,14 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
     }
 
     // Returns elapsed, >= 0
-    public override void SimulateTo(long time) {
+    public override void SimulateTo(TimePoint time) {
         base.SimulateTo(time);
-        int elapsed = Elapsed;
+        var elapsed = Elapsed;
 
-        if (LastTime == 0) {
+        if (!LastTime.IsValid || LastTime == TimePoint.Zero) {
             Log.LogInformation($"First tick of {Name}");
         }
-        if (EndState != null || elapsed == 0) {
+        if (EndState != null || elapsed == TimeDuration.Zero) {
             return;
         }
 
@@ -374,11 +374,11 @@ public partial class Crawler: ActorBase, IComparable<Crawler> {
         //        "Crawler.Tick", System.Diagnostics.ActivityKind.Internal)?
         //    .SetTag("crawler.name", Name)
         //    .SetTag("crawler.faction", Faction)
-        //    .SetTag("elapsed_seconds", elapsed);
+        //    .SetTag("elapsed_seconds", elapsed.TotalSeconds);
         //Log.LogInformation($"Ticking {Name} at {Location.Description} time {time}, elapsed {elapsed}");
 
-        Recharge(elapsed);
-        Decay(elapsed);
+        Recharge((int)elapsed.TotalSeconds);
+        Decay((int)elapsed.TotalSeconds);
 
         UpdateSegmentCache();
     }

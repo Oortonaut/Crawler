@@ -61,22 +61,22 @@ public class ActorScheduled : ActorBase, IComparable<ActorScheduled> {
     /// Schedule an action to occur after a delay.
     /// Sets NextEvent and optionally associates an action to be invoked at that time.
     /// </summary>
-    public override void ConsumeTime(string tag, int priority, long duration, Action? pre = null, Action? post = null) {
+    public override void ConsumeTime(string tag, int priority, TimeDuration duration, Action? pre = null, Action? post = null) {
         var time = Time + duration;
         var evt = this.NewEventFor(tag, priority, duration, pre, post);
         LogCat.Log.LogInformation("ConsumeTime: {ActorName} scheduling {Tag} at {Time} (current={Current}, duration={Duration})",
             Name, tag, Game.TimeString(time), Game.TimeString(Time), duration);
         Game.Instance!.Schedule(evt);
     }
-    public override void IdleUntil(string tag, long time) {
+    public override void IdleUntil(string tag, TimePoint time) {
         var duration = time - Time;
-        if (duration > 0) {
+        if (duration.IsPositive) {
             Game.Instance!.ScheduleEncounter(this, time, tag, null, null, 0);
         }
     }
 
     protected ActorEvent? _nextEvent;
-    public long NextScheduledTime => _nextEvent?.Time ?? Time + Tuning.MaxDelay;
+    public TimePoint NextScheduledTime => _nextEvent?.Time ?? Time + TimeDuration.FromSeconds(Tuning.MaxDelay);
     //public ScheduleEvent? Encounter_Scheduled = null;
 
     public override string ToString() => $"{base.ToString()}\n{_nextEvent} at {Game.TimeString(NextScheduledTime)}\nNow {Game.TimeString(Time)}";

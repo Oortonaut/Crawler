@@ -189,7 +189,7 @@ public static class SaveLoadExtensions {
         return new SaveGameData {
             Version = "1.0",
             Seed = game.GetSeed(),
-            Hour = game.GetTime(),
+            Hour = game.GetPlayer().Time.Elapsed,
             CurrentLocationPos = game.PlayerLocation.Position,
             Player = game.GetPlayer().ToSaveData(),
             Map = game.GetMap().ToSaveData(),
@@ -492,7 +492,7 @@ public static class SaveLoadExtensions {
 
     public static Location ToGameLocation(this SavedLocation savedLocation, Sector sector) {
         var location = new Location(savedLocation.Seed,
-            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth, loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(savedLocation.Seed, loc).Create());
+            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth, loc => savedLocation.Encounter?.ToGameEncounter(loc) ?? new Encounter(savedLocation.Seed, loc).Create(100_000_000_000));
         return location;
     }
 

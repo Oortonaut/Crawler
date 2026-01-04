@@ -28,11 +28,11 @@ public abstract record Interaction(IActor Mechanic, IActor Subject, string MenuO
     public string OptionCode => MenuOption;
 
     /// <summary>Expected duration in seconds for this interaction. Used for UI display and planning.</summary>
-    public virtual long ExpectedDuration => 0;
+    public virtual TimeDuration ExpectedDuration => TimeDuration.Zero;
 
     /// <summary>Synchronize both actors to a common time before multi-actor interaction.</summary>
     protected void SynchronizeActors() {
-        long commonTime = Math.Max(Mechanic.Time, Subject.Time);
+        TimePoint commonTime = Mechanic.Time > Subject.Time ? Mechanic.Time : Subject.Time;
         if (Mechanic.Time < commonTime) Mechanic.SimulateTo(commonTime);
         if (Subject.Time < commonTime) Subject.SimulateTo(commonTime);
         System.Diagnostics.Debug.Assert(Mechanic.Time == Subject.Time);
@@ -58,7 +58,7 @@ public record HostilityInteraction(IActor Attacker, IActor Subject, string Reaso
         return true;
     }
     public override string Description => $"Turn hostile against {Subject.Name}";
-    public override long ExpectedDuration => Tuning.Crawler.HostilityTime;
+    public override TimeDuration ExpectedDuration => Tuning.Crawler.HostilityTime;
 }
 
 public record ExchangeInteraction: Interaction {
@@ -118,7 +118,7 @@ public record ExchangeInteraction: Interaction {
         }
 
         // Time consumption for trade
-        long tradeDuration = ExpectedDuration * count;
+        var tradeDuration = ExpectedDuration * count;
         Mechanic.ConsumeTime("Trading", 300, tradeDuration);
         Subject.ConsumeTime("Trading", 300, tradeDuration);
 
@@ -128,7 +128,7 @@ public record ExchangeInteraction: Interaction {
     public override string ToString() => Description;
     public IOffer AgentOffer { get; init; }
     public IOffer SubjectOffer { get; init; }
-    public override long ExpectedDuration => Tuning.Crawler.TradeTime;
+    public override TimeDuration ExpectedDuration => Tuning.Crawler.TradeTime;
     public string MakeDescription() {
         // Note: Can't access Value here without Agent binding
         var buyerDesc = AgentOffer.Description;

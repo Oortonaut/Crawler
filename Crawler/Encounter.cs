@@ -13,7 +13,7 @@ public enum EncounterType {
     Hazard,
 }
 public class EncounterActor {
-    public long ArrivalTime { get; set; } = 0;
+    public TimePoint ArrivalTime { get; set; } = TimePoint.Zero;
 }
 
 public sealed class Encounter : IComparable<Encounter> {
@@ -30,8 +30,10 @@ public sealed class Encounter : IComparable<Encounter> {
         Gaussian = new GaussianSampler(Rng.Seed());
         Faction = faction;
         long offset = (Rng / "StartTime").NextInt64(3600);
-        EncounterTime = Game.SafeTime - offset -
-                        CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f);
+        // Initialize encounter time to a time in the past before any actors exist
+        // Will be updated when first actor arrives
+        EncounterTime = new TimePoint(100_000_000_000 - offset -
+                        (long)CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f));
 
         Game.Instance!.RegisterEncounter(this);
     }
@@ -40,7 +42,6 @@ public sealed class Encounter : IComparable<Encounter> {
 
     // C# event delegates for encounter events
     public event ActorArrivedEventHandler? ActorArrived;
-    public event ActorLeavingEventHandler? ActorLeaving;
     public event ActorLeftEventHandler? ActorLeft;
     public event EncounterTickEventHandler? EncounterTicked;
 
@@ -152,7 +153,7 @@ public sealed class Encounter : IComparable<Encounter> {
 
     // Dynamic crawler management
     float hourlyArrivals => Tuning.Encounter.HourlyArrivalsPerPop[Location.Type] * Location.Population * Tuning.Encounter.CrawlerDensity;
-    Crawler AddDynamicCrawler(ulong seed, long arrivalTime, int lifetime) {
+    Crawler AddDynamicCrawler(ulong seed, TimePoint arrivalTime, int lifetime) {
         // Use settlement-specific faction selection for Settlement encounters
         var faction = Location.ChooseRandomFaction();
         var crawler = GenerateFactionActor(seed, faction);
@@ -165,38 +166,38 @@ public sealed class Encounter : IComparable<Encounter> {
         // the crawler arrives, which will call Begin() to properly enter all components.
 
         // Attach LeaveEncounterComponent to handle exit
-        crawler.AddComponent(new LeaveEncounterComponent(arrivalTime + lifetime));
+        crawler.AddComponent(new LeaveEncounterComponent(arrivalTime + TimeDuration.FromSeconds(lifetime)));
 
         // Schedule travel to this encounter instead of adding directly
         Game.Instance!.ScheduleTravel(crawler, arrivalTime, Location);
 
         return crawler;
     }
-    public void SpawnDynamicCrawlers(long previousTime, long currentTime) {
-        long elapsed = currentTime - previousTime;
-        if (elapsed < 0) {
+    public void SpawnDynamicCrawlers(TimePoint previousTime, TimePoint currentTime) {
+        var elapsed = currentTime - previousTime;
+        if (elapsed.IsNegative) {
             throw new InvalidOperationException($"TODO: Retrocausality");
         }
-        if (elapsed == 0) {
+        if (elapsed == TimeDuration.Zero) {
             return;
         }
 
         // Sample how many crawlers should arrive
-        float expectation = hourlyArrivals * elapsed / 3600;
+        float expectation = hourlyArrivals * (float)elapsed.TotalHours;
         int arrivalCount = CrawlerEx.PoissonQuantile(expectation, ref Rng);
 
         if (arrivalCount > 0) {
             // Calculate arrival times for each new crawler and add in order
-            var arrivals = new List<(long arrivalTime, int lifetime)>();
+            var arrivals = new List<(TimePoint arrivalTime, int lifetime)>();
             for (int i = 0; i < arrivalCount; i++) {
                 int lifetime = CrawlerEx.PoissonQuantile(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, ref Rng);
                 // Arrivals spread across the elapsed time period
-                long arrivalTime = previousTime + Rng.NextInt64(elapsed);
+                var arrivalTime = previousTime + TimeDuration.FromSeconds(Rng.NextInt64(elapsed.TotalSeconds));
                 // Only add crawlers that:
                 // 1. Are still present at currentTime (arrivalTime + lifetime > currentTime)
                 // 2. Arrive at or after current encounter time (arrivalTime >= EncounterTime)
                 //    This prevents adding crawlers scheduled in the past during tick processing
-                if (arrivalTime + lifetime > currentTime && arrivalTime >= EncounterTime) {
+                if (arrivalTime + TimeDuration.FromSeconds(lifetime) > currentTime && arrivalTime >= EncounterTime) {
                     arrivals.Add((arrivalTime, lifetime));
                 }
             }
@@ -215,7 +216,7 @@ public sealed class Encounter : IComparable<Encounter> {
     public void AddActor(IActor actor, int? lifetime = null) {
         AddActorAt(actor, EncounterTime, lifetime);
     }
-    public void AddActorAt(IActor actor, long arrivalTime, int? lifetime = null) {
+    public void AddActorAt(IActor actor, TimePoint arrivalTime, int? lifetime = null) {
         if (actors.ContainsKey(actor)) {
             throw new ArgumentException("Actor is already in encounter");
         }
@@ -228,10 +229,10 @@ public sealed class Encounter : IComparable<Encounter> {
         if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
 
         if (lifetime.HasValue && actor is Crawler crawler) {
-            crawler.AddComponent(new LeaveEncounterComponent(arrivalTime + lifetime.Value));
+            crawler.AddComponent(new LeaveEncounterComponent(arrivalTime + TimeDuration.FromSeconds(lifetime.Value)));
         }
 
-        long exitTime = lifetime.HasValue ? arrivalTime + lifetime.Value : 0;
+        TimePoint exitTime = lifetime.HasValue ? arrivalTime + TimeDuration.FromSeconds(lifetime.Value) : TimePoint.Zero;
         var metadata = new EncounterActor {
             ArrivalTime = arrivalTime,
         };
@@ -243,6 +244,9 @@ public sealed class Encounter : IComparable<Encounter> {
         // This ensures message timestamps display correctly
         actor.SimulateTo(arrivalTime);
 
+        // CRITICAL: Event handlers receive historical arrival time
+        // Actors have already been simulated to arrivalTime via SimulateTo above
+        LogCat.Log.LogInformation($"Encounter.AddActorAt: Firing ActorArrived event for {actor.Name} at time {Game.TimeString(arrivalTime)}, subscribers={ActorArrived?.GetInvocationList().Length ?? 0}");
         ActorArrived?.Invoke(actor, arrivalTime);
 
     }
@@ -258,9 +262,6 @@ public sealed class Encounter : IComparable<Encounter> {
         return false;
     }
     public void RemoveActor(IActor actor) {
-        // Raise ActorLeaving event
-        ActorLeaving?.Invoke(actor, EncounterTime);
-
         actors.Remove(actor);
         actor.Left(this);
 
@@ -268,7 +269,8 @@ public sealed class Encounter : IComparable<Encounter> {
         ActorLeft?.Invoke(actor, EncounterTime);
 
         // Update caching when actors leave
-        if (actor.Flags.HasFlag(ActorFlags.Player)) UpdatePlayerStatus();
+        if (actor.Flags.HasFlag(ActorFlags.Player))
+            UpdatePlayerStatus();
     }
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
     public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(ActorFlags.Settlement));
@@ -569,7 +571,7 @@ public sealed class Encounter : IComparable<Encounter> {
             "H"));
         return hazardActor;
     }
-    public Encounter Create() {
+    public Encounter Create(long currentTime) {
         using var activity = Scope($"Create {nameof(Encounter)}");
         var seed = Rng.Seed();
         IActor? actor = null;
@@ -589,8 +591,8 @@ public sealed class Encounter : IComparable<Encounter> {
             AddActorAt(actor, EncounterTime);
         }
 
-        // Spawn dynamic crawlers from encounter start to present
-        SpawnDynamicCrawlers(EncounterTime, Game.SafeTime);
+        // Spawn dynamic crawlers from encounter start to current time
+        SpawnDynamicCrawlers(EncounterTime, currentTime);
 
         return this;
     }
@@ -636,7 +638,7 @@ public sealed class Encounter : IComparable<Encounter> {
         description: "Duration of individual crawler tick execution in milliseconds"
     );
 
-    public long EncounterTime { get; set; }
+    public TimePoint EncounterTime { get; set; }
 
     // Tracks if the player is present to toggle between High Precision and Batched modes
     bool _hasPlayer = false;
@@ -648,7 +650,7 @@ public sealed class Encounter : IComparable<Encounter> {
     /// Updates the encounter to the specified time, spawning dynamic crawlers
     /// and firing the EncounterTicked event.
     /// </summary>
-    public void UpdateTo(long currentTime) {
+    public void UpdateTo(TimePoint currentTime) {
         if (currentTime < EncounterTime) {
             throw new InvalidOperationException($"Cannot move encounter time backwards from {Game.TimeString(EncounterTime)} to {Game.TimeString(currentTime)}");
         }
@@ -657,7 +659,7 @@ public sealed class Encounter : IComparable<Encounter> {
             return; // Already at this time
         }
 
-        long previousTime = EncounterTime;
+        TimePoint previousTime = EncounterTime;
 
         // Spawn dynamic crawlers for the elapsed time period
         SpawnDynamicCrawlers(previousTime, currentTime);

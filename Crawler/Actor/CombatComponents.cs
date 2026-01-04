@@ -63,7 +63,7 @@ public class AttackComponent : ActorComponentBase {
             return Immediacy.Menu;
         }
 
-        public override long ExpectedDuration => 0; // Duration determined by weapon delays
+        public override TimeDuration ExpectedDuration => 0; // Duration determined by weapon delays
     }
 }
 
@@ -143,7 +143,7 @@ public class SurrenderComponent : ActorComponentBase {
             return Immediacy.Menu;
         }
 
-        public override long ExpectedDuration => Tuning.Crawler.SurrenderTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.SurrenderTime;
     }
 }
 
@@ -204,7 +204,7 @@ public static class ExtortionInteractions {
             return Immediacy.Menu;
         }
 
-        public override long ExpectedDuration => Tuning.Crawler.ExtortionTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.ExtortionTime;
     }
 
     /// <summary>
@@ -249,7 +249,7 @@ public static class ExtortionInteractions {
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Menu;
 
-        public override long ExpectedDuration => Tuning.Crawler.RefuseTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.RefuseTime;
     }
 
     /// <summary>
@@ -276,7 +276,7 @@ public static class ExtortionInteractions {
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
 
-        public override long ExpectedDuration => 0; // Auto-trigger, no time consumed
+        public override TimeDuration ExpectedDuration => 0; // Auto-trigger, no time consumed
     }
 }
 
@@ -413,12 +413,12 @@ public abstract class CombatComponentBase : ActorComponentBase {
         encounter.ActorLeft -= OnActorLeft;
     }
 
-    protected virtual void OnActorArrived(IActor actor, long time) {
+    protected virtual void OnActorArrived(IActor actor, TimePoint time) {
         if (Owner is not Crawler bandit) return;
         if (actor == Owner) return;
     }
 
-    protected virtual void OnActorLeft(IActor actor, long time) {
+    protected virtual void OnActorLeft(IActor actor, TimePoint time) {
         if (Owner is not Crawler bandit) return;
         if (actor == Owner) return;
 

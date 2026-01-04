@@ -85,7 +85,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
     public XorShift Rng = new(seed);
     public virtual string Report => $"{Name} {GetStyle()}";
 
-    long lastTick = Game.SafeTime;
+    long lastTick = 0;
     public void TickUntil(long time) => Tick(( int ) (time - lastTick));
     public virtual void Tick(int elapsed) {
         lastTick += elapsed;

@@ -66,12 +66,12 @@ public class BanditComponent : ActorComponentBase {
         encounter.ActorLeft -= OnActorLeft;
     }
 
-    void OnActorArrived(IActor actor, long time) {
+    void OnActorArrived(IActor actor, TimePoint time) {
         if (Owner == actor) return;
         SetupExtortion(actor, time);
     }
 
-    void OnActorLeft(IActor actor, long time) {
+    void OnActorLeft(IActor actor, TimePoint time) {
         if (Owner == actor) return;
         // Clear ultimatum when target leaves
         Owner.To(actor).Ultimatum = null;
@@ -105,7 +105,7 @@ public class BanditComponent : ActorComponentBase {
 
         long expirationTime = relation.Ultimatum.ExpirationTime;
         float demandFraction = relation.Ultimatum.Data as float? ?? _demandFraction;
-        bool expired = expirationTime > 0 && Game.SafeTime > expirationTime;
+        bool expired = expirationTime > 0 && Owner.Time > expirationTime;
 
         if (!expired) {
             // Use shared extortion interactions

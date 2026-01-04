@@ -471,10 +471,10 @@ public static partial class CrawlerEx {
         }
         return chance;
     }
-    public static ActorEvent NewEventFor(this IActor actor, string tag, int Priority, long Duration, Action? Pre = null, Action? Post = null) {
+    public static ActorEvent NewEventFor(this IActor actor, string tag, int Priority, TimeDuration Duration, Action? Pre = null, Action? Post = null) {
         var evt = new ActorEvent.EncounterEvent(actor, actor.Time + Duration, tag, Pre, Post, Priority);
         return evt;
     }
-    public static ActorEvent NewIdleEvent(this IActor actor) => actor.NewEventFor("Idle", 0, Tuning.MaxDelay);
+    public static ActorEvent NewIdleEvent(this IActor actor) => actor.NewEventFor("Idle", 0, TimeDuration.FromSeconds(Tuning.MaxDelay));
 
 }

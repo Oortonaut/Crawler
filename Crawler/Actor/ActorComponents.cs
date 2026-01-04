@@ -11,15 +11,9 @@ namespace Crawler;
 /// </summary>
 public class CustomsComponent : ActorComponentBase {
     public override void Enter(Encounter encounter) {
+        LogCat.Log.LogInformation($"CustomsComponent.Enter: Owner={Owner.Name} subscribing to encounter {encounter.Name} events");
         encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
-
-        // Scan all actors already present in the encounter
-        foreach (var actor in encounter.Actors) {
-            if (actor != Owner) {
-                SetupContrabandUltimatum(actor, encounter[actor].ArrivalTime);
-            }
-        }
     }
 
     public override void Leave(Encounter encounter) {
@@ -27,30 +21,64 @@ public class CustomsComponent : ActorComponentBase {
         encounter.ActorLeft -= OnActorLeft;
     }
 
-    void OnActorArrived(IActor actor, long time) {
-        if (actor == Owner) return;
-
-        SetupContrabandUltimatum(actor, time);
+    void OnActorArrived(IActor actor, TimePoint time) {
+        LogCat.Log.LogInformation($"CustomsComponent.OnActorArrived: actor={actor.Name}, time={Game.TimeString(time)}, Owner={Owner.Name}, actor==Owner={actor == Owner}");
+        if (actor == Owner) {
+            var encounter = actor.Location.GetEncounter();
+            // Scan all actors already present in the encounter
+            // Issue ultimatums starting from NOW (when customs officer arrived), not from their historical arrival
+            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} arrived, scanning {encounter.ActorsExcept(Owner).Count()} existing actors");
+            foreach (var other in encounter.ActorsExcept(Owner)) {
+                LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} issuing ultimatum to {other.Name} at time {Game.TimeString(time)}");
+                SetupContrabandUltimatum(other, time);
+            }
+        } else {
+            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} issuing ultimatum to arriving {actor.Name} at time {Game.TimeString(time)}");
+            SetupContrabandUltimatum(actor, time);
+        }
     }
 
-    void OnActorLeft(IActor actor, long time) {
-        if (actor == Owner) return;
-
-        // Clear ultimatum when target leaves
-        Owner.To(actor).Ultimatum = null;
+    void OnActorLeft(IActor actor, TimePoint time) {
+        if (actor == Owner) {
+            // TODO: clear all ultimatums we have offered
+            foreach (var target in Targets) {
+                Owner.To(target).Ultimatum = null;
+            }
+            Targets.Clear();
+        } else {
+            // Clear ultimatum when target leaves
+            Owner.To(actor).Ultimatum = null;
+        }
     }
 
+    List<IActor> Targets = new();
     void SetupContrabandUltimatum(IActor target, long time) {
+        LogCat.Log.LogInformation($"CustomsComponent.SetupContrabandUltimatum: target={target.Name}, time={Game.TimeString(time)}, isPlayer={target.IsPlayer()}, fighting={Owner.Fighting(target)}");
         if (!target.IsPlayer()) {
+            LogCat.Log.LogInformation($"CustomsComponent: {target.Name} is not player, skipping");
             return;
         }
 
         if (!Owner.Fighting(target)) {
+            // CRITICAL: Event handlers receive historical time but owner may have advanced
+            // Use owner's current time for ultimatum expiration
+            long effectiveTime = Math.Max(time, Owner.Time);
+            long expirationTime = effectiveTime + 300;
+
+            long timeDelta = Owner.Time - time;
+            if (timeDelta > 60) {
+                LogCat.Log.LogWarning($"CustomsComponent: WARNING! Event fired {timeDelta}s ({Game.TimeString(timeDelta)}) after arrival. event time={Game.TimeString(time)}, owner time={Game.TimeString(Owner.Time)}");
+            }
+
+            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} setting ultimatum on {target.Name}, event time={Game.TimeString(time)}, effective time={Game.TimeString(effectiveTime)}, expires at {Game.TimeString(expirationTime)} (owner time: {Game.TimeString(Owner.Time)})");
             // Set ultimatum with timeout
+            Targets.Add(target);
             Owner.To(target).Ultimatum = new ActorToActor.UltimatumState {
-                ExpirationTime = time + 300,
+                ExpirationTime = expirationTime,
                 Type = "ContrabandSeizure",
             };
+        } else {
+            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} is fighting {target.Name}, skipping ultimatum");
         }
     }
 
@@ -104,15 +132,19 @@ public class CustomsComponent : ActorComponentBase {
         // Rescan to update the interaction text
         var contraband = Scan(subject);
         long expirationTime = relation.Ultimatum.ExpirationTime;
-        bool expired = expirationTime > 0 && Game.SafeTime > expirationTime;
+        bool expired = expirationTime > 0 && Owner.Time > expirationTime;
+
+        LogCat.Log.LogInformation($"CustomsComponent.EnumerateInteractions: Owner={Owner.Name}, subject={subject.Name}, expirationTime={Game.TimeString(expirationTime)}, currentTime={Game.TimeString(Owner.Time)}, expired={expired}");
 
         if (!expired) {
             // Offer accept option (allow search and seizure)
+            LogCat.Log.LogInformation($"CustomsComponent: Offering accept/refuse interactions (not expired)");
             yield return new ContrabandAcceptInteraction(Owner, subject, contraband, "Y");
             // Offer refuse option (go hostile)
             yield return new ContrabandRefuseInteraction(Crawler, subject, "N");
         } else {
             // Time expired - turn hostile
+            LogCat.Log.LogInformation($"CustomsComponent: Offering expired interaction (ultimatum expired)");
             yield return new ContrabandExpiredInteraction(Crawler, subject, "");
         }
     }
@@ -161,7 +193,7 @@ public class CustomsComponent : ActorComponentBase {
             return Immediacy.Menu;
         }
 
-        public override long ExpectedDuration {
+        public override TimeDuration ExpectedDuration {
             get {
                 bool hasContraband = !Contraband.IsEmpty;
                 return hasContraband ? Tuning.Crawler.ContrabandSearchFound : Tuning.Crawler.ContrabandSearchClean;
@@ -195,7 +227,7 @@ public class CustomsComponent : ActorComponentBase {
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Menu;
 
-        public override long ExpectedDuration => Tuning.Crawler.RefuseTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.RefuseTime;
     }
 
     public record ContrabandExpiredInteraction(
@@ -218,7 +250,7 @@ public class CustomsComponent : ActorComponentBase {
 
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
 
-        public override long ExpectedDuration => 0; // Auto-trigger, no time consumed
+        public override TimeDuration ExpectedDuration => 0; // Auto-trigger, no time consumed
     }
 }
 
@@ -356,7 +388,7 @@ public class TradeOfferComponent : ActorComponentBase {
             return Immediacy.Failed;
         }
 
-        public override long ExpectedDuration => Tuning.Crawler.TradeTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.TradeTime;
     }
 }
 
@@ -407,7 +439,7 @@ public class RepairComponent : ActorComponentBase {
             SynchronizeActors();
 
             int duration = 3600; // 1 hour to repair
-            long endTime = Game.SafeTime + duration;
+            long endTime = Mechanic.Time + duration;
 
             // Create bidirectional Ultimatums to track the repair relationship
             Subject.To(Mechanic).Ultimatum = new ActorToActor.UltimatumState {
@@ -464,7 +496,7 @@ public class RepairComponent : ActorComponentBase {
 
         static bool IsRepairable(Segment segment) => segment is { Hits: > 0, IsDestroyed: false };
 
-        public override long ExpectedDuration => 3600; // 1 hour repair time
+        public override TimeDuration ExpectedDuration => 3600; // 1 hour repair time
     }
 }
 
@@ -565,7 +597,7 @@ public class LicenseComponent : ActorComponentBase {
             return Immediacy.Menu;
         }
 
-        public override long ExpectedDuration => Tuning.Crawler.LicenseTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.LicenseTime;
     }
 }
 
@@ -623,7 +655,7 @@ public class HarvestComponent : ActorComponentBase {
             return Immediacy.Menu;
         }
 
-        public override long ExpectedDuration => Tuning.Crawler.HarvestTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.HarvestTime;
     }
 }
 
@@ -724,7 +756,7 @@ public class HazardComponent : ActorComponentBase {
             return Immediacy.Menu;
         }
 
-        public override long ExpectedDuration => Tuning.Crawler.HazardTime;
+        public override TimeDuration ExpectedDuration => Tuning.Crawler.HazardTime;
     }
 }
 
@@ -734,33 +766,37 @@ public class HazardComponent : ActorComponentBase {
 public class EncounterMessengerComponent : ActorComponentBase {
     public override void Attach(IActor owner) {
         base.Attach(owner);
-        Owner.ActorInitialized += ActorInitialized;
-        Owner.HostilityChanged += HostilityChanged;
-        Owner.ReceivingFire += ReceivingFire;
+        Owner.ActorInitialized += OnActorInitialized;
+        Owner.ActorDestroyed += OnActorDestroyed;
+        Owner.HostilityChanged += OnHostilityChanged;
+        Owner.ReceivingFire += OnReceivingFire;
     }
 
-    void ActorInitialized() {
+    void OnActorInitialized() {
         Owner.Message($"{Owner.Name} initialized");
+    }
+
+    void OnActorDestroyed() {
+        Owner.Message($"{Owner.Name} destroyed");
     }
 
     public override void Enter(Encounter encounter) {
         base.Enter(encounter);
         encounter.ActorArrived += OnActorArrived;
-        encounter.ActorLeaving += OnActorLeaving;
         encounter.ActorLeft += OnActorLeft;
         encounter.EncounterTicked += OnEncounterTicked;
     }
 
-    void OnEncounterTicked(long then, long now) {
+    void OnEncounterTicked(TimePoint then, TimePoint now) {
         // TODO: Add message levels
         var thenString = Game.TimeString(then);
         var nowString = Game.TimeString(now);
         Owner.Message($"{Owner?.Location.GetEncounter()} ticked {thenString}->{nowString}");
     }
 
-    void OnActorArrived(IActor actor, long time) {
+    void OnActorArrived(IActor actor, TimePoint time) {
         if (actor != Owner) {
-            if (time < Game.SafeTime) {
+            if (time < Owner.Time) {
                 // Historical arrival - was already here
                 Owner.Message($"{actor.Name} is here");
             } else {
@@ -777,15 +813,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         }
     }
 
-    void OnActorLeaving(IActor actor, long time) {
-        if (actor != Owner) {
-            Owner.Message($"{actor.Name} about to leave");
-        } else {
-            Owner.Message($"You are leaving {GetEncounter().Name}");
-        }
-    }
-
-    void OnActorLeft(IActor actor, long time) {
+    void OnActorLeft(IActor actor, TimePoint time) {
         if (actor != Owner) {
             Owner.Message($"{actor.Name} leaves");
         } else {
@@ -793,7 +821,7 @@ public class EncounterMessengerComponent : ActorComponentBase {
         }
     }
 
-    void HostilityChanged(IActor other, bool hostile) {
+    void OnHostilityChanged(IActor other, bool hostile) {
         if (hostile) {
             Owner.Message($"{other.Name} became Hostile");
         } else {
@@ -801,22 +829,22 @@ public class EncounterMessengerComponent : ActorComponentBase {
         }
     }
 
-    void ReceivingFire(IActor from, List<HitRecord> fire) {
+    void OnReceivingFire(IActor from, List<HitRecord> fire) {
         Owner.Message($"{from.Name} fired {fire.Count} shots at you.");
     }
 
     public override void Leave(Encounter encounter) {
         encounter.ActorArrived -= OnActorArrived;
-        encounter.ActorLeaving -= OnActorLeaving;
         encounter.ActorLeft -= OnActorLeft;
         encounter.EncounterTicked -=  OnEncounterTicked;
         base.Leave(encounter);
     }
 
     public override void Detach() {
-        Owner.ActorInitialized -= ActorInitialized;
-        Owner.HostilityChanged -= HostilityChanged;
-        Owner.ReceivingFire -= ReceivingFire;
+        Owner.ActorInitialized -= OnActorInitialized;
+        Owner.ActorDestroyed -= OnActorDestroyed;
+        Owner.HostilityChanged -= OnHostilityChanged;
+        Owner.ReceivingFire -= OnReceivingFire;
         base.Detach();
     }
     public override void OnComponentsDirty() {
@@ -836,14 +864,14 @@ public class EncounterMessengerComponent : ActorComponentBase {
 /// </summary>
 public class RelationPrunerComponent : ActorComponentBase {
     public override void Enter(Encounter encounter) {
-        encounter.ActorLeaving += OnActorLeaving;
+        encounter.ActorLeft += OnActorLeft;
     }
 
     public override void Leave(Encounter encounter) {
-        encounter.ActorLeaving -= OnActorLeaving;
+        encounter.ActorLeft -= OnActorLeft;
     }
 
-    void OnActorLeaving(IActor actor, long time) {
+    void OnActorLeft(IActor actor, TimePoint time) {
         if (actor != Owner) return;
         if (Owner is not Crawler crawler) return;
 
@@ -868,33 +896,33 @@ public class RelationPrunerComponent : ActorComponentBase {
 /// Used by dynamic actors to leave after their scheduled time.
 /// </summary>
 public class LeaveEncounterComponent : ActorComponentBase {
-    long _exitTime;
+    TimePoint _exitTime;
     ActorEvent? _leaveEvent;
 
     public LeaveEncounterComponent() {
-        _exitTime = 0;
+        _exitTime = TimePoint.Zero;
     }
 
-    public LeaveEncounterComponent(long exitTime) {
+    public LeaveEncounterComponent(TimePoint exitTime) {
         ExitAt(exitTime);
     }
 
-    public long ExitTime => _exitTime;
+    public TimePoint ExitTime => _exitTime;
 
     public override ActorEvent? GetNextEvent() {
-        if (_exitTime > 0 && _leaveEvent == null) {
+        if (_exitTime.IsValid && _leaveEvent == null) {
             _leaveEvent = new ActorEvent.EncounterEvent(Owner, _exitTime, "LeaveEncounter", null,
                 () => Owner.Destroy(), 10);
         }
         return _leaveEvent;
     }
 
-    public void ExitAfter(int duration) {
+    public void ExitAfter(TimeDuration duration) {
         ExitAt(Owner.Time + duration);
     }
 
-    public void ExitAt(long exitTime) {
-        if (_exitTime > 0 && exitTime == _exitTime) {
+    public void ExitAt(TimePoint exitTime) {
+        if (_exitTime.IsValid && exitTime == _exitTime) {
             return;
         }
         _exitTime = exitTime;
