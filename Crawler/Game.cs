@@ -631,20 +631,11 @@ public class Game {
     }
     Encounter PlayerEncounter() => PlayerLocation.GetEncounter();
 
-    public static string DateString(TimePoint t) {
-        if (!t.IsValid || t == TimePoint.Zero) {
-            return "----/--/--";
-        }
-        return $"{t.Year:D4}/{t.Week:D2}/{t.Day}";
-    }
+    public static string DateString(TimePoint t) => t.ToString("D");
     public string DateString() => DateString(Player.Time);
 
-    public static string TimeString(TimePoint t) {
-        if (!t.IsValid || t == TimePoint.Zero) {
-            return "--:--:--";
-        }
-        return $"{t.Hour}:{t.Minute:D2}:{t.Second:D2}";
-    }
+    public static string TimeString(TimePoint t) => t.ToString("T");
+
     public string TimeString() => TimeString(Player.Time);
 
     bool Look() {
@@ -669,8 +660,8 @@ public class Game {
         return $"{header}\n{mapLines}\n{footer}";
     }
     bool Turn(string args) {
-        float count = float.TryParse(args, out float parsed) ? parsed * 60 : 3600;
-        long duration = (int)count;
+        float seconds = float.TryParse(args, out float parsed) ? parsed * 60 : 3600;
+        var duration = TimeDuration.FromSeconds((long)seconds);
         Player.ConsumeTime("Wait", 0, duration);
         return true;
     }

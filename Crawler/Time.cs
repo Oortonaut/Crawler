@@ -2,34 +2,29 @@ namespace Crawler;
 
 // Seconds since unix epoch
 // Decimal time: 10 hours or 1000 minutes per day, 100 seconds per minute, 100k seconds/day
-// Week: A week is 10 days or a million seconds, a year is 32 weeks.
+// Month: 35 days or 3.5 million seconds, a year is 10 months (350 days).
 // Our starting time should be in the year 3126
 // Visual representation:
-// YYYY/WW/D H:MM:SS
+// YYYY/Mon/DD H:MM:SS
 
 public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>, IComparable
 {
     // Time constants
-    public const int SecondsPerMinute = 100;
-    public const int MinutesPerHour = 10;
-    public const int HoursPerDay = 10;
-    public const int DaysPerWeek = 10;
-    public const int WeeksPerYear = 32;
+    public const long SecondsPerMinute = 100;
+    public const long MinutesPerHour = 100;
+    public const long HoursPerDay = 10;
+    public const long DaysPerMonth = 35;
+    public const long MonthsPerYear = 10;
 
-    public const int SecondsPerHour = SecondsPerMinute * MinutesPerHour;        // 1,000
-    public const int SecondsPerDay = SecondsPerHour * HoursPerDay;              // 100,000
-    public const int SecondsPerWeek = SecondsPerDay * DaysPerWeek;              // 1,000,000
-    public const int SecondsPerYear = SecondsPerWeek * WeeksPerYear;            // 32,000,000
-
-    // Epoch: 3126/00/0 0:00:00 in decimal time
-    private const long EpochYear = 3126;
-    private const long EpochOffset = EpochYear * SecondsPerYear;
+    public const long SecondsPerHour = SecondsPerMinute * MinutesPerHour;        // 10,000
+    public const long SecondsPerDay = SecondsPerHour * HoursPerDay;              // 100,000
+    public const long SecondsPerMonth = SecondsPerDay * DaysPerMonth;              // 1,000,000
+    public const long SecondsPerYear = SecondsPerMonth * MonthsPerYear;            // 32,000,000
 
     private readonly long _elapsed;
 
     public static readonly TimePoint None = new(long.MinValue);
     public static readonly TimePoint MinValue = new(long.MinValue + 1);
-    public static readonly TimePoint MaxValue = new(long.MaxValue);
     public static readonly TimePoint Zero = new(0);
 
     // Primary constructor
@@ -39,16 +34,16 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
     }
 
     // Constructor from components
-    public TimePoint(int year, int week, int day, int hour, int minute, int second)
+    public TimePoint(int year, int month, int day, int hour, int minute, int second)
     {
-        if (week < 0 || week >= WeeksPerYear) throw new ArgumentOutOfRangeException(nameof(week));
-        if (day < 0 || day >= DaysPerWeek) throw new ArgumentOutOfRangeException(nameof(day));
+        if (month < 0 || month >= MonthsPerYear) throw new ArgumentOutOfRangeException(nameof(month));
+        if (day < 0 || day >= DaysPerMonth) throw new ArgumentOutOfRangeException(nameof(day));
         if (hour < 0 || hour >= HoursPerDay) throw new ArgumentOutOfRangeException(nameof(hour));
         if (minute < 0 || minute >= MinutesPerHour) throw new ArgumentOutOfRangeException(nameof(minute));
         if (second < 0 || second >= SecondsPerMinute) throw new ArgumentOutOfRangeException(nameof(second));
 
-        _elapsed = (long)year * SecondsPerYear +
-                   week * SecondsPerWeek +
+        _elapsed = year * SecondsPerYear +
+                   month * SecondsPerMonth +
                    day * SecondsPerDay +
                    hour * SecondsPerHour +
                    minute * SecondsPerMinute +
@@ -60,10 +55,14 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
     public bool IsNone => _elapsed == long.MinValue;
     public bool IsValid => _elapsed > long.MinValue;
 
+    // Month names (10 months for 10 MonthsPerYear)
+    public static readonly string[] MonthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Sept", "Oct", "Nov", "Dec"];
+
     // Time components
     public int Year => (int)(_elapsed / SecondsPerYear);
-    public int Week => (int)((_elapsed % SecondsPerYear) / SecondsPerWeek);
-    public int Day => (int)((_elapsed % SecondsPerWeek) / SecondsPerDay);
+    public int Month => (int)((_elapsed % SecondsPerYear) / SecondsPerMonth);
+    public string MonthName => MonthNames[Month];
+    public int Day => (int)((_elapsed % SecondsPerMonth) / SecondsPerDay);
     public int Hour => (int)((_elapsed % SecondsPerDay) / SecondsPerHour);
     public int Minute => (int)((_elapsed % SecondsPerHour) / SecondsPerMinute);
     public int Second => (int)(_elapsed % SecondsPerMinute);
@@ -73,7 +72,7 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
     public double TotalMinutes => _elapsed / (double)SecondsPerMinute;
     public double TotalHours => _elapsed / (double)SecondsPerHour;
     public double TotalDays => _elapsed / (double)SecondsPerDay;
-    public double TotalWeeks => _elapsed / (double)SecondsPerWeek;
+    public double TotalMonths => _elapsed / (double)SecondsPerMonth;
     public double TotalYears => _elapsed / (double)SecondsPerYear;
 
     // Arithmetic operators
@@ -113,7 +112,7 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
     public TimePoint AddMinutes(long minutes) => new(_elapsed + minutes * SecondsPerMinute);
     public TimePoint AddHours(long hours) => new(_elapsed + hours * SecondsPerHour);
     public TimePoint AddDays(long days) => new(_elapsed + days * SecondsPerDay);
-    public TimePoint AddWeeks(long weeks) => new(_elapsed + weeks * SecondsPerWeek);
+    public TimePoint AddMonths(long months) => new(_elapsed + months * SecondsPerMonth);
     public TimePoint AddYears(long years) => new(_elapsed + years * SecondsPerYear);
 
     public TimePoint Add(TimeDuration duration) => this + duration;
@@ -123,7 +122,7 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
     public override string ToString()
     {
         if (IsNone) return "None";
-        return $"{Year:D4}/{Week:D2}/{Day} {Hour}:{Minute:D2}:{Second:D2}";
+        return $"{Year:D4}/{MonthName}/{Day:D2} {Hour}:{Minute:D2}:{Second:D2}";
     }
 
     public string ToString(string format)
@@ -133,7 +132,7 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
         return format switch
         {
             "F" => ToString(), // Full
-            "D" => $"{Year:D4}/{Week:D2}/{Day}", // Date only
+            "D" => $"{Year:D4}/{MonthName}/{Day:D2}", // Date only
             "T" => $"{Hour}:{Minute:D2}:{Second:D2}", // Time only
             "S" => _elapsed.ToString(), // Seconds
             _ => ToString()
@@ -145,7 +144,7 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
     {
         if (s == "None") return None;
 
-        // Format: YYYY/WW/D H:MM:SS
+        // Format: YYYY/Mon/DD H:MM:SS
         var parts = s.Split(' ');
         if (parts.Length != 2) throw new FormatException("Invalid TimePoint format");
 
@@ -156,13 +155,14 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
         if (timeParts.Length != 3) throw new FormatException("Invalid time format");
 
         int year = int.Parse(dateParts[0]);
-        int week = int.Parse(dateParts[1]);
+        int month = Array.IndexOf(MonthNames, dateParts[1]);
+        if (month < 0) throw new FormatException($"Invalid month name: {dateParts[1]}");
         int day = int.Parse(dateParts[2]);
         int hour = int.Parse(timeParts[0]);
         int minute = int.Parse(timeParts[1]);
         int second = int.Parse(timeParts[2]);
 
-        return new TimePoint(year, week, day, hour, minute, second);
+        return new TimePoint(year, month, day, hour, minute, second);
     }
 
     public static bool TryParse(string s, out TimePoint result)
@@ -196,8 +196,6 @@ public readonly struct TimeDuration : IComparable<TimeDuration>, IEquatable<Time
 
     public static readonly TimeDuration None = new(long.MinValue);
     public static readonly TimeDuration Zero = new(0);
-    public static readonly TimeDuration MinValue = new(long.MinValue + 1);
-    public static readonly TimeDuration MaxValue = new(long.MaxValue);
 
     // Primary constructor
     public TimeDuration(long duration = 0)
@@ -238,7 +236,7 @@ public readonly struct TimeDuration : IComparable<TimeDuration>, IEquatable<Time
     public double TotalMinutes => _duration / (double)TimePoint.SecondsPerMinute;
     public double TotalHours => _duration / (double)TimePoint.SecondsPerHour;
     public double TotalDays => _duration / (double)TimePoint.SecondsPerDay;
-    public double TotalWeeks => _duration / (double)TimePoint.SecondsPerWeek;
+    public double TotalMonths => _duration / (double)TimePoint.SecondsPerMonth;
     public double TotalYears => _duration / (double)TimePoint.SecondsPerYear;
 
     // Factory methods
@@ -246,7 +244,7 @@ public readonly struct TimeDuration : IComparable<TimeDuration>, IEquatable<Time
     public static TimeDuration FromMinutes(long minutes) => new(minutes * TimePoint.SecondsPerMinute);
     public static TimeDuration FromHours(long hours) => new(hours * TimePoint.SecondsPerHour);
     public static TimeDuration FromDays(long days) => new(days * TimePoint.SecondsPerDay);
-    public static TimeDuration FromWeeks(long weeks) => new(weeks * TimePoint.SecondsPerWeek);
+    public static TimeDuration FromMonths(long months) => new(months * TimePoint.SecondsPerMonth);
     public static TimeDuration FromYears(long years) => new(years * TimePoint.SecondsPerYear);
 
     // Arithmetic operators
