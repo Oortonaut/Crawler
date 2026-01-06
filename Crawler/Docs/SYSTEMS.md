@@ -14,6 +14,7 @@
 - [Tick System](#tick-system)
 
 ## Recent Changes
+- **2026-01-06**: Time advancement decoupled from menu return values. Menu actions that schedule events (like K/Wait) set `MenuSelection.ShouldExitMenu` to exit the menu loop. SimulateTo now handles first-tick case where `Time == TimePoint.Zero` by setting `Elapsed = 0`.
 - **2025-11-21**: Added action scheduling system with `ConsumeTime(delay, action)` for AP-based time commitment and optional callbacks. Components implement `ThinkAction()` for proactive behaviors. Multi-actor interactions use `UltimatumState` on `ActorToActor` relationships for state management.
 - **2025-11-08**: Replaced `Random.Shared` with custom XorShift RNG; all random operations now use seeded RNG for determinism; combat uses local RNG instances spawned from Crawler RNG
 - **2025-10-29**: Trade proposals now use actor's faction instead of passing it as parameter; improved faction policy generation with multiple archetype selection; settlements now display civilian population

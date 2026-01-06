@@ -14,6 +14,7 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2026-01-06**: Changed Crawler to inherit from ActorScheduled instead of ActorBase; Crawler now has scheduling capabilities (ConsumeTime, IdleUntil) for time advancement; fixed SimulateTo to handle first-tick case where Time == TimePoint.Zero
 - **2025-01-28**: Implemented Init/Cfg/Data pattern for save/load system; added ActorBase.Data, ActorScheduled.Data, and Crawler.Data structures forming inheritance hierarchy; all Data structures contain Init as first field with ToData()/FromData() methods
 - **2025-11-08**: Added XorShift RNG and GaussianSampler to Crawler class for deterministic randomness; all crawlers now maintain their own RNG state with seed-based initialization
 - **2025-10-29**: Policy record now includes Description field for faction policy descriptions
@@ -106,7 +107,18 @@ The save/load system follows a consistent Init/Cfg/Data pattern across all actor
    new Foo(Foo.Init init, Foo.Data data)  // Load from save
    ```
 
+### Class Hierarchy
+
+```
+IActor (interface)
+└── ActorBase (abstract base)
+    └── ActorScheduled (adds scheduling: ConsumeTime, IdleUntil)
+        └── Crawler (mobile vehicles with segments)
+```
+
 ### Data Hierarchy
+
+Data structures mirror the class hierarchy:
 
 ```
 ActorBase.Data

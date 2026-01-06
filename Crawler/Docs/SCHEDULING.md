@@ -230,9 +230,14 @@ public long NextScheduledTime => _nextEvent?.End ?? Time + Tuning.MaxDelay;
 ```
 
 **Actor Time:**
-- `public long Time { get; protected set; }` - Actor's current simulation time
-- Advanced via `SimulateTo(long time)` method
+- `public TimePoint Time { get; protected set; }` - Actor's current simulation time
+- `public TimePoint LastTime { get; protected set; }` - Previous simulation time
+- `public TimeDuration Elapsed => LastTime.IsValid ? Time - LastTime : TimeDuration.Zero`
+- Advanced via `SimulateTo(TimePoint time)` method
 - Updated by encounter when actor's event is processed
+
+**First-Tick Handling:**
+When `Time == TimePoint.Zero` (newly created actor), `SimulateTo` sets both `LastTime` and `Time` to the arrival time, ensuring `Elapsed = 0` on first tick. This prevents new actors from experiencing massive elapsed time since epoch.
 
 **SetNextEvent(ScheduleEvent nextEvent):**
 

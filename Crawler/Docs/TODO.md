@@ -2,7 +2,6 @@
                   
 ## Big Ol' Bugs
 
-* [ ] Wait function needs to wait for any messages and then reschedule the player
 * [ ] Ultimatum Data - just use object? or make more typesafe. 
 * [ ] Add ActorToActor.StateValues { Hostile, Wary, Neutral, Friendly } instead of Hostile flag
 ## Missing Features
@@ -29,6 +28,7 @@
 * [ ] Encounter scheduling just keep the scheduled time on the ActorScheduled
 ## Finished
 
+* [x] Wait function now properly schedules events and advances time (2026-01-06)
 * [x] Use deterministic seeding like I should have from the start (2025-11-08)
 
 * [x] Make a separate combat mode - improved scheduling
