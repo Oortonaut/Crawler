@@ -476,7 +476,13 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public virtual void SimulateTo(TimePoint time) {
         if (Flags.HasFlag(ActorFlags.Loading))
             throw new InvalidOperationException($"Tried to simulate {Name} during loading.");
-        (LastTime, Time) = (Time, time);
+        // On first simulation (Time is still at initial Zero), initialize both timestamps
+        // to the arrival time so Elapsed = 0 (no time has passed for a newly spawned actor)
+        if (Time == TimePoint.Zero) {
+            (LastTime, Time) = (time, time);
+        } else {
+            (LastTime, Time) = (Time, time);
+        }
         foreach (var component in _components) {
             component.Tick();
         }

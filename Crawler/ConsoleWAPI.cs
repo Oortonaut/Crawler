@@ -205,12 +205,12 @@ public class CrawlerConsole {
         //    CONSOLE_TEXTMODE.CONSOLE_TEXTMODE_BUFFER, IntPtr.Zero
         //    );
         //Kernel32.SetConsoleActiveScreenBuffer(screenBufferHandle);
-        if (size != null) {
-            Size = size; // Force resize even if flag is not set
-        } else {
-            Size = makeCoord(GetScreenBufferInfo().dwSize);
-        }
-        ConsoleSize = Size;
+        // if (size != null) {
+        //     Size = size; // Force resize even if flag is not set
+        // } else {
+        //     Size = makeCoord(GetScreenBufferInfo().dwSize);
+        // }
+        // ConsoleSize = Size;
         EnableEchoInput = ((flags & ConsoleFlags.HalfDuplex) == ConsoleFlags.None);
         EnableWindowInput = EnableMouseInput = ((flags & ConsoleFlags.AllInput) != ConsoleFlags.None);
         bool Processed = !((flags & ConsoleFlags.Raw) == ConsoleFlags.Raw);
@@ -344,12 +344,6 @@ public class CrawlerConsole {
         get {
             return new Coord(mirror.GetLength(1), mirror.GetLength(0));
         }
-        set {
-            if (value != Size) {
-                mirror = new CHAR_INFO[value.y, value.x];
-                Console.SetWindowSize(value.x, value.y);
-            }
-        }
     }
 
     public Rect Bounds {
@@ -357,30 +351,12 @@ public class CrawlerConsole {
             var sbi = GetScreenBufferInfo();
             return makeRect(sbi.srWindow);
         }
-        set {
-            if (Bounds.o != value.o || Bounds.e != value.e) {
-                var sbi = GetScreenBufferInfo();
-                if (sbi.srWindow.Left != value.o.x || sbi.srWindow.Top != value.o.y) {
-                    Console.SetWindowPosition(Bounds.o.x, Bounds.o.y);
-                }
-                if (value.Size != Size) {
-                    mirror = new CHAR_INFO[Size.y, Size.x];
-                    Console.SetWindowSize(value.Size.x, value.Size.y);
-                }
-            }
-        }
     }
 
     public Coord ConsoleSize {
         get {
             var sbi = GetScreenBufferInfo();
             return makeCoord(sbi.dwSize);
-        }
-        set {
-            var sbi = GetScreenBufferInfo();
-            if (makeCoord(sbi.dwSize) != value) {
-                Console.SetBufferSize(value.x, value.y);
-            }
         }
     }
 
@@ -445,11 +421,11 @@ public class CrawlerConsole {
     bool ResizeFlag { get { return (flags & ConsoleFlags.Resize) != ConsoleFlags.None; } }
     public unsafe void Commit(ScreenCell[,] buffer) {
         if (Size != ConsoleSize) {
-            if (ResizeFlag) {
-                Size = ConsoleSize;
-            } else {
-                ConsoleSize = Size;
-            }
+            // if (ResizeFlag) {
+            //     Size = ConsoleSize;
+            // } else {
+            //     ConsoleSize = Size;
+            // }
         }
         bool result = false;
         int height = Math.Min(Size.y, buffer.Size().y);

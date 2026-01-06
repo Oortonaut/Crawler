@@ -158,8 +158,9 @@ public class ConsoleMenuRenderer : IMenuRenderer {
             if (action is InteractionAction intAction) {
                 return MenuSelection.Select(intAction.Interaction, arguments);
             }
-            // For non-interaction actions, return cancel (old behavior)
-            return MenuSelection.Cancel;
+            // For non-interaction actions, use the action's return value to determine
+            // whether to exit the menu loop. Time advancement is handled by scheduling.
+            return ap ? new MenuSelection { ShouldExitMenu = true } : MenuSelection.Cancel;
         }
 
         // Unrecognized input

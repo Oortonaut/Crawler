@@ -181,7 +181,7 @@ public class Game {
         }
     }
 
-    // return true to advance time.
+    // Legacy menu system. Time advancement is handled by event scheduling, not return values.
     bool ShowGameMenu() {
         List<MenuItem> items = [
             .. GameMenuItems(),
@@ -462,6 +462,12 @@ public class Game {
         var renderer = new ConsoleMenuRenderer();
         var selection = renderer.Render(context, "Game Menu", "");
 
+        // Check if menu action scheduled something and wants to exit
+        if (selection.ShouldExitMenu) {
+            return true;
+        }
+
+        // For interactions, perform and use return value
         bool ap = false;
         if (selection.SelectedInteraction != null) {
             ap = selection.SelectedInteraction.Perform(selection.Arguments);

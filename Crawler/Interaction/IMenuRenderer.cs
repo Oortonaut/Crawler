@@ -31,6 +31,9 @@ public record MenuSelection {
     /// <summary>True if user cancelled/exited menu</summary>
     public bool Cancelled { get; init; }
 
+    /// <summary>True if menu should exit (e.g., after scheduling an action)</summary>
+    public bool ShouldExitMenu { get; init; }
+
     /// <summary>Convenience factory for cancelled selection</summary>
     public static MenuSelection Cancel => new() { Cancelled = true };
 

@@ -153,7 +153,7 @@ public class ActorFaction {
     public int FactionStanding { get; set; } // How the faction feels about the actor
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
-public partial class Crawler: ActorBase, IComparable<Crawler> {
+public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public static Crawler NewRandom(ulong seed, Factions faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
         var rng = new XorShift(seed);
         var crawlerSeed = rng.Seed();
