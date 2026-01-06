@@ -573,7 +573,7 @@ public class Game {
     }
     bool GoTo(Location loc) {
         Player.Travel(loc);
-        return false;
+        return true;  // Exit menu to process travel event
     }
 
     IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
@@ -985,7 +985,7 @@ public class Game {
     bool Quit() {
         Console.WriteLine("Quitting...");
         quit = true;
-        return false;
+        return true;  // Exit menu to allow Run() to exit
     }
 
     bool GiveCommodity(string args) {

@@ -185,6 +185,8 @@ public sealed class Encounter : IComparable<Encounter> {
         float expectation = hourlyArrivals * (float)elapsed.TotalHours;
         int arrivalCount = CrawlerEx.PoissonQuantile(expectation, ref Rng);
 
+        Log.LogInformation($"SpawnDynamicCrawlers: {Name} type={Location.Type} pop={Location.Population} hourly={hourlyArrivals:F4} elapsed={elapsed} expect={expectation:F2} count={arrivalCount}");
+
         if (arrivalCount > 0) {
             // Calculate arrival times for each new crawler and add in order
             var arrivals = new List<(TimePoint arrivalTime, int lifetime)>();
