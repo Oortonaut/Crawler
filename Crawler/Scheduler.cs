@@ -98,8 +98,21 @@ public class Scheduler<TContext, TEvent, TElement, TTime>(TContext Context)
             MinChanged?.Invoke(Context, evt);
         }
     }
+
     public bool Unschedule(TElement tag) {
         LogCat.Log.LogInformation("Unschedule {Tag}", tag);
         return schedEventForTag.Remove(tag);
+    }
+    public bool Preempt(TElement tag, int priority) {
+        if (schedEventForTag.TryGetValue(tag, out var evt)) {
+            if (evt.Priority > priority) {
+                return false;
+            } else {
+                Unschedule(tag);
+                return true;
+            }
+        } else {
+            return true;
+        }
     }
 }

@@ -367,21 +367,21 @@ public abstract class CombatComponentBase : ActorComponentBase {
         var (ready, waiting) = attacker.CycleDelays();
         bool preFire = ready.Length > 0;
         bool postFire = waiting.Length > 0;
-        int durationSeconds = 0;
+        TimeDuration duration = TimeDuration.Zero;
         if (preFire) {
-            durationSeconds = ready[0].CycleLength;
-            if (postFire) {
-                durationSeconds = Math.Min(durationSeconds, waiting[0].Cycle);
+            duration = ready[0].CycleLength;
+            if (postFire && waiting[0].Cycle < duration) {
+                duration = waiting[0].Cycle;
             }
         } else if (postFire) {
             // Just wait
-            durationSeconds = waiting[0].Cycle;
+            duration = waiting[0].Cycle;
         } else {
             // No weapons
             return null;
         }
-        Debug.Assert(durationSeconds > 0);
-        return Owner.NewEventFor($"Volley at {target}", Priority, TimeDuration.FromSeconds(durationSeconds),
+        Debug.Assert(duration.IsPositive);
+        return Owner.NewEventFor($"Volley at {target}", Priority, duration,
             preFire ? () => attacker.Attack(target) : null);
     }
 

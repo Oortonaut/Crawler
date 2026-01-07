@@ -29,7 +29,7 @@ public sealed class Encounter : IComparable<Encounter> {
         Rng = new XorShift(seed);
         Gaussian = new GaussianSampler(Rng.Seed());
         Faction = faction;
-        long offset = (Rng / "StartTime").NextInt64(3600);
+        long offset = (Rng / "StartTime").NextInt64(2500);
         // Initialize encounter time to a time in the past before any actors exist
         // Will be updated when first actor arrives
         EncounterTime = Tuning.StartGameTime - new TimeDuration(CrawlerEx.PoissonQuantileAt(Tuning.Encounter.DynamicCrawlerLifetimeExpectation, 0.95f));
@@ -243,7 +243,15 @@ public sealed class Encounter : IComparable<Encounter> {
 
         // Initialize actor time to arrival time before firing events
         // This ensures message timestamps display correctly
-        actor.SimulateTo(arrivalTime);
+        const bool simulateAll = true;
+        if (simulateAll) {
+            foreach (var other in actors.Keys) {
+                other.SimulateTo(arrivalTime);
+                Game.Instance!.Preempt(other, 0); // tick anything with 0 priority
+            }
+        } else {
+            actor.SimulateTo(arrivalTime);
+        }
 
         // CRITICAL: Event handlers receive historical arrival time
         // Actors have already been simulated to arrivalTime via SimulateTo above

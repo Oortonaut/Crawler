@@ -81,15 +81,15 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
     public float Cost => SegmentDef.Cost;
     public int MaxHealth => SegmentDef.MaxHits;
     public char ClassCode => SegmentDef.ClassCode;
-    public int Cycle { get; set; } = 0;
+    public TimeDuration Cycle { get; set; } = TimeDuration.Zero;
     public XorShift Rng = new(seed);
     public virtual string Report => $"{Name} {GetStyle()}";
 
     long lastTick = 0;
-    public void TickUntil(long time) => Tick(( int ) (time - lastTick));
-    public virtual void Tick(int elapsed) {
-        lastTick += elapsed;
-        Cycle = Math.Max(0, Cycle - elapsed);
+    public void TickUntil(long time) => Tick(new TimeDuration(time - lastTick));
+    public virtual void Tick(TimeDuration elapsed) {
+        lastTick += elapsed.TotalSeconds;
+        Cycle = Cycle > elapsed ? Cycle - elapsed : TimeDuration.Zero;
     }
 
     int _hits = 0;
@@ -141,11 +141,11 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
     // Active segments are usable until they take half damage, rounded down
     public bool IsActive => State is Working.Pristine or Working.Running;
     // IsActiveReady combines the usable, running active segments with those that are ready to fire
-    public bool IsReadyToFire => IsActive && Cycle == 0;
+    public bool IsReadyToFire => IsActive && !Cycle.IsPositive;
     // The cycling state indicates that the weapon is somewhere in the charge cycle.
-    public bool IsCycling => IsActive && Cycle > 0;
+    public bool IsCycling => IsActive && Cycle.IsPositive;
     public void CycleStart() => Cycle = CycleLength;
-    public virtual int CycleLength => 0;
+    public virtual TimeDuration CycleLength => TimeDuration.Zero;
     public bool IsPristine => State is Working.Pristine;
     public bool IsRunning => State is Working.Running;
 
@@ -262,7 +262,7 @@ public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
     public float Rate => Tuning.Segments.RateTiers[RateTier];
     public float Shots => (float)Math.Round(Tuning.Segments.ShotsTiers[ShotsTier]);
     public float Aim => Tuning.Segments.AimTiers[AimTier];
-    public int CycleLength => (int)(60 / Rate);
+    public TimeDuration CycleLength => TimeDuration.FromSeconds(60 / Rate);
 
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
@@ -279,7 +279,7 @@ public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? Owner): Offe
     public float Rate => weaponDef.Rate;
     public float Shots => weaponDef.Shots;
     public float Aim => weaponDef.Aim;
-    public override int CycleLength => weaponDef.CycleLength;
+    public override TimeDuration CycleLength => weaponDef.CycleLength;
     public virtual IEnumerable<HitRecord> GenerateFire(ulong seed, float aim) {
         if (IsReadyToFire) {
             var rng = new XorShift(seed);
@@ -608,10 +608,10 @@ public class ShieldSegment(ulong seed, ShieldDef shieldDef, IActor? Owner): Defe
     public float Charge => shieldDef.Charge;
     public override char ReportCode(Location _) => fracCode(ShieldLeft, Capacity);
 
-    public override void Tick(int elapsed) {
+    public override void Tick(TimeDuration elapsed) {
         base.Tick(elapsed);
         if (IsActive) {
-            ShieldLeft += Charge * elapsed / 3600;
+            ShieldLeft += Charge * (float)elapsed.TotalHours;
         } else if (IsUsable) {
             // Hold charge but don't generate new charge
         } else {

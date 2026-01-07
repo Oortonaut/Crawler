@@ -521,7 +521,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         EndMessage = $"{state}: {message}";
         EndState = state;
         Message($"Game Over: {message} ({state})");
-        Game.Instance!.ScheduleEncounter(this, Time + TimeDuration.FromSeconds(7200), "Dissolves", null, Destroy, 1000);
+        Game.Instance!.ScheduleEncounter(this, Time + TimeDuration.FromHours(5), "Dissolves", null, Destroy, 1000);
         LogCat.Log.LogInformation("ActorBase.End {message} {state}", message, state);
     }
     public string EndMessage { get; set; } = string.Empty;

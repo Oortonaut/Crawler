@@ -28,7 +28,7 @@ public static partial class Tuning {
 
     public static class Encounter {
         public static float CrawlerDensity = 0.08f;
-        public static EArray<EncounterType, float> HourlyArrivalsPerPop = [0, 0.125f, 0.4f, 0.08f, 0.04f];
+        public static EArray<EncounterType, float> HourlyArrivalsPerPop = [0, 0.375f, 1.2f, 0.24f, 0.12f]; // Tripled for decimal time (10 hrs/day)
         // Faction spawn weights by terrain type: Player, Bandit, Trade
         public static EArray<TerrainType, EArray<Factions, float>> crawlerSpawnWeight = [
             [0, 2, 12],    // Flat - more trade
@@ -37,7 +37,7 @@ public static partial class Tuning {
             [0, 8, 4],    // Shattered - more bandits
             [0, 10, 2],    // Ruined - mostly bandits
         ];
-        public static float DynamicCrawlerLifetimeExpectation = 3600.0f * 7.5f;
+        public static float DynamicCrawlerLifetimeExpectation = 5000.0f * 7.5f; // 7.5 half-hours in decimal time
     }
     public static class Trade {
         // Legacy fields (kept for backward compatibility)
@@ -165,33 +165,32 @@ public static partial class Tuning {
 
         // Life support consumption
         public static float WaterPerCrew = 0.030f; // m^3 per crew
-        public static float WaterRecyclingLossPerHour = 0.002f; // 0.2% per hour
+        public static float WaterRecyclingLossPerHour = 0.006f; // 0.6% per decimal hour (tripled)
 
         public static float AirPerPerson = 1.0f; // liters of liquid air per person
-        public static float AirLeakagePerDamagedSegment = 0.005f; // 0.5% per hour per damaged segment
+        public static float AirLeakagePerDamagedSegment = 0.015f; // 1.5% per decimal hour per damaged segment (tripled)
 
         // Self-repair system
         public static float RepairCrewPerHp = 6.0f;
         public static float RepairPowerPerHp = 10.0f;
         public static float RepairScrapPerHp = 50.0f;
-        public static float RepairTime = 3600.0f;
+        public static float RepairTime = 5000.0f; // Half decimal hour
 
         // Interaction durations
-        public static TimeDuration HostilityTime = TimeDuration.FromSeconds(60);           // Declaring hostility (1 minute)
-        public static TimeDuration TradeTime = TimeDuration.FromSeconds(300);              // Per trade transaction (5 minutes)
-        public static TimeDuration SurrenderTime = TimeDuration.FromSeconds(600);          // Processing surrender (10 minutes)
-        public static TimeDuration ExtortionTime = TimeDuration.FromSeconds(300);          // Handing over extorted goods (5 minutes)
-        public static TimeDuration RefuseTime = TimeDuration.FromSeconds(60);              // Refusing demands/searches (1 minute)
-        public static TimeDuration ContrabandSearchClean = TimeDuration.FromSeconds(3600);  // Clean contraband search (1 hour)
-        public static TimeDuration ContrabandSearchFound = TimeDuration.FromSeconds(10800); // Contraband found (3 hours)
-        public static TimeDuration LicenseTime = TimeDuration.FromSeconds(300);            // License purchase paperwork (5 minutes)
-        public static TimeDuration HarvestTime = TimeDuration.FromSeconds(1800);           // Harvesting resources (30 minutes)
-        public static TimeDuration HazardTime = TimeDuration.FromSeconds(900);             // Exploring hazards (15 minutes)
-        public static TimeDuration RepairDuration = TimeDuration.FromSeconds(3600);        // Repair interaction duration (1 hour)
-        public static TimeDuration AttackTime = TimeDuration.FromSeconds(10);              // Combat attack action (10 seconds)
-        public static TimeDuration UltimatumTimeout = TimeDuration.FromSeconds(300);       // Default ultimatum timeout (5 minutes)
-        public static TimeDuration FleeTime = TimeDuration.FromSeconds(60);                // Time to attempt fleeing (1 minute)
-
+        public static TimeDuration HostilityTime = TimeDuration.FromMinutes(0.2);           // Declaring hostility
+        public static TimeDuration TradeTime = TimeDuration.FromMinutes(5);              // Per trade transaction
+        public static TimeDuration SurrenderTime = TimeDuration.FromMinutes(1);          // Processing surrender
+        public static TimeDuration ExtortionTime = TimeDuration.FromMinutes(2.5);          // Handing over extorted goods
+        public static TimeDuration RefuseTime = TimeDuration.FromMinutes(0.5);              // Refusing demands/searches
+        public static TimeDuration ContrabandSearchClean = TimeDuration.FromHours(1.5);  // Clean contraband search
+        public static TimeDuration ContrabandSearchFound = TimeDuration.FromHours(3.0); // Contraband found
+        public static TimeDuration LicenseTime = TimeDuration.FromHours(1.25);            // License purchase paperwork
+        public static TimeDuration HarvestTime = TimeDuration.FromHours(1);           // Harvesting resources
+        public static TimeDuration HazardTime = TimeDuration.FromHours(3);             // Exploring hazards
+        public static TimeDuration RepairDuration = TimeDuration.FromHours(3);        // Repair interaction duration
+        public static TimeDuration AttackTime = TimeDuration.FromSeconds(10);              // Combat attack action
+        public static TimeDuration UltimatumTimeout = TimeDuration.FromSeconds(300);       // Default ultimatum timeout
+        public static TimeDuration FleeTime = TimeDuration.FromSeconds(25);                // Time to attempt fleeing
         public static EArray<Commodity, float> DefaultCommodityWeights => [
             1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f, // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
             0.2f, 0.5f, 1.0f, // Air, Water, Rations
@@ -441,7 +440,7 @@ public static partial class Tuning {
     }
 
     public static float EvilLimit = 10.0f;
-    public static int MaxDelay = 3600;
+    public static int MaxDelay = 5000; // Half decimal hour
 
     public static float CostAt(this Commodity commodity, Location location) {
         return Commodity.Scrap.Round(commodity.BaseCost() * Economy.LocalMarkup(commodity, location));

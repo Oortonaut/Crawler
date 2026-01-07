@@ -129,6 +129,10 @@ public class Game {
         scheduler.Unschedule(Actor);
     }
 
+    public void Preempt(IActor Actor, int Priority) {
+        scheduler.Preempt(Actor, Priority);
+    }
+
     HashSet<Encounter> updatedEncounters = new();
 
     void ProcessSchedule(TimePoint currentTime) {
@@ -665,10 +669,15 @@ public class Game {
         var mapLines = sectorMapLines.Select(line => $"│{line}║").StringJoin("\n");
         return $"{header}\n{mapLines}\n{footer}";
     }
+
     bool Turn(string args) {
-        float seconds = float.TryParse(args, out float parsed) ? parsed * 60 : 3600;
-        var duration = TimeDuration.FromSeconds((long)seconds);
-        Player.ConsumeTime("Wait", 0, duration);
+        if (!string.IsNullOrEmpty(args)) {
+            if (TimeDuration.TryParse(args, out var duration)) {
+                Player.ConsumeTime("Wait", 0, duration);
+            } else {
+                Player.ConsumeTime("Wait", 0, new(5,0));
+            }
+        }
         return true;
     }
 

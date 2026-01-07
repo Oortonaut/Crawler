@@ -145,22 +145,22 @@ public readonly struct TimePoint : IComparable<TimePoint>, IEquatable<TimePoint>
         if (s == "None") return None;
 
         // Format: YYYY/Mon/DD H:MM:SS
-        var parts = s.Split(' ');
-        if (parts.Length != 2) throw new FormatException("Invalid TimePoint format");
+        if (ParseEx.TrySplitAny(ref s, ['/'], out var yearStr) == '\0')
+            throw new FormatException("Invalid TimePoint format");
+        if (ParseEx.TrySplitAny(ref s, ['/'], out var monthStr) == '\0')
+            throw new FormatException("Invalid date format");
+        if (ParseEx.TrySplitAny(ref s, [' '], out var dayStr) == '\0')
+            throw new FormatException("Invalid date format");
 
-        var dateParts = parts[0].Split('/');
-        if (dateParts.Length != 3) throw new FormatException("Invalid date format");
+        int year = int.Parse(yearStr);
+        int month = Array.IndexOf(MonthNames, monthStr);
+        if (month < 0) throw new FormatException($"Invalid month name: {monthStr}");
+        int day = int.Parse(dayStr);
 
-        var timeParts = parts[1].Split(':');
-        if (timeParts.Length != 3) throw new FormatException("Invalid time format");
-
-        int year = int.Parse(dateParts[0]);
-        int month = Array.IndexOf(MonthNames, dateParts[1]);
-        if (month < 0) throw new FormatException($"Invalid month name: {dateParts[1]}");
-        int day = int.Parse(dateParts[2]);
-        int hour = int.Parse(timeParts[0]);
-        int minute = int.Parse(timeParts[1]);
-        int second = int.Parse(timeParts[2]);
+        long timeSeconds = ParseEx.ParseColonTime(ref s);
+        int hour = (int)(timeSeconds / SecondsPerHour);
+        int minute = (int)((timeSeconds % SecondsPerHour) / SecondsPerMinute);
+        int second = (int)(timeSeconds % SecondsPerMinute);
 
         return new TimePoint(year, month, day, hour, minute, second);
     }
@@ -204,6 +204,12 @@ public readonly struct TimeDuration : IComparable<TimeDuration>, IEquatable<Time
     }
 
     // Constructor from components
+    public TimeDuration(int minutes, int seconds)
+    {
+        _duration = minutes * TimePoint.SecondsPerMinute +
+                    seconds;
+    }
+
     public TimeDuration(int hours, int minutes, int seconds)
     {
         _duration = hours * TimePoint.SecondsPerHour +
@@ -240,13 +246,12 @@ public readonly struct TimeDuration : IComparable<TimeDuration>, IEquatable<Time
     public double TotalYears => _duration / (double)TimePoint.SecondsPerYear;
 
     // Factory methods
-    public static TimeDuration FromSeconds(long seconds) => new(seconds);
-    public static TimeDuration FromMinutes(long minutes) => new(minutes * TimePoint.SecondsPerMinute);
-    public static TimeDuration FromHours(long hours) => new(hours * TimePoint.SecondsPerHour);
-    public static TimeDuration FromDays(long days) => new(days * TimePoint.SecondsPerDay);
-    public static TimeDuration FromMonths(long months) => new(months * TimePoint.SecondsPerMonth);
-    public static TimeDuration FromYears(long years) => new(years * TimePoint.SecondsPerYear);
-
+    public static TimeDuration FromSeconds(double seconds) => new((long)Math.Round(seconds));
+    public static TimeDuration FromMinutes(double minutes) => new((long)Math.Round(minutes * TimePoint.SecondsPerMinute));
+    public static TimeDuration FromHours(double hours) => new((long)Math.Round(hours * TimePoint.SecondsPerHour));
+    public static TimeDuration FromDays(double days) => new((long)Math.Round(days * TimePoint.SecondsPerDay));
+    public static TimeDuration FromMonths(double months) => new((long)Math.Round(months * TimePoint.SecondsPerMonth));
+    public static TimeDuration FromYears(double years) => new((long)Math.Round(years * TimePoint.SecondsPerYear));
     // Arithmetic operators
     public static TimeDuration operator +(TimeDuration left, TimeDuration right) =>
         new(left._duration + right._duration);
@@ -336,64 +341,51 @@ public readonly struct TimeDuration : IComparable<TimeDuration>, IEquatable<Time
         };
     }
 
+
     // Parsing
-    public static TimeDuration Parse(string s)
-    {
+    public static TimeDuration Parse(string s) {
         if (s == "None") return None;
 
-        // Simple parsing for formats like "5d 3:45:20" or "3:45:20" or "45m 20s" or "20s"
+        // Formats: "5d 3:45:20", "3:45:20", "45m 20s", "20s", "5h"
         s = s.Trim();
         long totalSeconds = 0;
 
-        if (s.Contains('d'))
-        {
-            var parts = s.Split('d', StringSplitOptions.TrimEntries);
-            totalSeconds += long.Parse(parts[0]) * TimePoint.SecondsPerDay;
-            if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
-            {
-                totalSeconds += ParseTime(parts[1]);
+        var sep = ParseEx.TrySplitAny(ref s, ['d', 'h', 'm', 's', ':'], out var part);
+
+        while (sep != '\0') {
+            switch (sep) {
+                case 'd':
+                    totalSeconds += long.Parse(part) * TimePoint.SecondsPerDay;
+                    s = s.TrimStart();
+                    break;
+                case 'h':
+                    totalSeconds += long.Parse(part) * TimePoint.SecondsPerHour;
+                    s = s.TrimStart();
+                    break;
+                case 'm':
+                    totalSeconds += long.Parse(part) * TimePoint.SecondsPerMinute;
+                    s = s.TrimStart();
+                    break;
+                case 's':
+                    totalSeconds += long.Parse(part);
+                    s = s.TrimStart();
+                    break;
+                case ':':
+                    // Colon format - reconstruct and use shared parser
+                    s = part + ':' + s;
+                    totalSeconds += ParseEx.ParseColonTime(ref s);
+                    s = s.TrimStart();
+                    break;
             }
+            sep = ParseEx.TrySplitAny(ref s, ['d', 'h', 'm', 's', ':'], out part);
         }
-        else if (s.Contains(':'))
-        {
-            totalSeconds = ParseTime(s);
-        }
-        else if (s.Contains('m'))
-        {
-            var parts = s.Split('m', StringSplitOptions.TrimEntries);
-            totalSeconds += long.Parse(parts[0]) * TimePoint.SecondsPerMinute;
-            if (parts.Length > 1 && parts[1].EndsWith('s'))
-            {
-                totalSeconds += long.Parse(parts[1].TrimEnd('s'));
-            }
-        }
-        else if (s.EndsWith('s'))
-        {
-            totalSeconds = long.Parse(s.TrimEnd('s'));
-        }
-        else
-        {
-            totalSeconds = long.Parse(s);
+
+        // Handle remaining content (raw number without suffix)
+        if (!string.IsNullOrEmpty(s)) {
+            totalSeconds += long.Parse(s);
         }
 
         return new TimeDuration(totalSeconds);
-    }
-
-    private static long ParseTime(string time)
-    {
-        var parts = time.Split(':');
-        if (parts.Length == 3)
-        {
-            return long.Parse(parts[0]) * TimePoint.SecondsPerHour +
-                   long.Parse(parts[1]) * TimePoint.SecondsPerMinute +
-                   long.Parse(parts[2]);
-        }
-        else if (parts.Length == 2)
-        {
-            return long.Parse(parts[0]) * TimePoint.SecondsPerMinute +
-                   long.Parse(parts[1]);
-        }
-        throw new FormatException("Invalid time format");
     }
 
     public static bool TryParse(string s, out TimeDuration result)

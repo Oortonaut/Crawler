@@ -362,6 +362,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public override void SimulateTo(TimePoint time) {
         base.SimulateTo(time);
         var elapsed = Elapsed;
+        Debug.Assert(elapsed >= TimeDuration.Zero);
 
         if (!LastTime.IsValid || LastTime == TimePoint.Zero) {
             Log.LogInformation($"First tick of {Name}");
@@ -377,8 +378,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         //    .SetTag("elapsed_seconds", elapsed.TotalSeconds);
         //Log.LogInformation($"Ticking {Name} at {Location.Description} time {time}, elapsed {elapsed}");
 
-        Recharge((int)elapsed.TotalSeconds);
-        Decay((int)elapsed.TotalSeconds);
+        Recharge(elapsed);
+        Decay(elapsed);
 
         UpdateSegmentCache();
     }
@@ -449,17 +450,17 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         // * Cycle == 0: Ready (keep track of segments)
         // * Smallest delay with Cycle > 0 (with count)
 
-        var cycling = _activeSegments.Where(seg => seg.CycleLength > 0);
-        var ready = cycling.Where(seg => seg.Cycle == 0);
-        var waiting = cycling.Where(seg => seg.Cycle > 0).OrderBy(seg => seg.Cycle);
+        var cycling = _activeSegments.Where(seg => seg.CycleLength.IsPositive);
+        var ready = cycling.Where(seg => !seg.Cycle.IsPositive);
+        var waiting = cycling.Where(seg => seg.Cycle.IsPositive).OrderBy(seg => seg.Cycle);
         return (ready.ToArray(), waiting.ToArray());
     }
 
-    public int? WeaponDelay() {
-        int minDelay = Tuning.MaxDelay;
+    public TimeDuration? WeaponDelay() {
+        TimeDuration minDelay = TimeDuration.FromSeconds(Tuning.MaxDelay);
         int N = 0;
         foreach (var segment in CyclingSegments) {
-            minDelay = Math.Min(minDelay, segment.Cycle);
+            if (segment.Cycle < minDelay) minDelay = segment.Cycle;
             ++N;
         }
         if (N > 0) {
@@ -837,10 +838,10 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
 
         return fire;
     }
-    void Recharge(int elapsed) {
+    void Recharge(TimeDuration elapsed) {
         Segments.Do(s => s.Tick(elapsed));
         float overflowPower = 0;
-        float hours = elapsed / 3600f;
+        float hours = (float)elapsed.TotalHours;
         overflowPower += ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Generate(hours));
         overflowPower += ChargerSegments.Aggregate(0.0f, (i, s) => i + s.Generate(hours));
         float excessPower = FeedPower(overflowPower);
@@ -900,12 +901,12 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         return energy;
     }
 
-    void Decay(int elapsed) {
+    void Decay(TimeDuration elapsed) {
         // Check rations
         if (RationsInv <= 0) {
             Message("You are out of rations and your crew is starving.");
             float liveRate = 0.99f;
-            liveRate = (float)Math.Pow(liveRate, elapsed / 3600);
+            liveRate = (float)Math.Pow(liveRate, elapsed.TotalHours);
             CrewInv *= liveRate;
             RationsInv = 0;
         }
@@ -914,7 +915,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         if (WaterInv <= 0) {
             Message("You are out of water. People are dying of dehydration.");
             float keepRate = 0.98f;
-            keepRate = (float)Math.Pow(keepRate, elapsed / 3600);
+            keepRate = (float)Math.Pow(keepRate, elapsed.TotalHours);
             CrewInv *= keepRate;
             WaterInv = 0;
         }

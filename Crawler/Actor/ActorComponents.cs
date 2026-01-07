@@ -977,7 +977,7 @@ public class AutoRepairComponent : ActorComponentBase {
     /// <summary>
     /// Attempt to repair damaged segments using excess power
     /// </summary>
-    public float PerformRepair(float power, int elapsed) {
+    public float PerformRepair(float power, TimeDuration elapsed) {
         if (Owner is not Crawler crawler)
             return power;
 
@@ -989,7 +989,7 @@ public class AutoRepairComponent : ActorComponentBase {
         float maxRepairsPower = power / Tuning.Crawler.RepairPowerPerHp + 0.25f; // Some repairs possible without power
         float maxRepairsScrap = crawler.ScrapInv / Tuning.Crawler.RepairScrapPerHp;
         float maxRepairs = Math.Min(Math.Min(maxRepairsCrew, maxRepairsPower), maxRepairsScrap);
-        float maxRepairsHr = maxRepairs * elapsed / Tuning.Crawler.RepairTime;
+        float maxRepairsHr = maxRepairs * elapsed.TotalSeconds / Tuning.Crawler.RepairTime;
         float repairHitsFloat = maxRepairsHr + _repairProgress;
         int repairHits = (int)repairHitsFloat;
         _repairProgress = repairHitsFloat - repairHits;
