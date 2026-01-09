@@ -1,5 +1,8 @@
 ﻿using System.Diagnostics;
+using Crawler.Convoy;
+using Crawler.Economy;
 using Crawler.Logging;
+using Crawler.Network;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;
@@ -301,10 +304,13 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             AddComponent(new AttackComponent("A"));
             AddComponent(new PlayerDemandComponent(rng.Seed(), 0.5f, "X"));
             AddComponent(new EncounterMessengerComponent());
+            AddComponent(new Convoy.ConvoyComponent());
+            AddComponent(new Convoy.GuardEmployerComponent());
+            AddComponent(new Convoy.RouteKnowledgeComponent());
             break;
 
         case Roles.Settlement:
-            // Settlements: trade, repair, licensing, contraband enforcement
+            // Settlements: trade, repair, licensing, contraband enforcement, guard hiring
             AddComponent(new CustomsComponent());
             var settlementGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f,
@@ -312,14 +318,25 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
                 Tuning.Trade.TradeSpread(settlementGaussian)));
             AddComponent(new RepairComponent());
             AddComponent(new LicenseComponent());
+            AddComponent(new Convoy.GuardHireComponent(rng.Seed()));
+            AddComponent(new Convoy.RiskIntelComponent(rng.Seed()));
+            // Production and consumption
+            AddComponent(new IndustryComponent());
+            AddComponent(new ProductionAIComponent(rng.Seed()));
+            AddComponent(new PopulationConsumptionComponent());
+            // Initialize stock targets based on population
+            StockTargets = StockTargets.ForPopulation(Location.Population);
             break;
 
         case Roles.Trader:
-            // Mobile merchants: primarily trade-focused
+            // Mobile merchants: primarily trade-focused, convoy capable
             var traderGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f,
                 Tuning.Trade.TradeMarkup(traderGaussian),
                 Tuning.Trade.TradeSpread(traderGaussian)));
+            AddComponent(new Convoy.ConvoyComponent());
+            AddComponent(new Convoy.ConvoyDecisionComponent(rng.Seed()));
+            AddComponent(new Convoy.RouteKnowledgeComponent());
             // Note: CombatComponentDefense already added at line 293 for all non-Bandits
             break;
 
@@ -339,22 +356,38 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             break;
 
         case Roles.Traveler:
-            // Travelers: quest givers, general interactions
+            // Travelers: quest givers, general interactions, convoy capable
             // TODO: Add quest-related components when quest system is implemented
             var travelerGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.15f,
                 Tuning.Trade.TradeMarkup(travelerGaussian),
                 Tuning.Trade.TradeSpread(travelerGaussian))); // Limited trading
+            AddComponent(new Convoy.ConvoyComponent());
+            AddComponent(new Convoy.ConvoyDecisionComponent(rng.Seed()));
+            AddComponent(new Convoy.RouteKnowledgeComponent());
             break;
 
         case Roles.Harvester:
             // Harvesters: resource extraction specialists
-            AddComponent(new HarvesterAIComponent(rng.Seed()));
+            AddComponent(new HarvesterRoleComponent(rng.Seed()));
             // Can trade extracted resources
             var harvesterGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.20f,
                 Tuning.Trade.TradeMarkup(harvesterGaussian),
                 Tuning.Trade.TradeSpread(harvesterGaussian)));
+            break;
+
+        case Roles.Guard:
+            // Guards: convoy escort specialists with combat focus
+            AddComponent(new Convoy.GuardComponent(rng.Seed()));
+            AddComponent(new Convoy.ConvoyComponent());
+            AddComponent(new CombatComponentAdvanced(rng.Seed())); // Smart combat for protection
+            AddComponent(new Convoy.RouteKnowledgeComponent());
+            // Minimal trade capability
+            var guardGaussian = new GaussianSampler(rng.Seed());
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.10f,
+                Tuning.Trade.TradeMarkup(guardGaussian),
+                Tuning.Trade.TradeSpread(guardGaussian)));
             break;
 
         case Roles.None:
@@ -417,6 +450,59 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         // Location will be updated by TravelEvent.OnEnd()
         Game.Instance!.ScheduleTravel(this, arrivalTime, loc);
     }
+
+    /// <summary>
+    /// Travel along a road using stepwise transit (5-minute steps).
+    /// Enables contact detection with other travelers on the same road.
+    /// </summary>
+    public void TravelViaRoad(Road road) {
+        var speed = SpeedOn(road.WorstTerrain);
+        if (speed <= 0) {
+            Message("Cannot traverse this terrain.");
+            return;
+        }
+
+        // Calculate fuel for the journey
+        var (fuel, travelHours) = FuelTimeTo(road.To);
+        if (fuel < 0 || FuelInv < fuel) {
+            Message("Not enough fuel for this journey.");
+            return;
+        }
+
+        // Remove from current encounter
+        if (Location.GetEncounter().Actors.Contains(this)) {
+            Location.GetEncounter().RemoveActor(this);
+        }
+
+        // Consume fuel for the journey
+        FuelInv -= fuel;
+
+        // Begin transit tracking
+        TransitRegistry.BeginTransit(this, road, speed, Time);
+
+        // Calculate first step
+        float stepHours = (float)Tuning.Convoy.TransitStepDuration.TotalHours;
+        float stepKm = speed * stepHours;
+        float stepProgress = Math.Min(stepKm / road.Distance, 1.0f);
+
+        // Schedule first transit step
+        var stepEvent = new ActorEvent.TransitStepEvent(
+            this,
+            Time + Tuning.Convoy.TransitStepDuration,
+            road,
+            0,
+            stepProgress,
+            road.To
+        );
+        Game.Instance!.Schedule(stepEvent);
+
+        Message($"Departing for {road.To.Description}...");
+    }
+
+    /// <summary>
+    /// Check if we can traverse a road based on terrain and traction.
+    /// </summary>
+    public bool CanTraverseRoad(Road road) => SpeedOn(road.WorstTerrain) > 0;
 
     public override void Think() {
         // using var activity = LogCat.Game.StartActivity($"{Name} Tick Against {Actors.Count()} others");
@@ -575,6 +661,23 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         Cargo.Add(segment);
         UpdateSegmentCache();
     }
+
+    /// <summary>
+    /// Replace a working segment with another (used for upgrades).
+    /// The new segment takes the place of the old one.
+    /// </summary>
+    public void ReplaceSegment(Segment oldSegment, Segment newSegment) {
+        Debug.Assert(_allSegments.Contains(oldSegment), "Old segment not in working segments");
+        Debug.Assert(!newSegment.IsPackaged, "New segment should not be packaged");
+
+        // Find index and replace
+        int index = _allSegments.IndexOf(oldSegment);
+        _allSegments[index] = newSegment;
+        newSegment.Owner = this;
+
+        UpdateSegmentCache();
+    }
+
     List<Segment> _allSegments = [];
     List<Segment> _activeSegments = [];
     List<Segment> _disabledSegments = [];
@@ -609,6 +712,12 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public IEnumerable<HarvestSegment> HarvestSegments => _activeSegmentsByClass.ContainsKey(SegmentKind.Harvest)
         ? _activeSegmentsByClass[SegmentKind.Harvest].Cast<HarvestSegment>()
         : Enumerable.Empty<HarvestSegment>();
+
+    /// <summary>Resource reservation tracking for production. Prevents double-booking inputs.</summary>
+    public ResourceReservation ResourceReservation { get; } = new();
+
+    /// <summary>Stock targets for production AI. Null means no automated production targeting.</summary>
+    public StockTargets? StockTargets { get; set; }
 
     /// <summary>Check if this crawler can harvest a specific resource type.</summary>
     public bool CanHarvest(Commodity resource) =>

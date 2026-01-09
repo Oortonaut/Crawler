@@ -523,6 +523,86 @@ public static partial class Tuning {
     }
 
     public static TimePoint StartGameTime = new(3126, 0, 0, 0, 0, 0);
+
+    /// <summary>
+    /// Convoy system parameters.
+    /// </summary>
+    public static class Convoy {
+        /// <summary>Base cost per km to hire a guard.</summary>
+        public static float GuardBaseCostPerKm = 0.5f;
+
+        /// <summary>Minimum wait time at waypoints before convoy departs.</summary>
+        public static TimeDuration WaypointWaitTime = TimeDuration.FromMinutes(15);
+
+        /// <summary>Maximum time to wait for straggling convoy members.</summary>
+        public static TimeDuration MaxWaitForMembers = TimeDuration.FromHours(1);
+
+        /// <summary>How long risk events remain relevant.</summary>
+        public static TimeDuration RiskEventMaxAge = TimeDuration.FromDays(7);
+
+        /// <summary>Route risk threshold at which NPCs consider forming convoys.</summary>
+        public static float ConvoyFormationRiskThreshold = 0.3f;
+
+        /// <summary>Minimum positive relation required to join another's convoy.</summary>
+        public static float MinRelationToJoin = 0.0f;
+
+        /// <summary>Cost multiplier for risk intel license.</summary>
+        public static float RiskIntelLicenseCost = 500f;
+
+        /// <summary>Duration of each transit step (5 minutes).</summary>
+        public static TimeDuration TransitStepDuration = TimeDuration.FromMinutes(5);
+    }
+
+    public static class Manufacturing {
+        /// <summary>Manufacturing time per segment size tier (hours).</summary>
+        public static float HoursPerSize = 4.0f;
+
+        /// <summary>Upgrade base time (hours).</summary>
+        public static float UpgradeBaseHours = 2.0f;
+
+        /// <summary>Settlement markup for manufacturing services.</summary>
+        public static float SettlementMarkup = 1.3f;
+
+        /// <summary>Self-service markup (player with own fabricator).</summary>
+        public static float SelfServiceMarkup = 1.0f;
+
+        /// <summary>Settlement default industry size (can manufacture segments up to this - 2).</summary>
+        public static int SettlementIndustrySize = 7;
+
+        /// <summary>Capital settlement industry size (larger settlements).</summary>
+        public static int CapitalIndustrySize = 9;
+    }
+
+    /// <summary>
+    /// Production AI and consumption parameters.
+    /// </summary>
+    public static class Production {
+        /// <summary>Value of reactor charge in scrap terms (for cost calculations).</summary>
+        public static float ChargeValue = 0.5f;
+
+        /// <summary>Weight multiplier for stock deficit bonus in recipe scoring.</summary>
+        public static float StockDeficitWeight = 2.0f;
+
+        /// <summary>Minimum profit margin (fraction) to consider a recipe viable.</summary>
+        public static float MinProfitMargin = 0.1f;
+    }
+
+    /// <summary>
+    /// Settlement population consumption parameters.
+    /// </summary>
+    public static class Settlement {
+        /// <summary>Rations consumed per population per hour.</summary>
+        public static float RationsPerPopPerHour = 0.001f;
+
+        /// <summary>Water consumed per population per hour.</summary>
+        public static float WaterPerPopPerHour = 0.0005f;
+
+        /// <summary>Medicines consumed per population per hour.</summary>
+        public static float MedicinesPerPopPerHour = 0.0001f;
+
+        /// <summary>Consumer goods consumed per population per hour (distributed across categories).</summary>
+        public static float GoodsPerPopPerHour = 0.00005f;
+    }
 }
 
 // Power scaling for segments uses tiers or levels for each value which map onto the
