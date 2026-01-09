@@ -62,6 +62,7 @@ public class Inventory {
     public void Add(Commodity commodity, float addCount) {
         _commodities[commodity] = commodity.Round(_commodities[commodity] + addCount);
         Mass = 0;
+        volume = 0;
     }
     public void Remove(Commodity commodity, float removeCount) {
         var currentValue = _commodities[commodity];
@@ -79,17 +80,20 @@ public class Inventory {
             }
         }
         Mass = 0;
+        volume = 0;
     }
     public void Add(Segment s) {
         // Segments in inventory storage should be packaged
         Debug.Assert(s.IsPackaged, "Segments added to Inventory should be packaged");
         Segments.Add(s);
         Mass = 0;
+        volume = 0;
     }
     public void Remove(Segment s) {
         if (Segments.Contains(s)) {
             Segments.Remove(s);
             Mass = 0;
+            volume = 0;
         } else if (Overdraft != null) {
             Overdraft.Remove(s);
         } else {
@@ -137,6 +141,7 @@ public class Inventory {
             .Do(ii => _commodities[ii.Key] = ii.Key.Round(_commodities[ii.Key] + ii.Value));
         Segments.AddRange(other.Segments);
         Mass = 0;
+        volume = 0;
     }
     public void Remove(Inventory other) {
         var containsResult = Contains(other);
@@ -159,7 +164,7 @@ public class Inventory {
 
     float CalcMass() => Segments.Sum(s => s.Weight) + _commodities.Pairs().Sum(ii => ii.Key.Mass() * ii.Value);
     float mass = 0;
-    public float Mass { 
+    public float Mass {
         get {
             if (mass == 0) {
                 mass = CalcMass();
@@ -168,6 +173,37 @@ public class Inventory {
         }
         private set { mass = value; }
     }
+
+    // Volume tracking
+    float CalcVolume() => Segments.Sum(s => s.Length) + _commodities.Pairs().Sum(ii => ii.Key.Volume() * ii.Value);
+    float volume = 0;
+    public float Volume {
+        get {
+            if (volume == 0) {
+                volume = CalcVolume();
+            }
+            return volume;
+        }
+        private set { volume = value; }
+    }
+
+    /// <summary>Maximum volume capacity. float.MaxValue means unlimited.</summary>
+    public float MaxVolume { get; set; } = float.MaxValue;
+
+    /// <summary>Available volume capacity remaining.</summary>
+    public float AvailableVolume => MaxVolume - Volume;
+
+    /// <summary>Check if a commodity amount can fit in remaining volume.</summary>
+    public bool CanFit(Commodity commodity, float amount) =>
+        commodity.Volume() * amount <= AvailableVolume;
+
+    /// <summary>Check if a segment can fit in remaining volume.</summary>
+    public bool CanFit(Segment segment) =>
+        segment.Length <= AvailableVolume;
+
+    /// <summary>Volume utilization as a fraction (0.0 to 1.0+).</summary>
+    public float VolumeUtilization => MaxVolume < float.MaxValue ? Volume / MaxVolume : 0;
+
     public float ItemValueAt(Location loc) => _commodities.Pairs().Sum(ii => ii.Key.CostAt(loc) * ii.Value);
     public float SegmentValueAt(Location loc) => Segments.Sum(s => s.Cost * Tuning.Economy.LocalMarkup(s.SegmentKind, loc));
     public float ValueAt(Location loc) => ItemValueAt(loc) + SegmentValueAt(loc);
@@ -315,7 +351,8 @@ public class Inventory {
     static List<Segment> GenerateSegments(ulong seed, Location location, float Wealth, bool includeCore = true, EArray<SegmentKind, float>? baseWeights = null) {
         var segments = new List<Segment>();
         var rng = new XorShift(seed);
-        EArray<SegmentKind, float> BaseWeights = baseWeights ?? [1, 1, 1, 1]; // Power, Traction, Weapons, Defense
+        // Power, Traction, Offense, Defense, Industry, Storage, Harvest
+        EArray<SegmentKind, float> BaseWeights = baseWeights ?? [1, 1, 1, 1, 0, 0, 0];
         EArray<SegmentKind, float> Weights;
 
         float M = 1.5f;
@@ -324,16 +361,16 @@ public class Inventory {
         switch (location.Terrain) {
         default:
         case TerrainType.Flat:
-            Weights = [1, M, 1, H];
+            Weights = [1, M, 1, H, 0, 0, 0];
             break;
         case TerrainType.Rough:
-            Weights = [M, 1, H, 1];
+            Weights = [M, 1, H, 1, 0, 0, 0];
             break;
         case TerrainType.Broken:
-            Weights = [H, 1, 1, M];
+            Weights = [H, 1, 1, M, 0, 0, 0];
             break;
         case TerrainType.Shattered:
-            Weights = [1, H, M, 1];
+            Weights = [1, H, M, 1, 0, 0, 0];
             break;
         }
         var gaussian = new GaussianSampler(seed);

@@ -5,6 +5,16 @@ public enum SegmentKind {
     Traction,
     Offense,
     Defense,
+    Industry,
+    Storage,
+    Harvest,
+}
+
+public enum HarvestType {
+    Mining,      // Extracts: Ore, Silicates
+    Biomass,     // Extracts: Biomass
+    Crystal,     // Extracts: Silicates, Gems
+    Isotope,     // Extracts: Isotopes
 }
 
 // Segment defs can be leveled by adding the difference from the reference tier to
@@ -254,7 +264,7 @@ public class OffenseSegment(ulong seed, OffenseDef OffenseDef, IActor? Owner): S
         return clone;
     }
 }
-public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
+public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier, Commodity? AmmoType = null, Tier AmmoUseTier = default)
     : OffenseDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override WeaponSegment NewSegment(ulong seed) => new(seed, this, null);
 
@@ -262,7 +272,11 @@ public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
     public float Rate => Tuning.Segments.RateTiers[RateTier];
     public float Shots => (float)Math.Round(Tuning.Segments.ShotsTiers[ShotsTier]);
     public float Aim => Tuning.Segments.AimTiers[AimTier];
+    public float AmmoPerShot => AmmoType.HasValue ? Tuning.Segments.AmmoUseTiers[AmmoUseTier] : 0;
     public TimeDuration CycleLength => TimeDuration.FromSeconds(60 / Rate);
+
+    /// <summary>Whether this weapon requires ammunition to fire</summary>
+    public bool RequiresAmmo => AmmoType.HasValue;
 
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - (( SegmentDef ) this).Size.Size);
@@ -271,6 +285,7 @@ public record WeaponDef(char Symbol, Tier Size, string Name, Tier WeightTier, Ti
             RateTier = RateTier + delta,
             ShotsTier = ShotsTier + delta,
             AimTier = AimTier + delta,
+            AmmoUseTier = AmmoUseTier + delta,
         };
     }
 }
@@ -279,15 +294,40 @@ public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? Owner): Offe
     public float Rate => weaponDef.Rate;
     public float Shots => weaponDef.Shots;
     public float Aim => weaponDef.Aim;
+    public Commodity? AmmoType => weaponDef.AmmoType;
+    public float AmmoPerShot => weaponDef.AmmoPerShot;
+    public bool RequiresAmmo => weaponDef.RequiresAmmo;
     public override TimeDuration CycleLength => weaponDef.CycleLength;
-    public virtual IEnumerable<HitRecord> GenerateFire(ulong seed, float aim) {
-        if (IsReadyToFire) {
-            var rng = new XorShift(seed);
-            for (int i = 0; i < Shots; i++) {
-                yield return new(rng.Seed(), this, Damage, Aim + aim);
-            }
-            CycleStart();
+
+    /// <summary>Check if weapon has enough ammo to fire</summary>
+    public bool HasAmmo {
+        get {
+            if (!RequiresAmmo) return true;
+            if (Owner is not Crawler crawler) return false;
+            float ammoNeeded = Shots * AmmoPerShot;
+            return crawler.Supplies[AmmoType!.Value] >= ammoNeeded;
         }
+    }
+
+    /// <summary>Total ammo consumption per firing cycle</summary>
+    public float AmmoPerCycle => Shots * AmmoPerShot;
+
+    public virtual IEnumerable<HitRecord> GenerateFire(ulong seed, float aim) {
+        if (!IsReadyToFire) yield break;
+
+        // Check and consume ammo if required
+        if (RequiresAmmo) {
+            if (Owner is not Crawler crawler) yield break;
+            float ammoNeeded = Shots * AmmoPerShot;
+            if (crawler.Supplies[AmmoType!.Value] < ammoNeeded) yield break;
+            crawler.Supplies.Remove(AmmoType!.Value, ammoNeeded);
+        }
+
+        var rng = new XorShift(seed);
+        for (int i = 0; i < Shots; i++) {
+            yield return new(rng.Seed(), this, Damage, Aim + aim);
+        }
+        CycleStart();
     }
     public virtual IEnumerable<HitRecord> Adjust(HitRecord hit, ulong seed) {
         yield return hit;
@@ -298,8 +338,8 @@ public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? Owner): Offe
         return clone;
     }
 }
-public record GunDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
-    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
+public record GunDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier, Tier AmmoTier)
+    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier, Commodity.Slugs, AmmoTier) {
     public override GunSegment NewSegment(ulong seed) => new(seed, this, null);
 }
 public class GunSegment(ulong seed, GunDef GunDef, IActor? Owner): WeaponSegment(seed, GunDef, Owner) {
@@ -316,8 +356,8 @@ public class GunSegment(ulong seed, GunDef GunDef, IActor? Owner): WeaponSegment
         return clone;
     }
 }
-public record LaserDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
-    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
+public record LaserDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier, Tier AmmoTier)
+    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier, Commodity.Cells, AmmoTier) {
     public override LaserSegment NewSegment(ulong seed) => new(seed, this, null);
 }
 public class LaserSegment(ulong seed, LaserDef LaserDef, IActor? Owner): WeaponSegment(seed, LaserDef, Owner) {
@@ -336,8 +376,8 @@ public class LaserSegment(ulong seed, LaserDef LaserDef, IActor? Owner): WeaponS
         return clone;
     }
 }
-public record MissileDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier)
-    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier) {
+public record MissileDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier DrainTier, Tier CostTier, Tier MaxHitsTier, Tier DamageTier, Tier RateTier, Tier ShotsTier, Tier AimTier, Tier AmmoTier)
+    : WeaponDef(Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, DamageTier, RateTier, ShotsTier, AimTier, Commodity.Rockets, AmmoTier) {
     public override MissileSegment NewSegment(ulong seed) => new(seed, this, null);
 }
 public class MissileSegment(ulong seed, MissileDef MissileDef, IActor? Owner): WeaponSegment(seed, MissileDef, Owner) {
@@ -680,6 +720,233 @@ public class ShieldSegment(ulong seed, ShieldDef shieldDef, IActor? Owner): Defe
         }
     }
 }
+
+// ============================================
+// INDUSTRY SEGMENTS
+// ============================================
+
+public record IndustryDef(
+    char Symbol,
+    Tier Size,
+    string Name,
+    Tier WeightTier,
+    Tier DrainTier,
+    Tier CostTier,
+    Tier MaxHitsTier,
+    Tier ThroughputTier,
+    Tier EfficiencyTier,
+    Tier ActivateChargeTier,
+    Production.IndustryType IndustryType
+) : SegmentDef(Symbol, Size, Name, SegmentKind.Industry, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+    public override IndustrySegment NewSegment(ulong seed) => new(seed, this, null);
+    public override char ClassCode => 'I';
+
+    /// <summary>Production speed multiplier (1.0 = normal speed)</summary>
+    public float Throughput => Tuning.Segments.ThroughputTiers[ThroughputTier];
+
+    /// <summary>Output efficiency multiplier (1.0 = no waste bonus)</summary>
+    public float Efficiency => Tuning.Segments.EfficiencyTiers[EfficiencyTier];
+
+    /// <summary>Reactor charge consumed per production cycle</summary>
+    public float ActivateCharge => Tuning.Segments.ActivateChargeTiers[ActivateChargeTier];
+
+    public override SegmentDef Resize(int Size) {
+        Tier delta = new(Size - base.Size.Size);
+        return ((IndustryDef)base.Resize(Size)) with {
+            ThroughputTier = ThroughputTier + delta,
+            EfficiencyTier = EfficiencyTier + delta,
+            ActivateChargeTier = ActivateChargeTier + delta,
+        };
+    }
+}
+
+public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner) : Segment(seed, industryDef, Owner) {
+    public Production.IndustryType IndustryType => industryDef.IndustryType;
+    public float Throughput => industryDef.Throughput;
+    public float Efficiency => industryDef.Efficiency;
+    public float ActivateCharge => industryDef.ActivateCharge;
+
+    /// <summary>Currently executing recipe, or null if idle</summary>
+    public Production.ProductionRecipe? CurrentRecipe { get; set; }
+
+    /// <summary>Progress through current production cycle (0.0 to 1.0)</summary>
+    public float ProductionProgress { get; set; } = 0;
+
+    /// <summary>Whether production is currently stalled (missing inputs, power, crew)</summary>
+    public bool IsStalled { get; set; } = false;
+
+    public override char ReportCode(Location _) => CurrentRecipe != null ? fracCode(ProductionProgress) : '-';
+
+    public override Segment Clone() {
+        var clone = new IndustrySegment(Seed, (IndustryDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        clone.CurrentRecipe = CurrentRecipe;
+        clone.ProductionProgress = ProductionProgress;
+        clone.IsStalled = IsStalled;
+        return clone;
+    }
+
+    public new record class Data : Segment.Data {
+        public string? RecipeName { get; set; }
+        public float ProductionProgress { get; set; }
+    }
+
+    public override Segment.Data ToData() {
+        return new Data {
+            Seed = this.Seed,
+            DefName = this.SegmentDef.Name,
+            Hits = this.Hits,
+            Packaged = this.Packaged,
+            Activated = this.Activated,
+            RecipeName = this.CurrentRecipe?.Name,
+            ProductionProgress = this.ProductionProgress,
+        };
+    }
+
+    public override void FromData(Segment.Data data) {
+        base.FromData(data);
+        if (data is Data industryData) {
+            CurrentRecipe = Production.RecipeEx.FindByName(industryData.RecipeName ?? "");
+            ProductionProgress = industryData.ProductionProgress;
+        }
+    }
+}
+
+// ============================================
+// STORAGE SEGMENTS
+// ============================================
+
+public enum StorageType {
+    General,      // Standard cargo
+    Refrigerated, // For perishables (higher power drain)
+    Hazardous,    // For dangerous goods (reinforced)
+    Bulk,         // Higher capacity, lower value density
+}
+
+public record StorageDef(
+    char Symbol,
+    Tier Size,
+    string Name,
+    Tier WeightTier,
+    Tier DrainTier,
+    Tier CostTier,
+    Tier MaxHitsTier,
+    Tier CapacityTier,
+    StorageType StorageType
+) : SegmentDef(Symbol, Size, Name, SegmentKind.Storage, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+    public override StorageSegment NewSegment(ulong seed) => new(seed, this, null);
+    public override char ClassCode => 'S';
+
+    /// <summary>Volume capacity in cubic meters</summary>
+    public float Capacity => Tuning.Segments.StorageCapacityTiers[CapacityTier];
+
+    public override SegmentDef Resize(int Size) {
+        Tier delta = new(Size - base.Size.Size);
+        return ((StorageDef)base.Resize(Size)) with {
+            CapacityTier = CapacityTier + delta,
+        };
+    }
+}
+
+public class StorageSegment(ulong seed, StorageDef storageDef, IActor? Owner) : Segment(seed, storageDef, Owner) {
+    public float Capacity => storageDef.Capacity;
+    public StorageType StorageType => storageDef.StorageType;
+
+    public override char ReportCode(Location _) => fracCode(UsedCapacity, Capacity);
+
+    /// <summary>Current used volume (tracked by crawler's inventory system)</summary>
+    public float UsedCapacity { get; set; } = 0;
+
+    public float AvailableCapacity => Capacity - UsedCapacity;
+
+    public override Segment Clone() {
+        var clone = new StorageSegment(Seed, (StorageDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        clone.UsedCapacity = UsedCapacity;
+        return clone;
+    }
+
+    public new record class Data : Segment.Data {
+        public float UsedCapacity { get; set; }
+    }
+
+    public override Segment.Data ToData() {
+        return new Data {
+            Seed = this.Seed,
+            DefName = this.SegmentDef.Name,
+            Hits = this.Hits,
+            Packaged = this.Packaged,
+            Activated = this.Activated,
+            UsedCapacity = this.UsedCapacity,
+        };
+    }
+
+    public override void FromData(Segment.Data data) {
+        base.FromData(data);
+        if (data is Data storageData) {
+            UsedCapacity = storageData.UsedCapacity;
+        }
+    }
+}
+
+// ========================
+// Harvest Segments
+// ========================
+
+public record HarvestDef(
+    char Symbol,
+    Tier Size,
+    string Name,
+    Tier WeightTier,
+    Tier DrainTier,
+    Tier CostTier,
+    Tier MaxHitsTier,
+    Tier YieldTier,
+    HarvestType Type
+) : SegmentDef(Symbol, Size, Name, SegmentKind.Harvest, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+    public override HarvestSegment NewSegment(ulong seed) => new(seed, this, null);
+    public override char ClassCode => 'H';
+
+    /// <summary>Extraction yield multiplier</summary>
+    public float Yield => Tuning.Segments.HarvestYieldTiers[YieldTier];
+
+    /// <summary>Commodities this harvester can extract</summary>
+    public Commodity[] ExtractableCommodities => Type switch {
+        HarvestType.Mining => [Commodity.Ore, Commodity.Silicates],
+        HarvestType.Biomass => [Commodity.Biomass],
+        HarvestType.Crystal => [Commodity.Silicates, Commodity.Gems],
+        HarvestType.Isotope => [Commodity.Isotopes],
+        _ => []
+    };
+
+    public override SegmentDef Resize(int Size) {
+        Tier delta = new(Size - base.Size.Size);
+        return ((HarvestDef)base.Resize(Size)) with {
+            YieldTier = YieldTier + delta,
+        };
+    }
+}
+
+public class HarvestSegment(ulong seed, HarvestDef harvestDef, IActor? Owner) : Segment(seed, harvestDef, Owner) {
+    public float Yield => harvestDef.Yield;
+    public HarvestType HarvestType => harvestDef.Type;
+    public Commodity[] ExtractableCommodities => harvestDef.ExtractableCommodities;
+
+    public override char ReportCode(Location _) => HarvestType switch {
+        HarvestType.Mining => 'M',
+        HarvestType.Biomass => 'B',
+        HarvestType.Crystal => 'X',
+        HarvestType.Isotope => 'I',
+        _ => '?'
+    };
+
+    public override Segment Clone() {
+        var clone = new HarvestSegment(Seed, (HarvestDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
+}
+
 public static class SegmentEx {
     public static string SegmentReport(this IEnumerable<Segment> segments, Location location) {
         string result = "";
@@ -854,9 +1121,9 @@ public static class SegmentEx {
     // Each individual tier can vary from the reference tier by one or two as long as the
     // average comes to [tier -0.5 (shitty items) to  tier + 1.5 (best in class items).
     public static List<WeaponDef> BaseWeaponDefs = [
-        new GunDef('g', 1, "Guns", 1.2f, 1, 1, 1, 0f, 1.25f, (1, 1), 1.2f),
-        new LaserDef('l', 1, "Lasers", 0.8f, 1.2f, 1.2f, 1, 1, (1, 1), 1, 1.0f),
-        new MissileDef('m', 1, "Missiles", 1.0f, 0.8f, 1.1f, 1, 1.33f, 1.5f, 1, 0.8f),
+        new GunDef('g', 1, "Guns", 1.2f, 1, 1, 1, 0f, 1.25f, (1, 1), 1.2f, 1),
+        new LaserDef('l', 1, "Lasers", 0.8f, 1.2f, 1.2f, 1, 1, (1, 1), 1, 1.0f, 1),
+        new MissileDef('m', 1, "Missiles", 1.0f, 0.8f, 1.1f, 1, 1.33f, 1.5f, 1, 0.8f, 1),
     ];
 
     public static List<WeaponDef> WeaponDefs = Variations(BaseWeaponDefs).ToList();
@@ -892,11 +1159,44 @@ public static class SegmentEx {
 
     public static IEnumerable<DefenseDef> CoreDefenseDefs => DefenseDefs;
 
+    // Industry definitions (Throughput, Efficiency, ActivateCharge)
+    public static List<IndustryDef> IndustryDefs = [
+        new IndustryDef('R', 2, "Refinery", 2, 1.5f, 2, 1.5f, 1, 1, 1, Production.IndustryType.Refinery),
+        new IndustryDef('F', 2, "Fabricator", 1.5f, 1.2f, 2.5f, 1.5f, 1, 1.2f, 1.5f, Production.IndustryType.Fabricator),
+        new IndustryDef('A', 2, "Assembler", 1.2f, 1, 3, 1.5f, 1.2f, 1, 2, Production.IndustryType.Assembler),
+        new IndustryDef('Y', 1.5f, "Recycler", 1.5f, 0.8f, 1.5f, 1, 0.8f, 0.7f, 0.5f, Production.IndustryType.Recycler),
+    ];
+
+    public static IEnumerable<IndustryDef> CoreIndustryDefs => IndustryDefs;
+
+    // Storage definitions (Capacity, Type)
+    public static List<StorageDef> StorageDefs = [
+        new StorageDef('C', 1, "Cargo Hold", 1, 0, 1, 1, 1, StorageType.General),
+        new StorageDef('K', 1.2f, "Cold Storage", 1, 0.5f, 1.5f, 1, 0.8f, StorageType.Refrigerated),
+        new StorageDef('H', 1.5f, "Hazmat Bay", 1.5f, 0.2f, 2, 1.5f, 0.7f, StorageType.Hazardous),
+        new StorageDef('B', 1.5f, "Bulk Tank", 0.8f, 0, 0.8f, 0.8f, 1.5f, StorageType.Bulk),
+    ];
+
+    public static IEnumerable<StorageDef> CoreStorageDefs => StorageDefs;
+
+    // Harvest definitions (Yield, Type)
+    public static List<HarvestDef> HarvestDefs = [
+        new HarvestDef('M', 1, "Mining Drill", 1.5f, 1.5f, 1.5f, 1.2f, 1, HarvestType.Mining),
+        new HarvestDef('B', 1, "Biomass Harvester", 1.2f, 1, 1.2f, 1, 1, HarvestType.Biomass),
+        new HarvestDef('X', 1.5f, "Crystal Extractor", 1.3f, 1.2f, 1.8f, 1.5f, 0.8f, HarvestType.Crystal),
+        new HarvestDef('I', 2, "Isotope Collector", 2, 2, 2.5f, 1.5f, 0.5f, HarvestType.Isotope),
+    ];
+
+    public static IEnumerable<HarvestDef> CoreHarvestDefs => HarvestDefs;
+
     public static List<SegmentDef> AllDefs = [
         .. OffenseDefs,
         .. PowerDefs,
         .. TractionDefs,
         .. DefenseDefs,
+        .. IndustryDefs,
+        .. StorageDefs,
+        .. HarvestDefs,
     ];
 
     // public static Dictionary<char, SegmentDef> Lookup = AllDefs.ToDictionary(s => s.Symbol);

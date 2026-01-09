@@ -590,6 +590,26 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public IEnumerable<PowerSegment> PowerSegments => _activeSegmentsByClass[SegmentKind.Power].Cast<PowerSegment>();
     public IEnumerable<ReactorSegment> ReactorSegments => PowerSegments.OfType<ReactorSegment>();
     public IEnumerable<ChargerSegment> ChargerSegments => PowerSegments.OfType<ChargerSegment>();
+    public IEnumerable<IndustrySegment> IndustrySegments => _activeSegmentsByClass.ContainsKey(SegmentKind.Industry)
+        ? _activeSegmentsByClass[SegmentKind.Industry].Cast<IndustrySegment>()
+        : Enumerable.Empty<IndustrySegment>();
+    public IEnumerable<StorageSegment> StorageSegments => _activeSegmentsByClass.ContainsKey(SegmentKind.Storage)
+        ? _activeSegmentsByClass[SegmentKind.Storage].Cast<StorageSegment>()
+        : Enumerable.Empty<StorageSegment>();
+    public IEnumerable<HarvestSegment> HarvestSegments => _activeSegmentsByClass.ContainsKey(SegmentKind.Harvest)
+        ? _activeSegmentsByClass[SegmentKind.Harvest].Cast<HarvestSegment>()
+        : Enumerable.Empty<HarvestSegment>();
+
+    /// <summary>Check if this crawler can harvest a specific resource type.</summary>
+    public bool CanHarvest(Commodity resource) =>
+        HarvestSegments.Any(h => h.ExtractableCommodities.Contains(resource));
+
+    /// <summary>Get total harvest yield for a specific resource type.</summary>
+    public float HarvestYield(Commodity resource) =>
+        HarvestSegments
+            .Where(h => h.ExtractableCommodities.Contains(resource))
+            .Sum(h => h.Yield);
+
     public float Speed => SpeedOn(Location.Terrain);
     public float Lift => LiftOn(Location.Terrain);
     public float MovementDrain => MovementDrainOn(Location.Terrain);
@@ -647,6 +667,30 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public float TotalGeneration =>
         ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Generation) +
         ChargerSegments.Aggregate(0.0f, (i, s) => i + s.Generation);
+
+    /// <summary>Power balance: generation minus total drain. Positive = surplus.</summary>
+    public float PowerBalance => TotalGeneration - TotalDrain;
+
+    /// <summary>Whether the crawler has sufficient power generation for all active systems.</summary>
+    public bool HasSufficientPower => PowerBalance >= 0;
+
+    /// <summary>
+    /// Consume burst power from reactor charge. Returns true if successful.
+    /// Draws from reactors with highest charge first.
+    /// </summary>
+    public bool ConsumeBurstPower(float amount) {
+        var reactors = ReactorSegments.OrderByDescending(r => r.Charge).ToList();
+        foreach (var reactor in reactors) {
+            float take = Math.Min(amount, reactor.Charge);
+            reactor.Charge -= take;
+            amount -= take;
+            if (amount <= 0) return true;
+        }
+        return amount <= 0;
+    }
+
+    /// <summary>Total storage capacity from all storage segments.</summary>
+    public float TotalStorageCapacity => StorageSegments.Sum(s => s.Capacity);
 
     // TODO: Replace with a power scaling
     public float FuelEfficiency => 0.4f;

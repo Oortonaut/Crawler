@@ -1,5 +1,17 @@
 ﻿namespace Crawler;
 
+/// <summary>
+/// Parameters for resource deposit extraction.
+/// </summary>
+public record ResourceParams(
+    float BaseAmount,         // Base total (scaled by location wealth)
+    float AmountVariance,     // 0.0-1.0, how much total varies at creation
+    float BaseYield,          // Lambda for Poisson extraction (expected units/cycle)
+    float EstimateVariance,   // Noise on estimate display (0.0-1.0)
+    bool Refillable,          // Does it regenerate?
+    float RefillRate          // Units/hour if refillable
+);
+
 public static partial class Tuning {
     public static class Game {
         public static float LootReturn = 0.5f;
@@ -11,6 +23,27 @@ public static partial class Tuning {
 
         // Resource encounter parameters
         public static float resourcePayoffFraction = 0.05f; // Fraction of location wealth
+    }
+
+    /// <summary>
+    /// Parameters for resource extraction system.
+    /// </summary>
+    public static class Resource {
+        /// <summary>Number of extraction cycles before showing noisy estimate.</summary>
+        public static int EstimateCycles = 3;
+
+        /// <summary>Time per extraction cycle.</summary>
+        public static TimeDuration ExtractionTime = TimeDuration.FromHours(1);
+
+        /// <summary>Per-resource extraction parameters.</summary>
+        public static Dictionary<Commodity, ResourceParams> Params = new() {
+            // BaseAmount, AmountVariance, BaseYield, EstimateVariance, Refillable, RefillRate
+            [Commodity.Ore] = new(500, 0.3f, 50, 0.15f, false, 0),
+            [Commodity.Biomass] = new(300, 0.5f, 40, 0.3f, true, 5),  // Regrows!
+            [Commodity.Silicates] = new(400, 0.25f, 45, 0.2f, false, 0),
+            [Commodity.Isotopes] = new(100, 0.4f, 10, 0.25f, false, 0),
+            [Commodity.Gems] = new(50, 0.6f, 5, 0.5f, false, 0),  // High variance
+        };
     }
 
     public static class Bandit {
@@ -198,7 +231,9 @@ public static partial class Tuning {
             0.4f, 0.4f, 0.6f, 0.7f, 0.4f, // Ceramics, Polymers, Alloys, Electronics, Explosives
             0.6f, 0.4f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
             0.2f, 0.1f, 0.1f, 0.05f, 0.3f, // Liquor, Stims, Downers, Trips, SmallArms
-            0.2f, 0.2f, 0.1f // Idols, Texts, Relics
+            0.2f, 0.2f, 0.1f, // Idols, Texts, Relics
+            0.1f, 0.3f, 0.3f, 0.4f, // Slag, Lubricants, Coolant, SpareParts
+            0.4f, 0.3f, 0.2f // Slugs, Cells, Rockets
         ];
 
         // Commodity weights by faction for crawler inventory generation
@@ -211,7 +246,9 @@ public static partial class Tuning {
                 0.4f, 0.4f, 0.6f, 0.7f, 0.4f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 0.6f, 0.4f, 0.3f, 0.3f, 0.5f, 0.5f, 0.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.2f, 0.1f, 0.1f, 0.05f, 0.3f,       // Liquor, Stims, Downers, Trips, SmallArms
-                0.2f, 0.2f, 0.1f                      // Idols, Texts, Relics
+                0.2f, 0.2f, 0.1f,                     // Idols, Texts, Relics
+                0.1f, 0.3f, 0.3f, 0.4f,              // Slag, Lubricants, Coolant, SpareParts
+                0.4f, 0.3f, 0.2f                      // Slugs, Cells, Rockets
             ],
             // Bandit - combat focused, less crew support
             [
@@ -221,7 +258,9 @@ public static partial class Tuning {
                 0.3f, 0.3f, 0.6f, 0.5f, 0.8f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 0.3f, 0.3f, 0.5f, 0.2f, 0.4f, 0.3f, 0.2f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.5f, 0.6f, 0.4f, 0.3f, 0.9f,        // Liquor, Stims, Downers, Trips, SmallArms - vice & weapons
-                0.1f, 0.1f, 0.2f                      // Idols, Texts, Relics
+                0.1f, 0.1f, 0.2f,                     // Idols, Texts, Relics
+                0.05f, 0.2f, 0.2f, 0.3f,             // Slag, Lubricants, Coolant, SpareParts
+                0.8f, 0.6f, 0.5f                      // Slugs, Cells, Rockets - high ammo
             ],
             // Trade - high on trade goods, low on combat
             [
@@ -231,7 +270,9 @@ public static partial class Tuning {
                 1.0f, 1.0f, 0.9f, 1.2f, 0.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.2f, 1.0f, 0.8f, 0.9f, 1.1f, 1.2f, 0.9f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.7f, 0.3f, 0.2f, 0.1f, 0.4f,        // Liquor, Stims, Downers, Trips, SmallArms
-                0.6f, 0.7f, 0.4f                      // Idols, Texts, Relics
+                0.6f, 0.7f, 0.4f,                     // Idols, Texts, Relics
+                0.2f, 0.6f, 0.5f, 0.7f,              // Slag, Lubricants, Coolant, SpareParts - industrial goods
+                0.3f, 0.2f, 0.1f                      // Slugs, Cells, Rockets - low ammo
             ],
             DefaultCommodityWeights,
             DefaultCommodityWeights,
@@ -282,6 +323,7 @@ public static partial class Tuning {
         public static PowerScaling RateTiers = new PowerScaling(3f, (0.65f, 1.4f), "slow", "fast");
         public static PowerScaling ShotsTiers = new PowerScaling(1.0f, (1.0f, 4f), "limited", "salvo");
         public static PowerScaling AimTiers = new PowerScaling(0.75f, (0.65f, 1.5f), "inaccurate", "accurate");
+        public static PowerScaling AmmoUseTiers = new PowerScaling(1.4f, (9, 2.5f), "wasteful", "thrifty");
 
         // Power parameters
         public static PowerScaling DrainTiers = new PowerScaling(1.0f, (25.0f, 0.6f), "wasteful", "efficient");
@@ -298,6 +340,17 @@ public static partial class Tuning {
         public static PowerScaling MitigationTiers = new PowerScaling(0.75f, (0.6f, 0.75f), "thin", "thick");
         public static PowerScaling ShieldCapacityTiers = new PowerScaling(12.0f, (15, 1.3f), "weak", "strong");
         public static PowerScaling ShieldChargeTiers = new PowerScaling(5.0f, (8, 1.2f), "slow", "fast");
+
+        // Industry parameters
+        public static PowerScaling ThroughputTiers = new PowerScaling(1.0f, (1.5f, 1.5f), "slow", "fast");
+        public static PowerScaling EfficiencyTiers = new PowerScaling(0.85f, (0.95f, 1.2f), "wasteful", "efficient");
+        public static PowerScaling ActivateChargeTiers = new PowerScaling(10.0f, (30, 1.5f), "light", "heavy");
+
+        // Storage parameters
+        public static PowerScaling StorageCapacityTiers = new PowerScaling(10.0f, (50, 2.0f), "cramped", "spacious");
+
+        // Harvest parameters
+        public static PowerScaling HarvestYieldTiers = new PowerScaling(1, (4, 3), "inefficient", "efficient");
     }
 
     public static class Economy {
@@ -310,7 +363,9 @@ public static partial class Tuning {
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 1.0f, 1.0f                      // Idols, Texts, Relics
+                1.0f, 1.0f, 1.0f,                     // Idols, Texts, Relics
+                1.0f, 1.0f, 1.0f, 1.0f,              // Slag, Lubricants, Coolant, SpareParts
+                1.0f, 1.0f, 1.0f                      // Slugs, Cells, Rockets
             ],
             // Crossroads - cheap scrap, fuel premium
             [
@@ -320,7 +375,9 @@ public static partial class Tuning {
                 1.0f, 1.0f, 1.1f, 1.0f, 1.2f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.1f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.9f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 0.9f, 1.0f, 1.0f, 1.0f, 1.1f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 0.9f, 1.1f                      // Idols, Texts, Relics
+                1.0f, 0.9f, 1.1f,                     // Idols, Texts, Relics
+                0.8f, 1.0f, 1.0f, 1.1f,              // Slag, Lubricants, Coolant, SpareParts - cheap waste
+                1.1f, 1.1f, 1.2f                      // Slugs, Cells, Rockets - slight premium
             ],
             // Settlement - cheap basics, morale services, manufactured goods
             [
@@ -330,7 +387,9 @@ public static partial class Tuning {
                 0.9f, 0.9f, 1.0f, 0.9f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 0.8f, 0.8f, 0.9f, 0.8f, 0.9f, 0.9f, 0.8f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.3f, 1.3f, 1.3f, 1.2f,        // Liquor, Stims, Downers, Trips, SmallArms - vice taxed
-                0.9f, 0.8f, 1.0f                      // Idols, Texts, Relics
+                0.9f, 0.8f, 1.0f,                     // Idols, Texts, Relics
+                0.7f, 0.85f, 0.85f, 0.9f,            // Slag, Lubricants, Coolant, SpareParts - cheap industrial
+                0.9f, 0.9f, 1.0f                      // Slugs, Cells, Rockets - standard
             ],
             // Resource - expensive scrap/crew, cheap raw materials
             [
@@ -340,7 +399,9 @@ public static partial class Tuning {
                 0.9f, 0.9f, 0.8f, 1.1f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.3f, 1.2f, 1.4f, 1.3f, 1.2f, 1.3f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.1f, 1.2f, 1.2f, 1.2f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.2f, 1.3f, 1.4f                      // Idols, Texts, Relics
+                1.2f, 1.3f, 1.4f,                     // Idols, Texts, Relics
+                0.5f, 0.9f, 1.0f, 1.1f,              // Slag, Lubricants, Coolant, SpareParts - cheap slag
+                1.2f, 1.3f, 1.4f                      // Slugs, Cells, Rockets - expensive
             ],
             // Hazard - everything expensive, low morale, desperate trades
             [
@@ -350,7 +411,9 @@ public static partial class Tuning {
                 1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.6f, 1.4f, 1.5f, 1.4f, 1.5f, 1.5f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.2f, 1.4f, 1.5f, 1.6f, 1.3f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.3f, 1.2f, 1.5f                      // Idols, Texts, Relics
+                1.3f, 1.2f, 1.5f,                     // Idols, Texts, Relics
+                0.6f, 1.3f, 1.4f, 1.5f,              // Slag, Lubricants, Coolant, SpareParts - expensive maint
+                1.6f, 1.7f, 1.8f                      // Slugs, Cells, Rockets - high demand
             ],
         ];
         public static EArray<TerrainType, EArray<Commodity, float>> TerrainCommodityMarkup = [
@@ -362,7 +425,9 @@ public static partial class Tuning {
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 1.0f, 1.0f                      // Idols, Texts, Relics
+                1.0f, 1.0f, 1.0f,                     // Idols, Texts, Relics
+                1.0f, 1.0f, 1.0f, 1.0f,              // Slag, Lubricants, Coolant, SpareParts
+                1.0f, 1.0f, 1.0f                      // Slugs, Cells, Rockets
             ],
             // Rough - fuel premium, morale harder
             [
@@ -372,7 +437,9 @@ public static partial class Tuning {
                 1.1f, 1.1f, 1.1f, 1.1f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.1f, 1.0f, 1.0f, 1.0f, 1.1f, 1.1f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.0f, 1.0f, 1.0f, 1.0f, 1.1f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 1.0f, 1.0f                      // Idols, Texts, Relics
+                1.0f, 1.0f, 1.0f,                     // Idols, Texts, Relics
+                1.0f, 1.1f, 1.1f, 1.1f,              // Slag, Lubricants, Coolant, SpareParts
+                1.1f, 1.1f, 1.1f                      // Slugs, Cells, Rockets
             ],
             // Broken - logistics costs
             [
@@ -382,7 +449,9 @@ public static partial class Tuning {
                 1.2f, 1.2f, 1.2f, 1.2f, 1.3f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.3f, 1.2f, 1.1f, 1.1f, 1.2f, 1.2f, 1.1f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.1f, 1.1f, 1.1f, 1.1f, 1.2f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.1f, 1.1f, 1.2f                      // Idols, Texts, Relics
+                1.1f, 1.1f, 1.2f,                     // Idols, Texts, Relics
+                1.0f, 1.2f, 1.2f, 1.3f,              // Slag, Lubricants, Coolant, SpareParts
+                1.3f, 1.3f, 1.4f                      // Slugs, Cells, Rockets
             ],
             // Shattered - fuel very expensive, harsh conditions
             [
@@ -392,7 +461,9 @@ public static partial class Tuning {
                 1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.5f, 1.4f, 1.2f, 1.3f, 1.4f, 1.4f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.2f, 1.3f, 1.3f, 1.3f, 1.4f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.2f, 1.2f, 1.3f                      // Idols, Texts, Relics
+                1.2f, 1.2f, 1.3f,                     // Idols, Texts, Relics
+                1.0f, 1.4f, 1.4f, 1.5f,              // Slag, Lubricants, Coolant, SpareParts
+                1.5f, 1.5f, 1.6f                      // Slugs, Cells, Rockets
             ],
             // Ruined - extreme premiums on everything
             [
@@ -402,26 +473,28 @@ public static partial class Tuning {
                 1.5f, 1.5f, 1.5f, 1.6f, 1.8f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
                 1.8f, 1.6f, 1.4f, 1.5f, 1.6f, 1.7f, 1.5f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
                 1.4f, 1.5f, 1.5f, 1.6f, 1.7f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.4f, 1.3f, 1.5f                      // Idols, Texts, Relics
+                1.4f, 1.3f, 1.5f,                     // Idols, Texts, Relics
+                1.0f, 1.6f, 1.7f, 1.8f,              // Slag, Lubricants, Coolant, SpareParts
+                1.8f, 1.9f, 2.0f                      // Slugs, Cells, Rockets
             ],
         ];
 
         public static EArray<EncounterType, EArray<SegmentKind, float>> EncounterSegmentKindMarkup = [
-            // Power, Traction, Offense, Defense
-            [1.0f, 1.0f, 1.0f, 1.0f], // None
-            [1.1f, 1.2f, 1.0f, 1.1f], // Crossroads - fuel/power premium
-            [0.9f, 1.0f, 0.8f, 0.9f], // Settlement - civilian discount on weapons
-            [1.3f, 1.5f, 1.4f, 1.2f], // Resource - industrial equipment premium
-            [1.4f, 1.3f, 1.6f, 1.5f], // Hazard - combat equipment premium
+            // Power, Traction, Offense, Defense, Industry, Storage, Harvest
+            [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f], // None
+            [1.1f, 1.2f, 1.0f, 1.1f, 1.0f, 1.0f, 1.2f], // Crossroads
+            [0.9f, 1.0f, 0.8f, 0.9f, 0.85f, 0.9f, 0.7f], // Settlement - cheap harvest
+            [1.3f, 1.5f, 1.4f, 1.2f, 0.8f, 1.1f, 0.6f], // Resource - very cheap harvest!
+            [1.4f, 1.3f, 1.6f, 1.5f, 1.3f, 1.4f, 1.5f], // Hazard
         ];
 
         public static EArray<TerrainType, EArray<SegmentKind, float>> LocationSegmentKindMarkup = [
-            // Power, Traction, Offense, Defense
-            [1.0f, 1.0f, 1.0f, 1.0f], // Flat
-            [1.1f, 1.2f, 1.0f, 1.1f], // Rough - traction premium
-            [1.2f, 1.4f, 1.1f, 1.2f], // Broken - mobility challenges
-            [1.3f, 1.7f, 1.2f, 1.3f], // Shattered - severe terrain penalties
-            [1.5f, 2.0f, 1.4f, 1.5f], // Ruined - extreme conditions
+            // Power, Traction, Offense, Defense, Industry, Storage, Harvest
+            [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f], // Flat
+            [1.1f, 1.2f, 1.0f, 1.1f, 1.1f, 1.1f, 0.9f], // Rough
+            [1.2f, 1.4f, 1.1f, 1.2f, 1.2f, 1.2f, 0.85f], // Broken
+            [1.3f, 1.7f, 1.2f, 1.3f, 1.3f, 1.3f, 0.8f], // Shattered
+            [1.5f, 2.0f, 1.4f, 1.5f, 1.5f, 1.5f, 0.75f], // Ruined - cheaper harvest
         ];
 
         public static float LocalMarkup(Commodity commodity, Location location) {

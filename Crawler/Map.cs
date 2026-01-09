@@ -224,6 +224,12 @@ public class Map {
     public void Construct() {
         CreateFactionCapitals();
         AssignSectorFactions();
+        GenerateTradeNetwork();
+    }
+
+    void GenerateTradeNetwork() {
+        using var activity = LogCat.Game.StartActivity($"{nameof(GenerateTradeNetwork)}");
+        TradeNetwork = Network.TradeNetwork.Generate(this, Rng);
     }
     public int NumFactions { get; protected set; }
     public Factions FactionEnd { get; protected set; }
@@ -414,18 +420,18 @@ public class Map {
         float tEncounter = ( float ) CrawlerEx.HaltonSequence(11, (uint)loc.Z);
         EArray<EncounterType, float> encounterWeights = [];
         switch (terrain) {
-            // None, Crawler, Settlement, Resource, Hazard,
+            // None, Crossroads, Settlement, Resource, Hazard
         case TerrainType.Flat:
-            encounterWeights = [0, 4.5f, 1.5f, 3, 3];
+            encounterWeights = [0, 4f, 1.5f, 5f, 2.5f];  // More resources in accessible terrain
             break;
         case TerrainType.Rough:
-            encounterWeights = [0, 5, 1, 3, 3];
+            encounterWeights = [0, 4.5f, 1, 5f, 2.5f];
             break;
         case TerrainType.Broken:
-            encounterWeights = [0, 3.25f, 0.75f, 4, 4];
+            encounterWeights = [0, 3f, 0.75f, 6f, 3.25f];  // Rich resource areas
             break;
         case TerrainType.Shattered:
-            encounterWeights = [0, 1.5f, 0.5f, 5, 5];
+            encounterWeights = [0, 1.5f, 0.5f, 7f, 3f];  // Abundant but dangerous resources
             break;
         case TerrainType.Ruined:
             encounterWeights = [0, 0, 0, 0, 0];
@@ -437,6 +443,21 @@ public class Map {
     public readonly int Width;
     Sector[,] Sectors;
     public EArray<Factions, FactionData?> FactionData { get; } = new();
+
+    /// <summary>The trade network connecting settlements and crossroads.</summary>
+    public Network.TradeNetwork? TradeNetwork { get; private set; }
+
+    /// <summary>Iterate over all sectors in the map.</summary>
+    public IEnumerable<Sector> AllSectors {
+        get {
+            foreach (var (x, y) in Sectors.Index()) {
+                yield return Sectors[y, x];
+            }
+        }
+    }
+
+    /// <summary>Iterate over all locations in the map.</summary>
+    public IEnumerable<Location> AllLocations => AllSectors.SelectMany(s => s.Locations);
 
     public Sector GetSector(int x, int y) => Sectors[y, x];
     public IEnumerable<Location> FindLocationsInRadius(Vector2 center, float radius) {

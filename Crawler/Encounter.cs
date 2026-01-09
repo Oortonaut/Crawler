@@ -434,63 +434,39 @@ public sealed class Encounter : IComparable<Encounter> {
     }
     public IActor CreateResource(ulong seed) {
         var rng = new XorShift(seed);
-        var resource = rng.ChooseRandom<Commodity>();
-        Name = $"{resource} Resource";
-        var amt = Inventory.QuantityBought(Location.Wealth * Tuning.Game.resourcePayoffFraction, resource, location);
 
-        string giftDesc;
-        string verb;
-        string name;
+        // Only extractable raw materials + gems
+        Commodity[] extractables = [
+            Commodity.Ore,
+            Commodity.Biomass,
+            Commodity.Silicates,
+            Commodity.Isotopes,
+            Commodity.Gems
+        ];
+        var resource = rng.ChooseRandom(extractables);
 
-        // Format amount appropriately (integer for integral commodities, 1 decimal otherwise)
-        string amtStr = resource.IsIntegral()
-            ? $"{(int)amt}"
-            : $"{amt:F1}";
+        // Get resource-specific parameters
+        var baseParams = Tuning.Resource.Params[resource];
 
-        (name, giftDesc, verb) = resource switch {
-            Commodity.Fuel => ("Fuel Cache", "You find an abandoned fuel cache.", $"Take {amtStr} Fuel"),
-            Commodity.Rations => ("Ration Stash", "You find an abandoned stash of rations.", $"Take {amtStr} Rations"),
-            Commodity.Crew => ("Disabled Crawler", $"You find a disabled crawler with {amtStr} crew running low on oxygen.", $"Rescue {amtStr} Crew"),
-            Commodity.Morale => ("Hidden Entertainment", "You find cached entertainment media. It will invigorate the crew.", $"Take Media ({amtStr} Morale)"),
-            Commodity.Scrap => ("Abandoned Crawler", "This abandoned crawler can be scrapped.", $"Scrap for {amtStr}¢¢"),
-            Commodity.Isotopes => ("Isotope Deposit", $"You find a deposit of radioactive isotopes.", $"Extract {amtStr} Isotopes"),
-            Commodity.Nanomaterials => ("Nanomaterial Cache", $"You find a cache of advanced nanomaterials.", $"Retrieve {amtStr} Nanomaterials"),
-            Commodity.Air => ("Air Cache", "You find pressurized air canisters.", $"Take {amtStr} Air"),
-            Commodity.Water => ("Water Cache", "You find sealed water containers.", $"Take {amtStr} Water"),
-            Commodity.Biomass => ("Biomass Deposit", "You find a deposit of organic material.", $"Harvest {amtStr} Biomass"),
-            Commodity.Ore => ("Ore Deposit", "You find exposed metallic ore.", $"Mine {amtStr} Ore"),
-            Commodity.Silicates => ("Silicate Deposit", "You find crystalline mineral formations.", $"Harvest {amtStr} Silicates"),
-            Commodity.Metal => ("Metal Cache", "You find processed metal sheets and bars.", $"Take {amtStr} Metal"),
-            Commodity.Chemicals => ("Chemical Cache", "You find sealed containers of industrial chemicals.", $"Take {amtStr} Chemicals"),
-            Commodity.Glass => ("Glass Cache", "You find crates of glass panels and containers.", $"Take {amtStr} Glass"),
-            Commodity.Ceramics => ("Ceramic Cache", "You find heat-resistant ceramic components.", $"Take {amtStr} Ceramics"),
-            Commodity.Polymers => ("Polymer Cache", "You find synthetic polymer materials.", $"Take {amtStr} Polymers"),
-            Commodity.Alloys => ("Alloy Cache", "You find advanced metal alloy components.", $"Take {amtStr} Alloys"),
-            Commodity.Electronics => ("Electronics Cache", "You find salvaged circuit boards and components.", $"Take {amtStr} Electronics"),
-            Commodity.Explosives => ("Explosives Cache", "You find sealed military explosives.", $"Take {amtStr} Explosives"),
-            Commodity.Medicines => ("Medical Supplies", "You find a medical supply cache.", $"Take {amtStr} Medicines"),
-            Commodity.Textiles => ("Textile Cache", "You find bolts of fabric and cloth.", $"Take {amtStr} Textiles"),
-            Commodity.Gems => ("Gem Cache", "You find a hidden stash of precious gems.", $"Take {amtStr} Gems"),
-            Commodity.Toys => ("Toy Cache", "You find a cache of entertainment items and games.", $"Take {amtStr} Toys"),
-            Commodity.Machines => ("Machinery Cache", "You find industrial machinery and tools.", $"Take {amtStr} Machines"),
-            Commodity.AiCores => ("Computer Cache", "You find intact AI cores.", $"Take {amtStr} AI cores"),
-            Commodity.Media => ("Media Cache", "You find data storage devices full of entertainment.", $"Take {amtStr} Media"),
-            Commodity.Liquor => ("Liquor Cache", "You find sealed bottles of alcohol.", $"Take {amtStr} Liquor"),
-            Commodity.Stims => ("Stim Cache", "You find a hidden stash of stimulants.", $"Take {amtStr} Stims"),
-            Commodity.Downers => ("Downer Cache", "You find a hidden stash of sedatives.", $"Take {amtStr} Downers"),
-            Commodity.Trips => ("Psychedelics Cache", "You find a hidden stash of psychoactive substances.", $"Take {amtStr} Trips"),
-            Commodity.SmallArms => ("Weapons Cache", "You find a cache of small arms.", $"Take {amtStr} SmallArms"),
-            Commodity.Idols => ("Religious Idols", "You find sacred religious artifacts.", $"Take {amtStr} Idols"),
-            Commodity.Texts => ("Sacred Texts", "You find ancient religious manuscripts.", $"Take {amtStr} Texts"),
-            Commodity.Relics => ("Holy Relics", "You find precious religious relics.", $"Take {amtStr} Relics"),
-            _ => ($"{resource} Cache", $"You find a cache of {resource}.", $"Take {amtStr} {resource}"),
+        // Scale by location wealth
+        float wealthScale = Location.Wealth * Tuning.Game.resourcePayoffFraction / 100;
+        var scaledParams = baseParams with {
+            BaseAmount = baseParams.BaseAmount * wealthScale
         };
 
-        var Inv = new Inventory();
-        Inv.Add(resource, amt);
+        var (name, description) = resource switch {
+            Commodity.Ore => ("Ore Deposit", "Rich veins of metallic ore run through this formation."),
+            Commodity.Biomass => ("Biomass Growth", "A dense patch of harvestable organic material thrives here."),
+            Commodity.Silicates => ("Crystal Formation", "Crystalline mineral formations glitter in the light."),
+            Commodity.Isotopes => ("Isotope Vein", "Radioactive isotopes are concentrated in this deposit."),
+            Commodity.Gems => ("Gem Deposit", "Precious gems are embedded in the rocky substrate."),
+            _ => ($"{resource} Deposit", $"A deposit of {resource}.")
+        };
 
-        var resourceActor = new ActorBase(rng.Seed(), name, giftDesc, Factions.Independent, Inv, new (), Location);
-        resourceActor.AddComponent(new HarvestComponent(Inv, verb, "H"));
+        Name = name;
+
+        var resourceActor = new ResourceActor(rng.Seed(), Location, resource, scaledParams, name, description);
+        resourceActor.AddComponent(new ExtractionComponent());
         return resourceActor;
     }
     public IActor CreateHazard(ulong seed) {

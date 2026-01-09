@@ -50,6 +50,17 @@ public enum Commodity {
     Idols,
     Texts,
     Relics,
+
+    // Production intermediates
+    Slag,        // Waste from refining
+    Lubricants,  // Maintenance consumable
+    Coolant,     // Industry operation
+    SpareParts,  // Generic maintenance
+
+    // Ammunition (manufactured from Parts)
+    Slugs,       // Gun ammo
+    Cells,       // Laser ammo
+    Rockets,     // Missile ammo
 }
 
 public enum GameTier {
@@ -65,6 +76,9 @@ public enum CommodityFlag {
     Perishable = 1 << 0, // Requires power/refrigeration
     Bulky = 1 << 1, // High volume relative to value
     Integral = 1 << 2, // Display as integer (no decimal places)
+    Ammunition = 1 << 3, // Consumed by weapons
+    Industrial = 1 << 4, // Required for production processes
+    Waste = 1 << 5, // Production byproduct
 }
 
 public enum CommodityCategory {
@@ -77,6 +91,9 @@ public enum CommodityCategory {
     Vice,
     Dangerous,
     Religious,
+    Industrial,  // Production consumables (lubricants, coolant, spare parts)
+    Ammunition,  // Weapon consumables (slugs, cells, rockets)
+    Waste,       // Production byproducts (slag)
 }
 
 public record struct CommodityData(float BaseValue, float Volume, float Mass, CommodityFlag Flag, GameTier Tier, CommodityCategory Cat);
@@ -132,6 +149,17 @@ public static class CommodityEx {
         new CommodityData(8f, 0.003f, 0.004f, CommodityFlag.Integral, GameTier.Early, CommodityCategory.Religious), // Idols
         new CommodityData(25f, 0.005f, 0.002f, CommodityFlag.Integral, GameTier.Mid, CommodityCategory.Religious), // Texts
         new CommodityData(500f, 0.002f, 0.003f, CommodityFlag.Integral, GameTier.Late, CommodityCategory.Religious), // Relics
+
+        // Production intermediates
+        new CommodityData(5f, 1.0f, 2.0f, CommodityFlag.Waste | CommodityFlag.Bulky, GameTier.Early, CommodityCategory.Waste), // Slag
+        new CommodityData(50f, 0.05f, 0.05f, CommodityFlag.Industrial, GameTier.Early, CommodityCategory.Industrial), // Lubricants
+        new CommodityData(75f, 0.1f, 0.12f, CommodityFlag.Industrial, GameTier.Mid, CommodityCategory.Industrial), // Coolant
+        new CommodityData(500f, 0.5f, 0.3f, CommodityFlag.Industrial, GameTier.Mid, CommodityCategory.Industrial), // SpareParts
+
+        // Ammunition
+        new CommodityData(15f, 0.01f, 0.02f, CommodityFlag.Ammunition, GameTier.Early, CommodityCategory.Ammunition), // Slugs
+        new CommodityData(80f, 0.02f, 0.015f, CommodityFlag.Ammunition, GameTier.Mid, CommodityCategory.Ammunition), // Cells
+        new CommodityData(250f, 0.1f, 0.08f, CommodityFlag.Ammunition, GameTier.Mid, CommodityCategory.Ammunition), // Rockets
     ];
 
     public static CommodityFlag Flags(this Commodity commodity) => Data[commodity].Flag;
@@ -140,6 +168,9 @@ public static class CommodityEx {
     public static bool IsBulky(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Bulky);
     public static bool IsEssential(this Commodity commodity) => commodity.Category() == CommodityCategory.Essential;
     public static bool IsIntegral(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Integral);
+    public static bool IsAmmunition(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Ammunition);
+    public static bool IsIndustrial(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Industrial);
+    public static bool IsWaste(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Waste);
     public static float BaseCost(this Commodity commodity) => Data[commodity].BaseValue;
     public static GameTier Tier(this Commodity commodity) => Data[commodity].Tier;
     public static float Mass(this Commodity commodity) => Data[commodity].Mass;
