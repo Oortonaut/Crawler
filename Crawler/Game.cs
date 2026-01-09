@@ -2,7 +2,10 @@
 using System.Diagnostics.Metrics;
 using System.Drawing;
 using System.Numerics;
+using Crawler.Convoy;
 using Crawler.Logging;
+using Crawler.Network;
+using Crawler.Production;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;
@@ -133,6 +136,60 @@ public class Game {
         scheduler.Preempt(Actor, Priority);
     }
 
+    /// <summary>
+    /// Check for contacts between actors traveling on roads.
+    /// Triggered when paths cross (sign change of parametric delta).
+    /// </summary>
+    void CheckRoadContacts(TimePoint previousTime, TimePoint currentTime) {
+        foreach (var contact in ContactDetection.DetectAllContacts(previousTime, currentTime)) {
+            HandleContact(contact);
+        }
+    }
+
+    /// <summary>
+    /// Handle a contact event where two actors' paths crossed on a road.
+    /// Creates a transit encounter and pulls both actors into it.
+    /// </summary>
+    void HandleContact(ContactEvent contact) {
+        // Generate deterministic seed for the encounter
+        ulong seed = contact.Actor1.Seed ^ contact.Actor2.Seed ^ (ulong)contact.Time.Elapsed;
+
+        // 1. Preempt both actors from their scheduled events
+        Preempt(contact.Actor1, 1000);
+        Preempt(contact.Actor2, 1000);
+
+        // 2. Get or create transit encounter at contact point
+        var transitEncounter = TransitEncounterFactory.GetOrCreate(
+            seed, contact.Road, contact.Progress, contact.Time);
+
+        // 3. Get current transit state for resumption later
+        var transit1 = TransitRegistry.GetTransit(contact.Actor1);
+        var transit2 = TransitRegistry.GetTransit(contact.Actor2);
+
+        // 4. Remove actors from transit registry (they're now in an encounter)
+        TransitRegistry.EndTransit(contact.Actor1);
+        TransitRegistry.EndTransit(contact.Actor2);
+
+        // 5. Add actors to transit encounter (fires ActorArrived, triggers components)
+        transitEncounter.AddActorAt(contact.Actor1, contact.Time);
+        transitEncounter.AddActorAt(contact.Actor2, contact.Time);
+
+        // 6. Add resume transit components so actors continue after interaction
+        if (transit1 != null && contact.Actor1 is Crawler crawler1) {
+            crawler1.AddComponent(new ResumeTransitComponent(
+                transit1.Road, contact.Progress, transit1.Road.To, transit1.Speed));
+        }
+        if (transit2 != null && contact.Actor2 is Crawler crawler2) {
+            crawler2.AddComponent(new ResumeTransitComponent(
+                transit2.Road, contact.Progress, transit2.Road.To, transit2.Speed));
+        }
+
+        // Log the contact
+        Log.LogInformation("Road contact: {Actor1} and {Actor2} at {Progress:P0} on {Road}",
+            contact.Actor1.Name, contact.Actor2.Name, contact.Progress,
+            $"{contact.Road.From.PosString}->{contact.Road.To.PosString}");
+    }
+
     HashSet<Encounter> updatedEncounters = new();
 
     void ProcessSchedule(TimePoint currentTime) {
@@ -216,6 +273,7 @@ public class Game {
             new MenuAction("M", _SectorMapName(), _ => SectorMap()),
             new MenuAction("G", "Global Map", _ => WorldMap()),
             new MenuAction("R", "Status Report", _ => Report()),
+            new MenuAction("PR", "Production Recipes", _ => ProductionRecipesReport()),
             new MenuAction("K", "Skip Turn/Wait", args => Turn(args)),
             new MenuAction("Q", "Save and Quit", _ => { Save(); return Quit(); }),
             new MenuAction("QQ", "Quit", _ => Quit()),
@@ -224,6 +282,9 @@ public class Game {
             new MenuAction("GIVE", "Give commodity", args => GiveCommodity(args), IsVisible: false),
             new MenuAction("DMG", "Damage segment", args => DamageSegment(args), IsVisible: false),
         ]);
+
+        // Convoy actions
+        BuildConvoyActions(context);
 
         // Register system actions
         foreach (var action in context.SystemActions) {
@@ -288,6 +349,122 @@ public class Game {
         context.RegisterAction("PR", context.PlayerActions[3]);
 
         // TODO: Add inventory transfer actions (PT*, PS*, PC*)
+    }
+
+    void BuildConvoyActions(MenuContext context) {
+        var convoy = Convoy.ConvoyRegistry.GetConvoy(Player);
+
+        if (convoy != null) {
+            // Player is in a convoy - show status and leave options
+            var statusAction = new MenuAction(
+                "CV",
+                $"Convoy Status ({convoy.Size} members)",
+                _ => ConvoyStatusMenu()
+            );
+            context.SystemActions.Add(statusAction);
+            context.RegisterAction("CV", statusAction);
+
+            // Only allow leaving at locations (not in transit)
+            if (!convoy.IsInTransit) {
+                var leaveAction = new MenuAction(
+                    "CL",
+                    "Leave Convoy",
+                    _ => {
+                        convoy.RemoveMember(Player);
+                        Player.Message("Left the convoy.");
+                        return false;
+                    }
+                );
+                context.SystemActions.Add(leaveAction);
+                context.RegisterAction("CL", leaveAction);
+            }
+        } else {
+            // Player not in convoy - show form option
+            var formAction = new MenuAction(
+                "CF",
+                "Form Convoy",
+                _ => FormConvoyMenu()
+            );
+            context.SystemActions.Add(formAction);
+            context.RegisterAction("CF", formAction);
+        }
+    }
+
+    bool ConvoyStatusMenu() {
+        var convoy = Convoy.ConvoyRegistry.GetConvoy(Player);
+        if (convoy == null) {
+            Player.Message("You are not in a convoy.");
+            return false;
+        }
+
+        string status = Style.MenuNormal.StyleString();
+        status += $"\n=== Convoy Status ===\n";
+        status += $"Leader: {convoy.Leader.Name}\n";
+        status += $"Members: {convoy.Size}\n";
+        status += $"Destination: {convoy.Destination?.Description ?? "None"}\n";
+        status += $"Progress: Waypoint {convoy.CurrentWaypointIndex + 1} of {convoy.Route.Count}\n";
+        status += $"In Transit: {(convoy.IsInTransit ? "Yes" : "No")}\n";
+        status += $"\nCombined Firepower: {convoy.CombinedFirepower:F0}\n";
+        status += $"Combined Defense: {convoy.CombinedDefense:F0}\n";
+
+        status += $"\n--- Members ---\n";
+        foreach (var member in convoy.AllParticipants) {
+            var role = Convoy.ConvoyRegistry.GetRole(member);
+            status += $"  {member.Name} ({role})\n";
+        }
+
+        Player.Message(status);
+        return false;
+    }
+
+    bool FormConvoyMenu() {
+        // Show destination selection menu
+        var network = Map.TradeNetwork;
+        if (network == null) {
+            Player.Message("No trade network available.");
+            return false;
+        }
+
+        Player.Message("Select destination for convoy:");
+
+        // Show nearby settlements as potential destinations
+        var currentSector = PlayerLocation.Sector;
+        var destinations = new List<Location>();
+
+        destinations.AddRange(currentSector.Settlements);
+        foreach (var neighbor in currentSector.Neighbors) {
+            destinations.AddRange(neighbor.Settlements);
+        }
+
+        // Filter to reachable destinations
+        destinations = destinations
+            .Where(loc => loc != PlayerLocation)
+            .Where(loc => network.FindPath(PlayerLocation, loc) != null)
+            .OrderBy(loc => PlayerLocation.Distance(loc))
+            .Take(10)
+            .ToList();
+
+        if (destinations.Count == 0) {
+            Player.Message("No reachable destinations for convoy.");
+            return false;
+        }
+
+        // For now, just create convoy to first destination
+        // TODO: Add proper destination selection menu
+        var menuItems = new List<string>();
+        for (int i = 0; i < destinations.Count; i++) {
+            var dest = destinations[i];
+            var path = network.FindPath(PlayerLocation, dest);
+            var travelTime = path != null ? network.PathTravelTime(path) : 0;
+            menuItems.Add($"CF{i + 1}: {dest.Description} ({travelTime:F1}h via {path?.Count - 1 ?? 0} waypoints)");
+        }
+
+        string prompt = string.Join("\n", menuItems);
+        Player.Message(prompt);
+
+        // This is a simplified version - a full implementation would wait for user input
+        // For now, register the destination actions
+        return false;
     }
 
     void BuildNavigationActions(MenuContext context) {
@@ -494,12 +671,17 @@ public class Game {
             if (nextTime!.Value < lastTime) {
                 throw new InvalidOperationException($"CRITICAL: Time moved backwards! Current={TimeString(lastTime)}, Next={TimeString(nextTime.Value)}");
             }
-            lastTime = nextTime!.Value;
 
             using var activity = Scope($"Game::Turn")?
                 .AddTag("start", nextTime.Value);
 
             ProcessSchedule(nextTime.Value);
+
+            // Check for road contacts between transiting actors
+            if (lastTime.IsValid) {
+                CheckRoadContacts(lastTime, nextTime.Value);
+            }
+            lastTime = nextTime!.Value;
 
             // Log.LogInformation("Game.Run: after ProcessSchedule, scheduler has {Count} events, quit={Quit}, won={Won}, lost={Lost}", scheduler.Count, quit, PlayerWon, PlayerLost);
 
@@ -540,6 +722,17 @@ public class Game {
         var rng = new XorShift(999);
         var segments = SegmentEx.AllDefs.SelectMany(def => Variants(def)).Select(def => def.NewSegment(rng.Seed())).ToList();
         Player.Message(segments.SegmentReport(PlayerLocation));
+        return false;
+    }
+
+    bool ProductionRecipesReport() {
+        const float chargeValue = 1.0f; // 1 scrap per charge unit
+
+        var report = Style.MenuTitle.Format("[Production Recipes Report]") + "\n\n";
+        report += RecipeEx.AllRecipes.FormatReport(chargeValue);
+        report += "\nDelta: + = profitable (current > suggested), - = needs price increase\n";
+
+        Player.Message(report);
         return false;
     }
 

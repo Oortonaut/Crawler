@@ -286,4 +286,97 @@ public static class RecipeEx {
     /// </summary>
     public static ProductionRecipe? FindByName(string name) =>
         AllRecipes.FirstOrDefault(r => r.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Calculate the total input cost for a recipe based on commodity base values.
+    /// </summary>
+    public static float InputCost(this ProductionRecipe recipe) =>
+        recipe.Inputs.Sum(kv => kv.Key.BaseCost() * kv.Value);
+
+    /// <summary>
+    /// Calculate the total consumable cost for a recipe.
+    /// </summary>
+    public static float ConsumableCost(this ProductionRecipe recipe) =>
+        recipe.Consumables.Sum(kv => kv.Key.BaseCost() * kv.Value);
+
+    /// <summary>
+    /// Calculate the total maintenance cost for a recipe.
+    /// </summary>
+    public static float MaintenanceCost(this ProductionRecipe recipe) =>
+        recipe.Maintenance.Sum(kv => kv.Key.BaseCost() * kv.Value);
+
+    /// <summary>
+    /// Calculate the total production cost including charge (valued at scrap-per-charge rate).
+    /// </summary>
+    public static float TotalCost(this ProductionRecipe recipe, float chargeValue = 1.0f) =>
+        recipe.InputCost() + recipe.ConsumableCost() + recipe.MaintenanceCost() +
+        recipe.ActivateCharge * chargeValue;
+
+    /// <summary>
+    /// Calculate suggested price per unit of primary output based on costs + margin.
+    /// </summary>
+    public static float SuggestedPrice(this ProductionRecipe recipe, float margin = 1.5f, float chargeValue = 1.0f) {
+        var primaryOutput = recipe.Outputs.FirstOrDefault();
+        if (primaryOutput.Value <= 0) return 0;
+        return recipe.TotalCost(chargeValue) * margin / primaryOutput.Value;
+    }
+
+    /// <summary>
+    /// Get the current base price of the primary output.
+    /// </summary>
+    public static float CurrentPrice(this ProductionRecipe recipe) {
+        var primaryOutput = recipe.Outputs.FirstOrDefault();
+        return primaryOutput.Key.BaseCost();
+    }
+
+    /// <summary>
+    /// Format recipes as a report string showing costs and suggested prices.
+    /// </summary>
+    public static string FormatReport(this IEnumerable<ProductionRecipe> recipes, float chargeValue = 1.0f) {
+        var table = new Table(
+            ("Recipe", -22),
+            ("Industry", -11),
+            ("Inputs", 7),
+            ("Consum", 7),
+            ("Maint", 6),
+            ("Chrg", 5),
+            ("Total", 8),
+            ("Output", -14),
+            ("Current", 8),
+            ("Suggest", 8),
+            ("Delta", 7)
+        );
+
+        foreach (var recipe in recipes) {
+            var primaryOutput = recipe.Outputs.FirstOrDefault();
+            var outputQty = primaryOutput.Value;
+            var outputName = primaryOutput.Key.ToString();
+
+            var inputCost = recipe.InputCost();
+            var consumCost = recipe.ConsumableCost();
+            var maintCost = recipe.MaintenanceCost();
+            var totalCost = recipe.TotalCost(chargeValue);
+            var currentPrice = recipe.CurrentPrice();
+            var suggestedPrice = recipe.SuggestedPrice(1.5f, chargeValue);
+
+            var delta = currentPrice > 0 ? (currentPrice - suggestedPrice) / suggestedPrice * 100 : 0;
+            var deltaStr = delta >= 0 ? $"+{delta:F0}%" : $"{delta:F0}%";
+
+            table.AddRow(
+                recipe.Name,
+                recipe.RequiredIndustry.ToString(),
+                $"{inputCost:F0}",
+                $"{consumCost:F1}",
+                $"{maintCost:F1}",
+                $"{recipe.ActivateCharge:F0}",
+                $"{totalCost:F0}",
+                $"{outputQty:F0}x {outputName}",
+                $"{currentPrice:F0}",
+                $"{suggestedPrice:F0}",
+                deltaStr
+            );
+        }
+
+        return table.ToString();
+    }
 }
