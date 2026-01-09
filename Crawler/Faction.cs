@@ -10,6 +10,7 @@ public enum Roles {
     Customs,     // Contraband enforcement officer
     Bandit,      // Extortion/robbery specialist
     Traveler,    // Dynamic quest giver/wanderer
+    Harvester,   // Resource extraction specialist
 }
 
 public enum Factions {

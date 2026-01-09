@@ -347,6 +347,16 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
                 Tuning.Trade.TradeSpread(travelerGaussian))); // Limited trading
             break;
 
+        case Roles.Harvester:
+            // Harvesters: resource extraction specialists
+            AddComponent(new HarvesterAIComponent(rng.Seed()));
+            // Can trade extracted resources
+            var harvesterGaussian = new GaussianSampler(rng.Seed());
+            AddComponent(new TradeOfferComponent(rng.Seed(), 0.20f,
+                Tuning.Trade.TradeMarkup(harvesterGaussian),
+                Tuning.Trade.TradeSpread(harvesterGaussian)));
+            break;
+
         case Roles.None:
         default:
             // No role-specific components
