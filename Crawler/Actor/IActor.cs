@@ -1,6 +1,8 @@
 ﻿using System.Diagnostics;
 using System.Numerics;
+using Crawler.Convoy;
 using Crawler.Logging;
+using Crawler.Network;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;
@@ -177,6 +179,8 @@ public interface IActor: IComparable, IComparable<IActor> {
     // ===== Misc =====
     /// <summary>Number of domes (for settlements)</summary>
     int Domes { get; }
+    /// <summary>Stock baseline tracking for settlements (for dynamic pricing)</summary>
+    Economy.SettlementStock? Stock { get; }
 
     event InitializedHandler? ActorInitialized;
     event DestroyedHandler? ActorDestroyed;
@@ -214,6 +218,67 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
         public override void OnEnd() {
             Tag.Location = Destination;
             Destination.GetEncounter().AddActorAt(Tag, Time);
+        }
+    }
+
+    /// <summary>
+    /// Event for a single step of transit (5 minutes by default).
+    /// Actors travel in discrete steps to enable contact detection with other travelers.
+    /// </summary>
+    public record TransitStepEvent(
+        IActor Tag,
+        TimePoint Time,
+        Road Road,
+        float StartProgress,   // Parametric position at step start (0-1)
+        float EndProgress,     // Parametric position at step end (0-1)
+        Location Destination   // Final destination location
+    ) : ActorEvent(Tag, Time, Priority: 50) {
+
+        public override string ToString() =>
+            base.ToString() + $" transit {Road.From.PosString}->{Road.To.PosString} ({StartProgress:P0}->{EndProgress:P0})";
+
+        public override void OnStart() {
+            // Update transit registry with start position
+            var transit = TransitRegistry.GetTransit(Tag);
+            if (transit != null) {
+                transit.Progress = StartProgress;
+            }
+        }
+
+        public override void OnEnd() {
+            // Update transit registry with end position
+            TransitRegistry.UpdateProgress(Tag, EndProgress);
+
+            if (EndProgress >= 1.0f) {
+                // Arrived at destination
+                TransitRegistry.EndTransit(Tag);
+                Tag.Location = Destination;
+                Destination.GetEncounter().AddActorAt(Tag, Time);
+            } else {
+                // Schedule next step
+                ScheduleNextStep();
+            }
+        }
+
+        void ScheduleNextStep() {
+            var transit = TransitRegistry.GetTransit(Tag);
+            if (transit == null) return;
+
+            // Calculate next step
+            float stepHours = (float)Tuning.Convoy.TransitStepDuration.TotalHours;
+            float stepKm = transit.Speed * stepHours;
+            float stepProgress = stepKm / Road.Distance;
+            float newProgress = Math.Min(EndProgress + stepProgress, 1.0f);
+
+            var nextStep = new TransitStepEvent(
+                Tag,
+                Time + Tuning.Convoy.TransitStepDuration,
+                Road,
+                EndProgress,
+                newProgress,
+                Destination
+            );
+            Game.Instance!.Schedule(nextStep);
         }
     }
 }
@@ -495,7 +560,8 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         ReceivingFire?.Invoke(from, fire);
     }
     public virtual void Message(string message) {}
-    public int Domes { get; set; } = 0;
+    public virtual int Domes => 0;
+    public Economy.SettlementStock? Stock { get; set; }
 
     Encounter? _encounter;
     public void Arrived(Encounter encounter) {

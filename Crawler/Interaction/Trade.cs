@@ -69,8 +69,10 @@ public static class TradeEx {
             var locationMarkup = Tuning.Economy.LocalMarkup(commodity, Location);
             var scarcityPremium = commodity.ScarcityPremium(Location);
             var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
+            // Dynamic stock multiplier: low stock = higher prices, high stock = lower prices
+            var stockMultiplier = Seller.Stock?.PriceMultiplier(commodity, Seller.Cargo[commodity]) ?? 1.0f;
 
-            float midPrice = commodity.CostAt(Location) * scarcityPremium * policyMultiplier;
+            float midPrice = commodity.CostAt(Location) * scarcityPremium * policyMultiplier * stockMultiplier;
 
             float bidAskSpread = Tuning.Trade.baseBidAskSpread;
             bidAskSpread *= tradeComponent?.Spread ?? 1.0f;

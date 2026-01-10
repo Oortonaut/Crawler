@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using Crawler.Convoy;
 using Crawler.Logging;
+using Crawler.Network;
 using Microsoft.Extensions.Logging;
 
 namespace Crawler;
@@ -256,12 +258,16 @@ public class CustomsComponent : ActorComponentBase {
 
 /// <summary>
 /// Component that generates trade interactions on-demand.
-/// Trade offers are generated once and cached, interactions are enumerated fresh each time.
+/// Trade offers are generated and cached, with periodic recalculation for dynamic pricing.
 /// </summary>
 public class TradeOfferComponent : ActorComponentBase {
     float _wealthFraction;
     ulong _seed;
     List<TradeOffer>? _offers;
+    TimePoint _lastOfferGeneration;
+
+    /// <summary>How often trade offers/prices are recalculated (2 decimal hours = 1/5 of a day).</summary>
+    public static readonly TimeDuration PriceRecalcInterval = TimeDuration.FromHours(2);
 
     public float Markup { get; set; } = 1.0f;
     public float Spread { get; set; } = 1.0f;
@@ -274,12 +280,19 @@ public class TradeOfferComponent : ActorComponentBase {
     }
 
     /// <summary>
-    /// Get cached trade offers, generating them on first call.
+    /// Get cached trade offers, regenerating if enough time has passed.
     /// Public to allow InteractionContext to access offers for market display in TUI.
     /// </summary>
     public List<TradeOffer> GetOrCreateOffers() {
-        if (_offers == null) {
+        bool needsRecalc = _offers != null &&
+                           Owner.Time.IsValid &&
+                           _lastOfferGeneration.IsValid &&
+                           Owner.Time - _lastOfferGeneration >= PriceRecalcInterval;
+
+        if (_offers == null || needsRecalc) {
             _offers = Owner.MakeTradeOffers(_seed, _wealthFraction);
+            _lastOfferGeneration = Owner.Time;
+            Owner.Stock?.MarkPriceUpdate(Owner.Time);
         }
         return _offers;
     }
@@ -927,6 +940,77 @@ public class LeaveEncounterComponent : ActorComponentBase {
         }
         _exitTime = exitTime;
         _leaveEvent = null;
+    }
+}
+
+/// <summary>
+/// Component that resumes transit after an encounter on a road.
+/// Added when actors are pulled into a transit encounter and need to continue their journey.
+/// </summary>
+public class ResumeTransitComponent : ActorComponentBase {
+    readonly Road _road;
+    readonly float _progress;
+    readonly Location _destination;
+    readonly float _speed;
+    bool _resumed;
+
+    public ResumeTransitComponent(Road road, float progress, Location destination, float speed) {
+        _road = road;
+        _progress = progress;
+        _destination = destination;
+        _speed = speed;
+        _resumed = false;
+    }
+
+    public override int Priority => 800; // Very high - resume transit ASAP after interaction
+
+    public override ActorEvent? GetNextEvent() {
+        if (_resumed) return null;
+
+        // Only resume if we're not still in combat or other blocking state
+        if (Owner is Crawler crawler) {
+            // Check if we're still hostile to anyone in the encounter
+            var encounter = crawler.Location.GetEncounter();
+            bool inCombat = encounter.Actors
+                .Where(a => a != crawler)
+                .Any(a => crawler.To(a).Hostile || a.To(crawler).Hostile);
+
+            if (inCombat) return null;
+        }
+
+        return CreateResumeEvent();
+    }
+
+    ActorEvent? CreateResumeEvent() {
+        _resumed = true;
+
+        // Remove from current encounter
+        Owner.Location.GetEncounter().TryRemoveActor(Owner);
+
+        // Re-register in transit registry
+        TransitRegistry.BeginTransit(Owner, _road, _speed, Owner.Time);
+        TransitRegistry.UpdateProgress(Owner, _progress);
+
+        // Calculate next step
+        float stepHours = (float)Tuning.Convoy.TransitStepDuration.TotalHours;
+        float stepKm = _speed * stepHours;
+        float stepProgress = stepKm / _road.Distance;
+        float newProgress = Math.Min(_progress + stepProgress, 1.0f);
+
+        // Schedule next transit step
+        var stepEvent = new ActorEvent.TransitStepEvent(
+            Owner,
+            Owner.Time + Tuning.Convoy.TransitStepDuration,
+            _road,
+            _progress,
+            newProgress,
+            _destination
+        );
+
+        // Remove this component after scheduling resume
+        Owner.RemoveComponent(this);
+
+        return stepEvent;
     }
 }
 

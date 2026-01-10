@@ -383,8 +383,17 @@ public sealed class Encounter : IComparable<Encounter> {
 
     public Crawler CreateCapital(ulong seed) {
         using var activity = Scope($"GenerateCapital {nameof(Encounter)}");
-        var settlement = CreateSettlement(seed);
-        settlement.Domes += 2;
+        var capitalRng = new XorShift(seed);
+        var settlement = CreateSettlement(capitalRng.Seed());
+        // Add 2 additional large domes for capitals
+        var largeDomeDef = SegmentEx.HabitatDefs.First(h => h.Type == HabitatType.Dome && h.Size.Size >= 8);
+        for (int i = 0; i < 2; i++) {
+            var domeSegment = largeDomeDef.NewSegment(capitalRng.Seed());
+            domeSegment.Packaged = false;
+            domeSegment.Owner = settlement;
+            settlement.Segments.Add(domeSegment);
+        }
+        settlement.UpdateSegmentCache();
         settlement.Flags |= ActorFlags.Capital;
         return settlement;
     }
@@ -397,11 +406,27 @@ public sealed class Encounter : IComparable<Encounter> {
         // wealth is also population scaled,
         float goodsWealth = Location.Wealth * domes * 0.5f;
         float segmentWealth = Location.Wealth * domes * 0.25f;
-        var settlement = Crawler.NewRandom(settlementRng.Seed(), Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3]);
-        settlement.Domes = domes;
+        // Segment weights: Power, Traction, Offense, Defense, Industry, Storage, Harvest, Habitat
+        var settlement = Crawler.NewRandom(settlementRng.Seed(), Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3, 2, 1, 0, 0]);
+
+        // Add dome habitat segments based on population
+        for (int i = 0; i < domes; i++) {
+            // Larger settlements get bigger domes: size 6 for first few, scaling up to 9
+            int domeSize = Math.Min(6 + i / 2, 9);
+            var domeDef = SegmentEx.HabitatDefs
+                .FirstOrDefault(h => h.Type == HabitatType.Dome && (int)h.Size.Size == domeSize)
+                ?? SegmentEx.HabitatDefs.First(h => h.Type == HabitatType.Dome);
+            var domeSegment = domeDef.NewSegment(settlementRng.Seed());
+            domeSegment.Packaged = false;
+            domeSegment.Owner = settlement;
+            settlement.Segments.Add(domeSegment);
+        }
+        settlement.UpdateSegmentCache();
         settlement.Flags |= ActorFlags.Settlement;
         settlement.Flags &= ~ActorFlags.Mobile;
         settlement.Role = Roles.Settlement;
+        // Initialize stock baseline for dynamic pricing
+        settlement.Stock = Economy.SettlementStock.ForPopulation(Location.Population, settlement.Cargo);
 
         // Add base components
         settlement.AddComponent(new LifeSupportComponent());

@@ -408,6 +408,14 @@ public class Inventory {
         //////////////////////////////
         void _add(SegmentDef? def) {
             if (def != null) {
+                // Embiggen industry segments by 2+ tiers for settlements/large crawlers
+                // Industry defs start at size 2, so this results in size 4+ typically
+                if (def.SegmentKind == SegmentKind.Industry) {
+                    int boost = 2 + CrawlerEx.PoissonQuantile(0.5f, ref rng);
+                    int newSize = (int)def.Size.Size + boost;
+                    def = def.Resize(Math.Clamp(newSize, 3, 8));
+                }
+
                 weightedWealth[def.SegmentKind] -= def.Cost;
                 var segment = def.NewSegment(rng.Seed());
                 // Core segments (working segments) should be unpackaged
