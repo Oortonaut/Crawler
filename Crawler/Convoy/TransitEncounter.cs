@@ -39,24 +39,28 @@ public static class TransitEncounterFactory {
         var to = road.To.Position;
         var position = Vector2.Lerp(from, to, progress);
 
-        // Use same sector as From location
-        var sector = road.From.Sector;
+        // Use same map as From location
+        var map = road.From.Map;
 
         // Interpolate wealth between endpoints
         float wealth = road.From.Wealth * (1 - progress) + road.To.Wealth * progress;
         wealth = Math.Max(1, wealth);
 
+        // Interpolate faction control
+        var controllingFaction = road.From.ControllingFaction;
+
         // Create location that cannot spawn encounters
         return new Location(
             Seed: seed,
-            Sector: sector,
+            Map: map,
             Position: position,
             Type: EncounterType.None,
             Wealth: wealth,
             NewEncounter: _ => throw new InvalidOperationException("Transit location cannot spawn encounters")
         ) {
             TransitRoad = road,
-            TransitProgress = progress
+            TransitProgress = progress,
+            ControllingFaction = controllingFaction
         };
     }
 

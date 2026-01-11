@@ -339,7 +339,7 @@ public static partial class CrawlerEx {
         actor.Visited(location) ? Style.MenuVisited :
         actor.Knows(location) ? Style.MenuSomeVisited :
         Style.MenuUnvisited;
-    public static int Visits(this IActor actor, Sector sector) => sector.Locations.Count(l => actor.Visited(l));
+    // Visits method removed - sectors no longer exist
     public static float Length(this Point point) => MathF.Sqrt(point.X * point.X + point.Y * point.Y);
     public static bool ClearFlag<TEnum>(this TEnum e, TEnum flags) where TEnum: struct, Enum => e.SetFlag(flags, false);
     public static bool SetFlag<TEnum>(this ref TEnum e, TEnum flags, bool p = true)

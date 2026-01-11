@@ -159,11 +159,9 @@ public class TradeNetwork {
         var network = new TradeNetwork();
 
         // Collect all trade-relevant locations (settlements and crossroads)
-        var tradeLocations = new List<Location>();
-        foreach (var sector in map.AllSectors) {
-            tradeLocations.AddRange(sector.Locations
-                .Where(loc => loc.Type is EncounterType.Settlement or EncounterType.Crossroads));
-        }
+        var tradeLocations = map.AllLocations
+            .Where(loc => loc.Type is EncounterType.Settlement or EncounterType.Crossroads)
+            .ToList();
 
         if (tradeLocations.Count < 2) return network;
 

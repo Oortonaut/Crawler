@@ -130,7 +130,8 @@ public class SavedActorLocation {
 public class SavedMap {
     public int Width { get; set; }
     public int Height { get; set; }
-    public List<SavedSector> Sectors { get; set; } = new();
+    public ulong TerrainSeed { get; set; }
+    public List<SavedLocation> Locations { get; set; } = new();
     public List<SavedFactionData> FactionData { get; set; } = new();
 }
 
@@ -150,29 +151,15 @@ public class SavedCapital {
 }
 
 [YamlSerializable]
-public class SavedSector {
-    public int X { get; set; }
-    public int Y { get; set; }
-    public TerrainType Terrain { get; set; }
-    public float Wealth { get; set; }
-    public Factions ControllingFaction { get; set; } = Factions.Independent;
-    public Dictionary<Commodity, float> LocalMarkup { get; set; } = new();
-    public Dictionary<SegmentKind, float> LocalSegmentRates { get; set; } = new();
-    public List<SavedLocation> Locations { get; set; } = new();
-    // RNG state
-    public ulong RngState { get; set; }
-    public ulong GaussianRngState { get; set; }
-    public bool GaussianPrimed { get; set; }
-    public double GaussianZSin { get; set; }
-}
-
-[YamlSerializable]
 public class SavedLocation {
     public Vector2 Position { get; set; }
-    public TerrainType Terrain { get; set; }
     public EncounterType Type { get; set; }
     public float Wealth { get; set; }
     public ulong Seed { get; set; }
+    public int Population { get; set; }
+    public Factions ControllingFaction { get; set; } = Factions.Independent;
+    public Dictionary<Commodity, float> LocalMarkup { get; set; } = new();
+    public Dictionary<SegmentKind, float> LocalSegmentRates { get; set; } = new();
     public SavedEncounter? Encounter { get; set; }
 }
 
@@ -332,19 +319,11 @@ public static class SaveLoadExtensions {
     }
 
     public static SavedMap ToSaveData(this Map map) {
-        var savedSectors = new List<SavedSector>();
-
-        for (int y = 0; y < map.Height; y++) {
-            for (int x = 0; x < map.Width; x++) {
-                var sector = map.GetSector(x, y);
-                savedSectors.Add(sector.ToSaveData());
-            }
-        }
-
         return new SavedMap {
             Width = map.Width,
             Height = map.Height,
-            Sectors = savedSectors,
+            TerrainSeed = map.Seed,
+            Locations = map.AllLocations.Select(l => l.ToSaveData()).ToList(),
             FactionData = map.FactionData.Pairs()
                 .TakeWhile(kvp => kvp.Value != null)
                 .Select(kvp => kvp.Value!.ToSaveData(kvp.Key))
@@ -369,30 +348,16 @@ public static class SaveLoadExtensions {
         };
     }
 
-    public static SavedSector ToSaveData(this Sector sector) {
-        return new SavedSector {
-            X = sector.X,
-            Y = sector.Y,
-            Terrain = sector.Terrain,
-            Wealth = 0,
-            ControllingFaction = sector.ControllingFaction,
-            LocalMarkup = sector.LocalMarkup.Pairs().ToDictionary(kv => kv.Key, kv => kv.Value),
-            LocalSegmentRates = sector.LocalSegmentRates.Pairs().ToDictionary(kv => kv.Key, kv => kv.Value),
-            Locations = sector.Locations.Select(l => l.ToSaveData()).ToList(),
-            RngState = sector.GetRngState(),
-            GaussianRngState = sector.GetGaussianRngState(),
-            GaussianPrimed = sector.GetGaussianPrimed(),
-            GaussianZSin = sector.GetGaussianZSin()
-        };
-    }
-
     public static SavedLocation ToSaveData(this Location location) {
         return new SavedLocation {
             Position = location.Position,
-            Terrain = location.Terrain,
             Type = location.Type,
             Wealth = location.Wealth,
             Seed = location.Seed,
+            Population = location.Population,
+            ControllingFaction = location.ControllingFaction,
+            LocalMarkup = location.LocalMarkup.Pairs().ToDictionary(kv => kv.Key, kv => kv.Value),
+            LocalSegmentRates = location.LocalSegmentRates.Pairs().ToDictionary(kv => kv.Key, kv => kv.Value),
             Encounter = location.HasEncounter ? location.GetEncounter().ToSaveData() : null
         };
     }
@@ -407,39 +372,32 @@ public static class SaveLoadExtensions {
     }
 
     public static Map ToGameMap(this SavedMap savedMap) {
-        // Use a seed based on map dimensions for reconstruction
-        var map = new Map((ulong)(savedMap.Height * 1000 + savedMap.Width), savedMap.Height, savedMap.Width);
+        // Use the saved terrain seed for reconstruction
+        var map = new Map(savedMap.TerrainSeed, savedMap.Height, savedMap.Width);
 
-        // Restore sector terrain and locations
-        foreach (var savedSector in savedMap.Sectors) {
-            var sector = map.GetSector(savedSector.X, savedSector.Y);
-            sector.Terrain = savedSector.Terrain;
-            sector.ControllingFaction = savedSector.ControllingFaction;
+        // Clear generated locations and restore saved ones
+        // Note: Map generates locations in constructor, we need to add saved locations
+        // For now, we'll match by position and restore state
+        foreach (var savedLocation in savedMap.Locations) {
+            var location = savedLocation.ToGameLocation(map);
+            // The map already has locations from generation; we need to restore their state
+            var existingLocation = map.AllLocations
+                .FirstOrDefault(l => Vector2.Distance(l.Position, savedLocation.Position) < 0.001f);
 
-            // Restore RNG state
-            sector.SetRngState(savedSector.RngState);
-            sector.SetGaussianRngState(savedSector.GaussianRngState);
-            sector.SetGaussianPrimed(savedSector.GaussianPrimed);
-            sector.SetGaussianZSin(savedSector.GaussianZSin);
+            if (existingLocation != null) {
+                // Restore mutable state
+                existingLocation.ControllingFaction = savedLocation.ControllingFaction;
+                existingLocation.Population = savedLocation.Population;
 
-            // Restore LocalMarkup
-            foreach (var kvp in savedSector.LocalMarkup) {
-                sector.LocalMarkup[kvp.Key] = kvp.Value;
-            }
-
-            // Restore LocalSegmentRates
-            foreach (var kvp in savedSector.LocalSegmentRates) {
-                sector.LocalSegmentRates[kvp.Key] = kvp.Value;
-            }
-
-            // Restore locations
-            foreach (var savedLocation in savedSector.Locations) {
-                var location = savedLocation.ToGameLocation(sector);
-                sector.Locations.Add(location);
+                // Restore encounter if present
+                if (savedLocation.Encounter != null) {
+                    var encounter = savedLocation.Encounter.ToGameEncounter(existingLocation);
+                    existingLocation.SetEncounter(encounter);
+                }
             }
         }
 
-        // Restore faction data (must happen after locations are restored)
+        // Restore faction data
         foreach (var savedFactionData in savedMap.FactionData) {
             var capital = savedFactionData.Capital?.ToGameCapital(map);
             map.FactionData[savedFactionData.Faction] = new FactionData(
@@ -451,33 +409,22 @@ public static class SaveLoadExtensions {
 
         // Build actor lookup table from all encounters for Relations restoration
         var actorLookup = new Dictionary<string, IActor>();
-        for (int y = 0; y < map.Height; y++) {
-            for (int x = 0; x < map.Width; x++) {
-                var sector = map.GetSector(x, y);
-                foreach (var location in sector.Locations.Where(l => l.HasEncounter)) {
-                    foreach (var actor in location.GetEncounter().Actors.OfType<Crawler>()) {
-                        actorLookup[actor.Name] = actor;
-                    }
-                }
+        foreach (var location in map.AllLocations.Where(l => l.HasEncounter)) {
+            foreach (var actor in location.GetEncounter().Actors.OfType<Crawler>()) {
+                actorLookup[actor.Name] = actor;
             }
         }
 
         // Second pass: Restore Relations for all crawlers
-        for (int y = 0; y < map.Height; y++) {
-            for (int x = 0; x < map.Width; x++) {
-                var sector = map.GetSector(x, y);
-                foreach (var location in sector.Locations.Where(l => l.HasEncounter)) {
-                    var encounter = location.GetEncounter();
-                    foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
-                        var savedCrawler = savedMap.Sectors
-                            .SelectMany(s => s.Locations)
-                            .SelectMany(l => l.Encounter?.Actors ?? [])
-                            .FirstOrDefault(sc => sc.Name == crawler.Name);
+        foreach (var location in map.AllLocations.Where(l => l.HasEncounter)) {
+            var encounter = location.GetEncounter();
+            foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
+                var savedCrawler = savedMap.Locations
+                    .SelectMany(l => l.Encounter?.Actors ?? [])
+                    .FirstOrDefault(sc => sc.Name == crawler.Name);
 
-                        if (savedCrawler != null) {
-                            savedCrawler.RestoreRelationsTo(crawler, actorLookup);
-                        }
-                    }
+                if (savedCrawler != null) {
+                    savedCrawler.RestoreRelationsTo(crawler, actorLookup);
                 }
             }
         }
@@ -490,12 +437,14 @@ public static class SaveLoadExtensions {
         return new Capital(savedCapital.Name, settlement, savedCapital.Influence);
     }
 
-    public static Location ToGameLocation(this SavedLocation savedLocation, Sector sector) {
-        var encounterTime = Tuning.StartGameTime; // TODO: Save this time, THIS IS BAD
+    public static Location ToGameLocation(this SavedLocation savedLocation, Map map) {
+        var encounterTime = Tuning.StartGameTime; // TODO: Save this time
         var location = new Location(savedLocation.Seed,
-            sector, savedLocation.Position, savedLocation.Type, savedLocation.Wealth,
+            map, savedLocation.Position, savedLocation.Type, savedLocation.Wealth,
             loc => savedLocation.Encounter?.ToGameEncounter(loc) ??
                    new Encounter(savedLocation.Seed, loc).Create(encounterTime));
+        location.ControllingFaction = savedLocation.ControllingFaction;
+        location.Population = savedLocation.Population;
         return location;
     }
 
@@ -515,14 +464,9 @@ public static class SaveLoadExtensions {
     }
 
     public static Location FindLocationByPosition(this Map map, Vector2 position) {
-        for (int y = 0; y < map.Height; y++) {
-            for (int x = 0; x < map.Width; x++) {
-                var sector = map.GetSector(x, y);
-                foreach (var location in sector.Locations) {
-                    if (Vector2.Distance(location.Position, position) < 0.001f) {
-                        return location;
-                    }
-                }
+        foreach (var location in map.AllLocations) {
+            if (Vector2.Distance(location.Position, position) < 0.001f) {
+                return location;
             }
         }
         throw new InvalidOperationException($"Location not found at position {position}");

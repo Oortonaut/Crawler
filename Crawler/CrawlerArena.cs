@@ -19,18 +19,12 @@ public class CrawlerArena {
 
     void InitializeArena() {
         var Rng = new XorShift(12345);
-        // Create a minimal map with one sector
+        // Create a minimal map
         var map = new Map(Rng.Seed(), 1, 1);
-
-        // Access the sector directly since we know it's a 1x1 map
-        var sector = new Sector(Rng.Seed(), map, "Arena", 0, 0);
-        sector.Terrain = TerrainType.Flat;
 
         // Create arena location with EncounterType.None to prevent default generation
         arenaLocation = new Location(Rng.Seed(),
-            sector, new System.Numerics.Vector2(0.5f, 0.5f), EncounterType.None, 1000.0f, loc => new Encounter(Rng.Seed(), loc, Factions.Independent));
-
-        sector.Locations.Add(arenaLocation);
+            map, new System.Numerics.Vector2(0.5f, 0.5f), EncounterType.None, 1000.0f, loc => new Encounter(Rng.Seed(), loc, Factions.Independent));
     }
 
     void InitializeBasicDesigns() {

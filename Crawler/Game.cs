@@ -248,8 +248,8 @@ public class Game {
         List<MenuItem> items = [
             .. GameMenuItems(),
             .. PlayerMenuItems(),
-            .. SectorMenuItems(),
-            .. GlobeMenuItems(),
+            .. LocalMenuItems(),
+            .. DistantMenuItems(),
             .. EncounterMenuItems(),
             MenuItem.Sep,
             new MenuItem("", "Choose"),
@@ -271,7 +271,7 @@ public class Game {
 
         // System actions
         context.SystemActions.AddRange([
-            new MenuAction("M", _SectorMapName(), _ => SectorMap()),
+            new MenuAction("M", _LocalMapName(), _ => LocalMap()),
             new MenuAction("G", "Global Map", _ => WorldMap()),
             new MenuAction("R", "Status Report", _ => Report()),
             new MenuAction("PR", "Production Recipes", _ => ProductionRecipesReport()),
@@ -429,16 +429,8 @@ public class Game {
         Player.Message("Select destination for convoy:");
 
         // Show nearby settlements as potential destinations
-        var currentSector = PlayerLocation.Sector;
-        var destinations = new List<Location>();
-
-        destinations.AddRange(currentSector.Settlements);
-        foreach (var neighbor in currentSector.Neighbors) {
-            destinations.AddRange(neighbor.Settlements);
-        }
-
-        // Filter to reachable destinations
-        destinations = destinations
+        var destinations = Map.AllLocations
+            .Where(loc => loc.Type == EncounterType.Settlement)
             .Where(loc => loc != PlayerLocation)
             .Where(loc => network.FindPath(PlayerLocation, loc) != null)
             .OrderBy(loc => PlayerLocation.Distance(loc))
@@ -469,20 +461,24 @@ public class Game {
     }
 
     void BuildNavigationActions(MenuContext context) {
-        var sector = PlayerLocation.Sector;
         bool isPinned = Player.Pinned();
         if (isPinned) {
             Player.Message("You are pinned.");
         }
 
-        // Sector navigation
-        var sectorGroup = new NavigationGroup {
-            GroupName = "Sector Map",
+        // Local navigation (within LocalRange)
+        var localGroup = new NavigationGroup {
+            GroupName = "Local Map",
             Prefix = "M"
         };
 
+        var nearbyLocations = Map.FindLocationsInRadiusKm(PlayerLocation.Position, Tuning.Map.LocalRange)
+            .Where(loc => loc != PlayerLocation)
+            .OrderBy(loc => PlayerLocation.Distance(loc))
+            .ToList();
+
         int index = 0;
-        foreach (var location in sector.Locations) {
+        foreach (var location in nearbyLocations) {
             ++index;
             float dist = PlayerLocation.Distance(location);
             string locationName = location.EncounterName(Player);
@@ -493,69 +489,76 @@ public class Game {
             var (fuel, time) = Player.FuelTimeTo(location);
             bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
             var code = $"M{index}";
+
+            // Add direction indicator
+            var offset = location.Offset(PlayerLocation);
+            string dir = GetDirectionCode(offset);
+
             var action = new MenuAction(
                 code,
-                $"To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU",
+                $"{dir} To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU",
                 _ => GoTo(location),
                 enabled,
-                false // Hidden in main menu, shown in sector map
+                false // Hidden in main menu, shown in local map
             );
-            sectorGroup.Destinations.Add(action);
+            localGroup.Destinations.Add(action);
             context.RegisterAction(code, action);
         }
-        context.NavigationGroups.Add(sectorGroup);
+        context.NavigationGroups.Add(localGroup);
 
-        // Globe navigation
-        var globeGroup = new NavigationGroup {
-            GroupName = "Global Map",
+        // Distant navigation (beyond LocalRange)
+        var distantGroup = new NavigationGroup {
+            GroupName = "Distant",
             Prefix = "G"
         };
 
-        foreach (var neighbor in sector.Neighbors) {
-            if (!neighbor.Locations.Any()) continue;
+        var distantLocations = Map.AllLocations
+            .Where(loc => loc.Type == EncounterType.Settlement)
+            .Where(loc => PlayerLocation.Distance(loc) > Tuning.Map.LocalRange)
+            .OrderBy(loc => PlayerLocation.Distance(loc))
+            .Take(8)
+            .ToList();
 
-            var locations = string.Join(", ", neighbor.Locations.Select(x => x.Type.ToString().Substring(0, 1)).Distinct());
-            var destinations = neighbor.Settlements.ToList();
-            if (destinations.Count == 0) continue;
-
-            var location = destinations.MinBy(x => PlayerLocation.Distance(x))!;
+        foreach (var location in distantLocations) {
             var (fuel, time) = Player.FuelTimeTo(location);
 
             // Calculate direction
-            string dir = "N";
-            var D = neighbor.Offset(sector);
-            var DX = D.X;
-            var DY = D.Y;
-            if (DX < 0 && DY < 0) dir = "NW";
-            if (DX < 0 && DY == 0) dir = "W";
-            if (DX < 0 && DY > 0) dir = "SW";
-            if (DX == 0 && DY < 0) dir = "N";
-            if (DX == 0 && DY == 0) dir = "KK";
-            if (DX == 0 && DY > 0) dir = "S";
-            if (DX > 0 && DY < 0) dir = "NE";
-            if (DX > 0 && DY == 0) dir = "E";
-            if (DX > 0 && DY > 0) dir = "SE";
+            var offset = location.Offset(PlayerLocation);
+            string dir = GetDirectionCode(offset);
 
-            string neighborName = $"{neighbor.Name} ({neighbor.Terrain})";
-            int visits = Player.Visits(neighbor);
-            if (!neighbor.Locations.Any()) {
-                neighborName = Style.MenuEmpty.Format(neighborName);
-            } else if (visits == 0) {
-                neighborName = Style.MenuUnvisited.Format(neighborName);
-            } else if (visits == neighbor.Locations.Count) {
-                neighborName = Style.MenuVisited.Format(neighborName);
+            string locationName = location.EncounterName(Player);
+            float dist = PlayerLocation.Distance(location);
+            if (!Player.Visited(location)) {
+                locationName = Style.MenuUnvisited.Format(locationName);
             }
 
             bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
             string desc = fuel > 0 ?
-                $"to {neighborName} ({locations}) {time:F0}h Fuel: {fuel:F1}" :
-                $"to {neighborName} ({locations})";
+                $"{dir} to {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU" :
+                $"{dir} to {locationName} {dist:F0}km";
 
             var action = new MenuAction(dir, desc, _ => GoTo(location), enabled, false);
-            globeGroup.Destinations.Add(action);
+            distantGroup.Destinations.Add(action);
             context.RegisterAction(dir, action);
         }
-        context.NavigationGroups.Add(globeGroup);
+        context.NavigationGroups.Add(distantGroup);
+    }
+
+    static string GetDirectionCode(System.Numerics.Vector2 offset) {
+        if (offset.Length() < 0.001f) return "  ";
+        float angle = MathF.Atan2(-offset.Y, offset.X); // Negative Y because Y increases southward
+        int octant = (int)MathF.Round(angle / MathF.PI * 4 + 4) % 8;
+        return octant switch {
+            0 => "E ",
+            1 => "NE",
+            2 => "N ",
+            3 => "NW",
+            4 => "W ",
+            5 => "SW",
+            6 => "S ",
+            7 => "SE",
+            _ => "  "
+        };
     }
 
     void BuildInteractionGroups(MenuContext context) {
@@ -741,9 +744,7 @@ public class Game {
         return PlayerEncounter().MenuItems(Player) ?? [];
     }
 
-    IEnumerable<MenuItem> SectorMenuItems(ShowArg showOption = ShowArg.Hide) {
-        var sector = PlayerLocation.Sector;
-
+    IEnumerable<MenuItem> LocalMenuItems(ShowArg showOption = ShowArg.Hide) {
         bool isPinned = Player.Pinned();
         if (isPinned) {
             Player.Message("You are pinned.");
@@ -751,10 +752,13 @@ public class Game {
 
         yield return MenuItem.Cancel;
 
-        float fuel = -1, time = -1;
+        var nearbyLocations = Map.FindLocationsInRadiusKm(PlayerLocation.Position, Tuning.Map.LocalRange)
+            .Where(loc => loc != PlayerLocation)
+            .OrderBy(loc => PlayerLocation.Distance(loc))
+            .ToList();
 
         int index = 0;
-        foreach (var location in sector.Locations) {
+        foreach (var location in nearbyLocations) {
             ++index;
             float dist = PlayerLocation.Distance(location);
 
@@ -763,10 +767,14 @@ public class Game {
                 locationName = Style.MenuUnvisited.Format(locationName);
             }
 
-            (fuel, time) = Player.FuelTimeTo(location);
+            var (fuel, time) = Player.FuelTimeTo(location);
             bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
             var enableArg = enabled ? EnableArg.Enabled : EnableArg.Disabled;
-            yield return new ActionMenuItem($"M{index}", $"To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
+
+            var offset = location.Offset(PlayerLocation);
+            string dir = GetDirectionCode(offset);
+
+            yield return new ActionMenuItem($"M{index}", $"{dir} To {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
         }
     }
     bool GoTo(Location loc) {
@@ -774,9 +782,7 @@ public class Game {
         return true;  // Exit menu to process travel event
     }
 
-    IEnumerable<MenuItem> GlobeMenuItems(ShowArg showOption = ShowArg.Hide) {
-        var sector = PlayerLocation.Sector;
-
+    IEnumerable<MenuItem> DistantMenuItems(ShowArg showOption = ShowArg.Hide) {
         yield return MenuItem.Cancel;
 
         bool isPinned = Player.Pinned();
@@ -784,52 +790,31 @@ public class Game {
             Player.Message("You are pinned.");
         }
 
-        float fuel = -1, time = -1;
+        var distantLocations = Map.AllLocations
+            .Where(loc => loc.Type == EncounterType.Settlement)
+            .Where(loc => PlayerLocation.Distance(loc) > Tuning.Map.LocalRange)
+            .OrderBy(loc => PlayerLocation.Distance(loc))
+            .Take(16)
+            .ToList();
 
-        foreach (var neighbor in sector.Neighbors) {
-            if (!neighbor.Locations.Any()) {
-                continue;
-            }
-            var locations = string.Join(", ", neighbor.Locations.Select(x => x.Type.ToString().Substring(0, 1)).Distinct());
-            var destinations = neighbor.Settlements.ToList();
-            if (destinations.Count == 0) {
-                destinations = neighbor.Locations;
-            }
-            var location = destinations.MinBy(x => PlayerLocation.Distance(x))!;
-            string dir = "N";
-            var D = neighbor.Offset(sector);
-            var DX = D.X;
-            var DY = D.Y;
-            if (DX < 0 && DY < 0) dir = "NW";
-            if (DX < 0 && DY == 0) dir = "W";
-            if (DX < 0 && DY > 0) dir = "SW";
-            if (DX == 0 && DY < 0) dir = "N";
-            if (DX == 0 && DY == 0) dir = "KK";
-            if (DX == 0 && DY > 0) dir = "S";
-            if (DX > 0 && DY < 0) dir = "NE";
-            if (DX > 0 && DY == 0) dir = "E";
-            if (DX > 0 && DY > 0) dir = "SE";
+        foreach (var location in distantLocations) {
+            var (fuel, time) = Player.FuelTimeTo(location);
+            float dist = PlayerLocation.Distance(location);
 
-            (fuel, time) = Player.FuelTimeTo(location);
+            var offset = location.Offset(PlayerLocation);
+            string dir = GetDirectionCode(offset);
 
-            string neighborName = $"{neighbor.Name} ({neighbor.Terrain})";
-            int visits = Player.Visits(neighbor);
-            if (!neighbor.Locations.Any()) {
-                neighborName = Style.MenuEmpty.Format(neighborName);
-            } else if (visits == 0) {
-                neighborName = Style.MenuUnvisited.Format(neighborName);
-            } else if (visits == neighbor.Locations.Count) {
-                neighborName = Style.MenuVisited.Format(neighborName);
-            } else {
-                //
+            string locationName = location.EncounterName(Player);
+            if (!Player.Visited(location)) {
+                locationName = Style.MenuUnvisited.Format(locationName);
             }
 
             bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
             var enableArg = enabled ? EnableArg.Enabled : EnableArg.Disabled;
             if (fuel > 0) {
-                yield return new ActionMenuItem(dir, $"to {neighborName} ({locations}) {time:F0}h Fuel: {fuel:F1}", _ => GoTo(location), enableArg, showOption);
+                yield return new ActionMenuItem(dir, $"to {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
             } else {
-                yield return new ActionMenuItem(dir, $"to {neighborName} ({locations})", _ => GoTo(location), enableArg, showOption);
+                yield return new ActionMenuItem(dir, $"to {locationName} {dist:F0}km", _ => GoTo(location), enableArg, showOption);
             }
         }
     }
@@ -844,7 +829,7 @@ public class Game {
 
     bool Look() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
-        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
+        Console.WriteLine($"{PlayerLocation.Terrain} terrain, {PlayerLocation.ControllingFaction} territory " + PlayerLocation.PosString);
 
         Console.Write($"DATE {DateString()} TIME {TimeString()}   ");
         Console.WriteLine(PlayerEncounter().ViewFrom(Player));
@@ -852,15 +837,15 @@ public class Game {
         CrawlerEx.ClearMessages();
         return false;
     }
-    string DrawSectorMap() {
-        var height = 10;
-        var width = (5 * height) / 3;
-        var sectorMapLines = Map.DumpSector(PlayerLocation.Sector.X, PlayerLocation.Sector.Y, width, height).Split('\n');
-        var sectorMapWidth = sectorMapLines.Max(x => x.Length);
-        var header = $"┌[Sector Map|{PlayerLocation.EncounterName(Player)}|{PlayerLocation.Terrain}]";
-        header += new string('─', Math.Max(0, sectorMapWidth - header.Length + 1)) + "╖";
-        var footer = $"╘{new string('═', sectorMapWidth)}╝";
-        var mapLines = sectorMapLines.Select(line => $"│{line}║").StringJoin("\n");
+    string DrawLocalMap() {
+        var height = 12;
+        var width = (5 * height) / 3 * 2;
+        var localMapLines = Map.DumpLocalArea(PlayerLocation.Position, width, height, Player).Split('\n');
+        var localMapWidth = localMapLines.Max(x => x.Length);
+        var header = $"┌[Local Map|{PlayerLocation.EncounterName(Player)}|{PlayerLocation.Terrain}]";
+        header += new string('─', Math.Max(0, localMapWidth - header.Length + 1)) + "╖";
+        var footer = $"╘{new string('═', localMapWidth)}╝";
+        var mapLines = localMapLines.Select(line => $"│{line}║").StringJoin("\n");
         return $"{header}\n{mapLines}\n{footer}";
     }
 
@@ -886,44 +871,37 @@ public class Game {
     bool PlayerWon => false;
     bool PlayerLost => !string.IsNullOrEmpty(Player?.EndMessage);
 
-    bool SectorMap() {
-        var sector = PlayerLocation.Sector;
+    bool LocalMap() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
-        Console.WriteLine(DrawSectorMap());
-        Console.WriteLine(sector.Look() + " " + PlayerLocation.PosString);
+        Console.WriteLine(DrawLocalMap());
+        Console.WriteLine($"{PlayerLocation.ControllingFaction.Name()} territory - {PlayerLocation.Terrain} terrain - {PlayerLocation.PosString}");
         Console.WriteLine(PlayerEncounter().ViewFrom(Player));
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
 
-        var (selected, ap) = CrawlerEx.MenuRun("Sector Map", [
-            .. SectorMenuItems(ShowArg.Show),
+        var (selected, ap) = CrawlerEx.MenuRun("Local Map", [
+            .. LocalMenuItems(ShowArg.Show),
         ]);
         return ap;
     }
     bool WorldMap() {
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine(Map.DumpMap(Player));
-        Console.WriteLine(PlayerLocation.Sector.Look() + " " + PlayerLocation.PosString);
+        Console.WriteLine($"{PlayerLocation.ControllingFaction.Name()} territory - {PlayerLocation.Terrain} terrain - {PlayerLocation.PosString}");
         CrawlerEx.ShowMessages();
         CrawlerEx.ClearMessages();
 
         var (selected, ap) = CrawlerEx.MenuRun("Global Map", [
-            .. GlobeMenuItems(ShowArg.Show),
+            .. DistantMenuItems(ShowArg.Show),
         ]);
         return ap;
     }
-    string _SectorMapName() {
-        var sector = PlayerLocation.Sector;
-        var sectorMapName = $"Sector {sector.Name} Map (";
-        foreach (var location in sector.Locations) {
-            var locationCode = Player.StyleFor(location).Format(location.Code);
-            sectorMapName += locationCode;
-        }
-        sectorMapName += Style.MenuNormal.Format(")");
-        return sectorMapName;
+    string _LocalMapName() {
+        var nearbyCount = Map.FindLocationsInRadiusKm(PlayerLocation.Position, Tuning.Map.LocalRange).Count();
+        return $"Local Map ({nearbyCount} nearby)";
     }
     IEnumerable<MenuItem> GameMenuItems() => [
-        new ActionMenuItem("M", _SectorMapName(), _ => SectorMap()),
+        new ActionMenuItem("M", _LocalMapName(), _ => LocalMap()),
         new ActionMenuItem("G", "Global Map", _ => WorldMap()),
         new ActionMenuItem("R", "Status Report", _ => Report()),
         new ActionMenuItem("K", "Skip Turn/Wait", args => Turn(args)),
@@ -1695,52 +1673,47 @@ public class Game {
         int totalBanditTraders = 0;
 
         // Survey every location on the map
-        for (int y = 0; y < Map.Height; y++) {
-            for (int x = 0; x < Map.Width; x++) {
-                var sector = Map.GetSector(x, y);
-                foreach (var location in sector.Locations) {
-                    locationsProcessed++;
+        foreach (var location in Map.AllLocations) {
+            locationsProcessed++;
 
-                    // Instantiate the encounter
-                    var encounter = location.GetEncounter();
+            // Instantiate the encounter
+            var encounter = location.GetEncounter();
 
-                    // Gather statistics from any crawler's trade offers
-                    foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
-                        crawlersProcessed++;
-                        var tradeOffers = crawler.MakeTradeOffers(Rng.Seed(), 1.0f);
+            // Gather statistics from any crawler's trade offers
+            foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
+                crawlersProcessed++;
+                var tradeOffers = crawler.MakeTradeOffers(Rng.Seed(), 1.0f);
 
-                        // Track which commodities this trader offers
-                        var offeredCommodities = new HashSet<Commodity>();
+                // Track which commodities this trader offers
+                var offeredCommodities = new HashSet<Commodity>();
 
-                        foreach (var offer in tradeOffers.Where(o => o.IsCommodity)) {
-                            var commodity = offer.Commodity!.Value;
-                            if (offer.Direction == TradeDirection.Sell) {
-                                // Crawler is selling to player (player buys)
-                                buyPrices[commodity].Add(offer.PricePerUnit);
-                                offeredCommodities.Add(commodity);
-                            } else {
-                                // Crawler is buying from player (player sells)
-                                sellPrices[commodity].Add(offer.PricePerUnit);
-                                offeredCommodities.Add(commodity);
-                            }
-                        }
+                foreach (var offer in tradeOffers.Where(o => o.IsCommodity)) {
+                    var commodity = offer.Commodity!.Value;
+                    if (offer.Direction == TradeDirection.Sell) {
+                        // Crawler is selling to player (player buys)
+                        buyPrices[commodity].Add(offer.PricePerUnit);
+                        offeredCommodities.Add(commodity);
+                    } else {
+                        // Crawler is buying from player (player sells)
+                        sellPrices[commodity].Add(offer.PricePerUnit);
+                        offeredCommodities.Add(commodity);
+                    }
+                }
 
-                        // Increment trader count per commodity
-                        foreach (var commodity in offeredCommodities.Distinct()) {
-                            if (crawler.Role == Roles.Trader) {
-                                tradeTraders[commodity]++;
-                            } else if (crawler.Role == Roles.Bandit) {
-                                banditTraders[commodity]++;
-                            }
-                        }
+                // Increment trader count per commodity
+                foreach (var commodity in offeredCommodities.Distinct()) {
+                    if (crawler.Role == Roles.Trader) {
+                        tradeTraders[commodity]++;
+                    } else if (crawler.Role == Roles.Bandit) {
+                        banditTraders[commodity]++;
+                    }
+                }
 
-                        if (offeredCommodities.Count > 0) {
-                            if (crawler.Role == Roles.Trader) {
-                                totalTradeTraders++;
-                            } else if (crawler.Role == Roles.Bandit) {
-                                totalBanditTraders++;
-                            }
-                        }
+                if (offeredCommodities.Count > 0) {
+                    if (crawler.Role == Roles.Trader) {
+                        totalTradeTraders++;
+                    } else if (crawler.Role == Roles.Bandit) {
+                        totalBanditTraders++;
                     }
                 }
             }

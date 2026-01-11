@@ -19,7 +19,7 @@ public class EncounterActor {
 public sealed class Encounter : IComparable<Encounter> {
     public Encounter(ulong seed, Location location): this(seed, location,
         location.Type == EncounterType.Settlement ?
-            location.Sector.ControllingFaction :
+            location.ControllingFaction :
             location.ChooseRandomFaction()) {
     }
     public Encounter(ulong seed, Location location, Factions faction) {

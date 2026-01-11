@@ -113,7 +113,7 @@ public class GuardHireComponent : ActorComponentBase {
 
         // Get risk if available
         float riskMultiplier = 1.0f;
-        var factionNetwork = FactionRiskNetworks.GetNetwork(Owner.Location.Sector.ControllingFaction);
+        var factionNetwork = FactionRiskNetworks.GetNetwork(Owner.Location.ControllingFaction);
         float routeRisk = factionNetwork.RiskTracker.GetRouteRisk(path, Owner.Time, network);
         riskMultiplier = 1.0f + routeRisk * Tuning.Convoy.RiskCostMultiplier;
 

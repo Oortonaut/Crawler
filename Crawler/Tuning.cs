@@ -800,6 +800,29 @@ public static partial class Tuning {
         public static int GuardScale = 400;
         public static int GuardMax = 700;
     }
+
+    /// <summary>
+    /// Map generation and navigation parameters.
+    /// </summary>
+    public static class Map {
+        /// <summary>Range in km for showing nearby locations in map menu.</summary>
+        public static float LocalRange = 300f;
+
+        /// <summary>Size of each terrain grid cell in km.</summary>
+        public static float TerrainCellSize = 10f;
+
+        /// <summary>Noise frequency for base terrain generation.</summary>
+        public static float TerrainNoiseFreq = 0.002f;
+
+        /// <summary>Number of octaves for terrain noise.</summary>
+        public static int TerrainNoiseOctaves = 4;
+
+        /// <summary>Base expected locations per 1000 sq km (equivalent to old per-sector density).</summary>
+        public static float LocationDensity = 2.5f;
+
+        /// <summary>Kilometers per world unit (for coordinate system).</summary>
+        public static float KilometersPerUnit = 1000f;
+    }
 }
 
 // Power scaling for segments uses tiers or levels for each value which map onto the

@@ -129,11 +129,8 @@ public class CustomsRoleComponent : ActorComponentBase {
     }
 
     bool IsInFactionTerritory(Location location, Factions faction) {
-        // Check if location's sector is controlled by the faction
-        var sector = location.Sector;
-        if (sector == null) return false;
-
-        return sector.ControllingFaction == faction;
+        // Check if location is controlled by the faction
+        return location.ControllingFaction == faction;
     }
 
     bool IsPatrolLocation(Location location, Factions faction) {
