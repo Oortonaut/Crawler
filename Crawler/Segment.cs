@@ -37,7 +37,12 @@ public record SegmentDef(
     Tier WeightTier,
     Tier DrainTier,
     Tier CostTier,
-    Tier MaxHitsTier) {
+    Tier MaxHitsTier,
+    Tier? FactorySizeTier = null) {
+
+    /// <summary>Factory size for manufacturing. Defaults to Size if not specified.</summary>
+    public Tier FactorySize => FactorySizeTier ?? Size;
+
     public virtual Segment NewSegment(ulong seed) => new(seed, this, null);
     public override string ToString() => $"{Symbol} {Name} {Size} {SegmentKind} {WeightTier} {DrainTier} {CostTier} {MaxHitsTier}";
     public string NameSize => $"{Name} " + (int)Math.Round(Size.Size) switch {
@@ -65,12 +70,17 @@ public record SegmentDef(
 
 public virtual SegmentDef Resize(int Size) {
         Tier delta = new(Size - this.Size.Size);
+        // FactorySize scales with Size if explicitly set, otherwise stays null (defaults to Size)
+        Tier? newFactorySize = FactorySizeTier.HasValue
+            ? FactorySizeTier.Value + delta
+            : null;
         return this with {
             Size = this.Size + delta,
             WeightTier = WeightTier + delta,
             DrainTier = DrainTier + delta,
             CostTier = CostTier + delta,
             MaxHitsTier = MaxHitsTier + delta,
+            FactorySizeTier = newFactorySize,
         };
     }
     public SegmentDef UpgradeWeight(int Upgrade) => this with {
@@ -970,8 +980,9 @@ public record HabitatDef(
     Tier MaxHitsTier,
     Tier CrewCapacityTier,
     Tier MoraleBonusTier,
-    HabitatType Type
-) : SegmentDef(Symbol, Size, Name, SegmentKind.Habitat, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+    HabitatType Type,
+    Tier? FactorySizeTier = null
+) : SegmentDef(Symbol, Size, Name, SegmentKind.Habitat, WeightTier, DrainTier, CostTier, MaxHitsTier, FactorySizeTier) {
     public override HabitatSegment NewSegment(ulong seed) => new(seed, this, null);
     public override char ClassCode => 'Q';  // 'H' is taken by Harvest, 'Q' for Quarters
 
@@ -986,6 +997,7 @@ public record HabitatDef(
 
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - base.Size.Size);
+        // FactorySizeTier is handled by base.Resize()
         return ((HabitatDef)base.Resize(Size)) with {
             CrewCapacityTier = CrewCapacityTier + delta,
             MoraleBonusTier = MoraleBonusTier + delta,
@@ -1287,19 +1299,23 @@ public static class SegmentEx {
 
     public static IEnumerable<HarvestDef> CoreHarvestDefs => HarvestDefs;
 
-    // Habitat definitions (CrewCapacity, MoraleBonus, Type)
-    // Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, CrewCapacityTier, MoraleBonusTier, Type
+    // Habitat definitions (CrewCapacity, MoraleBonus, Type, FactorySize)
+    // Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, CrewCapacityTier, MoraleBonusTier, Type, FactorySizeTier
     public static List<HabitatDef> HabitatDefs = [
-        // Crawler-scale habitats (sizes 1-5)
+        // Crawler-scale habitats (sizes 1-5) - FactorySize defaults to Size
         new HabitatDef('C', 1, "Crew Cabin", 1, 0.5f, 1, 1, 1, 0.8f, HabitatType.Cabin),
         new HabitatDef('Q', 1.5f, "Crew Quarters", 1.2f, 0.7f, 1.5f, 1, 1.2f, 1, HabitatType.Quarters),
         new HabitatDef('B', 1.2f, "Barracks", 1, 0.5f, 1, 1.2f, 1.5f, 0.5f, HabitatType.Barracks),
         new HabitatDef('S', 2, "VIP Suite", 1.5f, 1.5f, 2.5f, 1, 0.5f, 2, HabitatType.Suite),
-        // Settlement domes (sizes 6-9)
-        new HabitatDef('D', 6, "Small Dome", 6, 3, 6, 5, 6, 5, HabitatType.Dome),
-        new HabitatDef('D', 7, "Medium Dome", 7, 3.5f, 7, 6, 7, 6, HabitatType.Dome),
-        new HabitatDef('D', 8, "Large Dome", 8, 4, 8, 7, 8, 7, HabitatType.Dome),
-        new HabitatDef('D', 9, "Grand Dome", 9, 5, 9, 8, 9, 8, HabitatType.Dome),
+        // Settlement domes (sizes 6-9) - FactorySize reduced so smaller industry can build them
+        // Size 6 dome, FactorySize 4 -> needs size 6 industry
+        new HabitatDef('D', 6, "Small Dome", 6, 3, 6, 5, 6, 5, HabitatType.Dome, FactorySizeTier: 4),
+        // Size 7 dome, FactorySize 4.5 -> needs size 6-7 industry
+        new HabitatDef('D', 7, "Medium Dome", 7, 3.5f, 7, 6, 7, 6, HabitatType.Dome, FactorySizeTier: 4.5f),
+        // Size 8 dome, FactorySize 5 -> needs size 7 industry
+        new HabitatDef('D', 8, "Large Dome", 8, 4, 8, 7, 8, 7, HabitatType.Dome, FactorySizeTier: 5),
+        // Size 9 dome, FactorySize 5.5 -> needs size 7-8 industry
+        new HabitatDef('D', 9, "Grand Dome", 9, 5, 9, 8, 9, 8, HabitatType.Dome, FactorySizeTier: 5.5f),
     ];
 
     public static IEnumerable<HabitatDef> CoreHabitatDefs => HabitatDefs;

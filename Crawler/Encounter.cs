@@ -442,6 +442,8 @@ public sealed class Encounter : IComparable<Encounter> {
         settlement.AddComponent(new LicenseComponent());
         settlement.AddComponent(new ManufacturingComponent(settlementRng.Seed()));
         settlement.AddComponent(new UpgradeComponent());
+        settlement.AddComponent(new DemolitionComponent());
+        settlement.AddComponent(new SettlementGrowthComponent(settlementRng.Seed()));
 
         IEnumerable<string> EncounterNames = [];
         if (t < 0.15f) {

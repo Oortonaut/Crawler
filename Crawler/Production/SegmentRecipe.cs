@@ -17,9 +17,10 @@ public record SegmentRecipe(
 ) {
     /// <summary>
     /// Minimum industry segment size required to manufacture this segment.
-    /// Formula: OutputDef.Size + 2 (a size 5 fabricator can make size 3 segments).
+    /// Formula: OutputDef.FactorySize + 2 (a size 6 fabricator can make FactorySize 4 segments).
+    /// Note: FactorySize defaults to Size for most segments, but domes have reduced FactorySize.
     /// </summary>
-    public int RequiredIndustrySize => (int)OutputDef.Size.Size + 2;
+    public int RequiredIndustrySize => (int)Math.Ceiling(OutputDef.FactorySize.Size) + 2;
 
     /// <summary>
     /// The industry type required to manufacture segments (always Fabricator or Assembler).
@@ -32,6 +33,7 @@ public record SegmentRecipe(
         SegmentKind.Industry => IndustryType.Fabricator,
         SegmentKind.Storage => IndustryType.Fabricator,
         SegmentKind.Harvest => IndustryType.Fabricator,
+        SegmentKind.Habitat => IndustryType.Fabricator,
         _ => IndustryType.Fabricator,
     };
 

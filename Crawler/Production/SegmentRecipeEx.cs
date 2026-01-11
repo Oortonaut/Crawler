@@ -84,8 +84,52 @@ public static class SegmentRecipeEx {
                 (Commodity.Electronics, cost * 0.001f),
                 (Commodity.Ceramics, cost * 0.001f)
             ),
+            SegmentKind.Habitat => D(
+                (Commodity.Alloys, cost * 0.003f),
+                (Commodity.Ceramics, cost * 0.002f),
+                (Commodity.Polymers, cost * 0.001f)
+            ),
             _ => D((Commodity.Alloys, cost * 0.005f)),
         };
+    }
+
+    /// <summary>
+    /// Creates a manufacturing recipe for a dome with higher material costs and longer build times.
+    /// Domes require more materials and crew but have reduced FactorySize requirements.
+    /// </summary>
+    public static SegmentRecipe CreateDomeRecipe(HabitatDef def) {
+        float baseCost = def.Cost;
+        int size = (int)def.Size.Size;
+
+        return new SegmentRecipe(
+            Name: $"Construct {def.NameSize}",
+            OutputDef: def,
+            Inputs: D(
+                (Commodity.Alloys, baseCost * 0.005f),      // More metal for structure
+                (Commodity.Ceramics, baseCost * 0.003f),   // Dome shell
+                (Commodity.Glass, baseCost * 0.004f),      // Windows/panels
+                (Commodity.Polymers, baseCost * 0.002f),   // Seals and insulation
+                (Commodity.Electronics, baseCost * 0.001f) // Environmental controls
+            ),
+            Consumables: D(
+                (Commodity.Fuel, baseCost * 0.002f),
+                (Commodity.Lubricants, baseCost * 0.0005f)
+            ),
+            Maintenance: D((Commodity.SpareParts, baseCost * 0.001f)),
+            CrewRequired: 5 + size * 2,  // Domes need more crew
+            ActivateCharge: 50 * size,   // Higher power needs
+            CycleTime: TimeDuration.FromHours(Tuning.Manufacturing.HoursPerSize * size * 2), // 2x normal time
+            TechTier: GameTier.Mid
+        );
+    }
+
+    /// <summary>
+    /// Gets all dome construction recipes.
+    /// </summary>
+    public static IEnumerable<SegmentRecipe> GetDomeRecipes() {
+        foreach (var def in SegmentEx.HabitatDefs.Where(h => h.Type == HabitatType.Dome)) {
+            yield return CreateDomeRecipe(def);
+        }
     }
 
     // ============================================

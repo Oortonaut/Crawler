@@ -486,6 +486,12 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             return;
         }
 
+        // FastTravel: skip stepwise transit and use direct travel
+        if (Game.Instance!.FastTravel) {
+            Travel(road.To);
+            return;
+        }
+
         // Remove from current encounter
         if (Location.GetEncounter().Actors.Contains(this)) {
             Location.GetEncounter().RemoveActor(this);
@@ -534,8 +540,10 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         foreach (var component in Components) {
             var componentEvent = component.GetNextEvent();
             if (componentEvent != null) {
-                // Take the earliest event from all components
-                if (nextEvent == null || componentEvent.Time < nextEvent.Time) {
+                // Take highest priority event; same priority uses earliest time
+                if (nextEvent == null ||
+                    componentEvent.Priority > nextEvent.Priority ||
+                    (componentEvent.Priority == nextEvent.Priority && componentEvent.Time < nextEvent.Time)) {
                     nextEvent = componentEvent;
                 }
             }
@@ -693,6 +701,27 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         newSegment.Owner = this;
 
         UpdateSegmentCache();
+    }
+
+    /// <summary>
+    /// Remove a segment entirely (used for demolition).
+    /// Segment must be destroyed or packaged.
+    /// </summary>
+    public void RemoveSegment(Segment segment) {
+        if (segment.IsPackaged) {
+            // Packaged segments are in cargo/supplies, not working segments
+            if (Cargo.Segments.Contains(segment)) {
+                Cargo.Segments.Remove(segment);
+            } else if (Supplies.Segments.Contains(segment)) {
+                Supplies.Segments.Remove(segment);
+            }
+        } else {
+            // Working segment - must be destroyed to remove
+            Debug.Assert(segment.IsDestroyed, "Cannot remove active working segment");
+            _allSegments.Remove(segment);
+            UpdateSegmentCache();
+        }
+        segment.Owner = null;
     }
 
     List<Segment> _allSegments = [];

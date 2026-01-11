@@ -49,7 +49,7 @@ public record Location {
     public const float MaxPopulation = 500;
     public const float Decay = 0.0005f;
     internal XorShift Rng;
-    public int Population { get; protected set; }
+    public int Population { get; set; }
     public float Wealth { get; protected set; } = 1;
     public float TechLatitude => 2 * (1 - ((Position.Y + 0.5f) / Map.Height));
     public string Code => Type switch {
