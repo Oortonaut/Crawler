@@ -24,7 +24,8 @@ public class RetreatComponent : ActorComponentBase {
         if (crawler.IsVulnerable && damageRatio > 0.75f) {
             float escapeChance = crawler.EscapeChance(); // Slow, O(N) in encounter crawlers
             if (escapeChance > 0) {
-                return crawler.NewEventFor("Flee", Priority, Tuning.Crawler.FleeTime, Post: () => {
+                int priority = EventPriority.ForFlee(crawler);
+                return crawler.NewEventFor("Flee", priority, Tuning.Crawler.FleeTime, Post: () => {
                     if (crawler.GetRng().NextSingle() < escapeChance) {
                         crawler.Message($"{crawler.Name} fled.");
                         crawler.Location.GetEncounter().RemoveActor(crawler);

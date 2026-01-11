@@ -650,6 +650,56 @@ public static partial class Tuning {
         public static TimeDuration PriceRecalcInterval = TimeDuration.FromHours(2);
     }
 
+    /// <summary>
+    /// Guard NPC AI parameters (when not hired).
+    /// </summary>
+    public static class Guard {
+        /// <summary>How long to wait at a settlement for work before moving on.</summary>
+        public static TimeDuration JobWaitDuration = TimeDuration.FromHours(4);
+
+        /// <summary>How long to wait when idle (no settlements with hiring).</summary>
+        public static TimeDuration IdleWaitDuration = TimeDuration.FromHours(2);
+
+        /// <summary>Maximum distance to search for settlements with hiring.</summary>
+        public static float MaxSearchRadius = 800f;
+    }
+
+    /// <summary>
+    /// Bandit patrol AI parameters.
+    /// </summary>
+    public static class BanditPatrol {
+        /// <summary>How long to wait at an ambush point before relocating.</summary>
+        public static TimeDuration AmbushWaitDuration = TimeDuration.FromHours(6);
+
+        /// <summary>Chance to relocate when no targets arrive within wait period.</summary>
+        public static float RelocateChance = 0.5f;
+
+        /// <summary>How long to wait when idle.</summary>
+        public static TimeDuration IdleWaitDuration = TimeDuration.FromHours(1);
+    }
+
+    /// <summary>
+    /// Customs patrol AI parameters.
+    /// </summary>
+    public static class CustomsPatrol {
+        /// <summary>How long to patrol at a checkpoint before moving.</summary>
+        public static TimeDuration CheckpointDuration = TimeDuration.FromHours(3);
+
+        /// <summary>How long to wait when idle.</summary>
+        public static TimeDuration IdleWaitDuration = TimeDuration.FromHours(1);
+    }
+
+    /// <summary>
+    /// Traveler wandering AI parameters.
+    /// </summary>
+    public static class TravelerWander {
+        /// <summary>How long to stay at each destination.</summary>
+        public static TimeDuration VisitDuration = TimeDuration.FromHours(2);
+
+        /// <summary>How long to wait when no destinations available.</summary>
+        public static TimeDuration IdleWaitDuration = TimeDuration.FromHours(1);
+    }
+
     public static class Manufacturing {
         /// <summary>Manufacturing time per segment size tier (hours).</summary>
         public static float HoursPerSize = 4.0f;

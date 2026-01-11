@@ -68,7 +68,7 @@ public abstract class ActorComponentBase : IActorComponent {
     public Crawler Crawler => Owner as Crawler ?? throw new NullReferenceException();
 
     /// <summary>Default priority for components. Override to set specific priority.</summary>
-    public virtual int Priority => 500;
+    public virtual int Priority => 200;
 
     public virtual void Attach(IActor owner) {
         Owner = owner;

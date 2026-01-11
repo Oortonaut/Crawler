@@ -360,11 +360,13 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         case Roles.Customs:
             // Customs officers: contraband scanning and enforcement
             AddComponent(new CustomsComponent());
+            AddComponent(new CustomsRoleComponent(rng.Seed())); // Patrol AI
             break;
 
         case Roles.Bandit:
             // Bandits: extortion, robbery, combat
             AddComponent(new BanditComponent(rng.Seed(), 0.5f)); // Extortion/ultimatums
+            AddComponent(new BanditRoleComponent(rng.Seed())); // Ambush positioning AI
             // Bandits have higher markup/spread for goods they steal/trade
             var banditGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.20f,
@@ -382,6 +384,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             AddComponent(new Convoy.ConvoyComponent());
             AddComponent(new Convoy.ConvoyDecisionComponent(rng.Seed()));
             AddComponent(new Convoy.RouteKnowledgeComponent());
+            AddComponent(new TravelerRoleComponent(rng.Seed())); // Wandering AI
             break;
 
         case Roles.Harvester:
@@ -400,6 +403,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             AddComponent(new Convoy.ConvoyComponent());
             AddComponent(new CombatComponentAdvanced(rng.Seed())); // Smart combat for protection
             AddComponent(new Convoy.RouteKnowledgeComponent());
+            AddComponent(new GuardRoleComponent(rng.Seed())); // Job-seeking AI when not hired
             // Minimal trade capability
             var guardGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.10f,
