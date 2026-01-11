@@ -1,6 +1,7 @@
 ﻿using System.Drawing;
 using System.Numerics;
 using Crawler.Logging;
+using Crawler.Network;
 
 namespace Crawler;
 
@@ -60,10 +61,14 @@ public record Location {
         _ => "_",
     };
     public Sector Sector { get; init; }
-    public Vector2 Position { get; init; }
+    public Vector2 Position { get; set; }
     public EncounterType Type { get; init; }
     public ulong Seed { get; init; }
     public Func<Location, Encounter> NewEncounter { get; set; }
+
+    // Transit properties for actors traveling on roads
+    public Road? TransitRoad { get; set; }
+    public float? TransitProgress { get; set; }
 
     public Factions ChooseRandomFaction() {
         // Get base weights for this terrain type

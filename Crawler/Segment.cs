@@ -8,6 +8,7 @@ public enum SegmentKind {
     Industry,
     Storage,
     Harvest,
+    Habitat,
 }
 
 public enum HarvestType {
@@ -15,6 +16,14 @@ public enum HarvestType {
     Biomass,     // Extracts: Biomass
     Crystal,     // Extracts: Silicates, Gems
     Isotope,     // Extracts: Isotopes
+}
+
+public enum HabitatType {
+    Cabin,      // Basic crew quarters for mobile crawlers
+    Quarters,   // Standard living space
+    Barracks,   // Military/utilitarian - high capacity, lower morale
+    Suite,      // Luxury - lower capacity, higher morale bonus
+    Dome,       // Large settlement structures (sizes 6-9)
 }
 
 // Segment defs can be leveled by adding the difference from the reference tier to
@@ -54,7 +63,7 @@ public record SegmentDef(
     public int MaxHits => ( int ) Math.Round(Tuning.Segments.MaxHitsTiers[MaxHitsTier]);
     public virtual char ClassCode => '?';
 
-    public virtual SegmentDef Resize(int Size) {
+public virtual SegmentDef Resize(int Size) {
         Tier delta = new(Size - this.Size.Size);
         return this with {
             Size = this.Size + delta,
@@ -947,6 +956,65 @@ public class HarvestSegment(ulong seed, HarvestDef harvestDef, IActor? Owner) : 
     }
 }
 
+// ========================
+// Habitat Segments
+// ========================
+
+public record HabitatDef(
+    char Symbol,
+    Tier Size,
+    string Name,
+    Tier WeightTier,
+    Tier DrainTier,    // Life support power drain
+    Tier CostTier,
+    Tier MaxHitsTier,
+    Tier CrewCapacityTier,
+    Tier MoraleBonusTier,
+    HabitatType Type
+) : SegmentDef(Symbol, Size, Name, SegmentKind.Habitat, WeightTier, DrainTier, CostTier, MaxHitsTier) {
+    public override HabitatSegment NewSegment(ulong seed) => new(seed, this, null);
+    public override char ClassCode => 'Q';  // 'H' is taken by Harvest, 'Q' for Quarters
+
+    /// <summary>Maximum crew this habitat can support</summary>
+    public float CrewCapacity => Tuning.Segments.CrewCapacityTiers[CrewCapacityTier];
+
+    /// <summary>Morale bonus per hour when crew is housed</summary>
+    public float MoraleBonus => Tuning.Segments.MoraleBonusTiers[MoraleBonusTier];
+
+    /// <summary>Whether this is a Dome (size 6+)</summary>
+    public bool IsDome => Type == HabitatType.Dome || Size.Size >= 6;
+
+    public override SegmentDef Resize(int Size) {
+        Tier delta = new(Size - base.Size.Size);
+        return ((HabitatDef)base.Resize(Size)) with {
+            CrewCapacityTier = CrewCapacityTier + delta,
+            MoraleBonusTier = MoraleBonusTier + delta,
+        };
+    }
+}
+
+public class HabitatSegment(ulong seed, HabitatDef habitatDef, IActor? Owner) : Segment(seed, habitatDef, Owner) {
+    public float CrewCapacity => habitatDef.CrewCapacity;
+    public float MoraleBonus => habitatDef.MoraleBonus;
+    public HabitatType HabitatType => habitatDef.Type;
+    public bool IsDome => habitatDef.IsDome;
+
+    public override char ReportCode(Location _) => HabitatType switch {
+        HabitatType.Cabin => 'C',
+        HabitatType.Quarters => 'Q',
+        HabitatType.Barracks => 'B',
+        HabitatType.Suite => 'S',
+        HabitatType.Dome => 'D',
+        _ => '?'
+    };
+
+    public override Segment Clone() {
+        var clone = new HabitatSegment(Seed, (HabitatDef)SegmentDef, Owner);
+        CopyBaseTo(clone);
+        return clone;
+    }
+}
+
 public static class SegmentEx {
     public static string SegmentReport(this IEnumerable<Segment> segments, Location location) {
         string result = "";
@@ -1111,6 +1179,36 @@ public static class SegmentEx {
                     }
                     result += defenseTable.ToString();
                     break;
+
+                case SegmentKind.Habitat:
+                    var habitatTable = new Table(
+                        ("Name", -24),
+                        ("State", -12),
+                        ("Health", 6),
+                        ("Weight", 6),
+                        ("Length", 6),
+                        ("Drain", 6),
+                        ("Cost", 10),
+                        ("Crew Cap", 10),
+                        ("Morale", 8),
+                        ("Type", -10)
+                    );
+                    foreach (var segment in group.Cast<HabitatSegment>()) {
+                        habitatTable.AddRow(
+                            segment.NameSize,
+                            segment.StatusLine(location),
+                            $"{segment.Health}/{segment.MaxHealth}",
+                            $"{segment.Weight:F1}",
+                            $"{segment.Length:F1}",
+                            $"{segment.Drain:F2}",
+                            $"{segment.Cost:F1}",
+                            $"{segment.CrewCapacity:F0}",
+                            $"+{segment.MoraleBonus:F1}",
+                            segment.HabitatType.ToString()
+                        );
+                    }
+                    result += habitatTable.ToString();
+                    break;
             }
         }
 
@@ -1189,6 +1287,23 @@ public static class SegmentEx {
 
     public static IEnumerable<HarvestDef> CoreHarvestDefs => HarvestDefs;
 
+    // Habitat definitions (CrewCapacity, MoraleBonus, Type)
+    // Symbol, Size, Name, WeightTier, DrainTier, CostTier, MaxHitsTier, CrewCapacityTier, MoraleBonusTier, Type
+    public static List<HabitatDef> HabitatDefs = [
+        // Crawler-scale habitats (sizes 1-5)
+        new HabitatDef('C', 1, "Crew Cabin", 1, 0.5f, 1, 1, 1, 0.8f, HabitatType.Cabin),
+        new HabitatDef('Q', 1.5f, "Crew Quarters", 1.2f, 0.7f, 1.5f, 1, 1.2f, 1, HabitatType.Quarters),
+        new HabitatDef('B', 1.2f, "Barracks", 1, 0.5f, 1, 1.2f, 1.5f, 0.5f, HabitatType.Barracks),
+        new HabitatDef('S', 2, "VIP Suite", 1.5f, 1.5f, 2.5f, 1, 0.5f, 2, HabitatType.Suite),
+        // Settlement domes (sizes 6-9)
+        new HabitatDef('D', 6, "Small Dome", 6, 3, 6, 5, 6, 5, HabitatType.Dome),
+        new HabitatDef('D', 7, "Medium Dome", 7, 3.5f, 7, 6, 7, 6, HabitatType.Dome),
+        new HabitatDef('D', 8, "Large Dome", 8, 4, 8, 7, 8, 7, HabitatType.Dome),
+        new HabitatDef('D', 9, "Grand Dome", 9, 5, 9, 8, 9, 8, HabitatType.Dome),
+    ];
+
+    public static IEnumerable<HabitatDef> CoreHabitatDefs => HabitatDefs;
+
     public static List<SegmentDef> AllDefs = [
         .. OffenseDefs,
         .. PowerDefs,
@@ -1197,10 +1312,99 @@ public static class SegmentEx {
         .. IndustryDefs,
         .. StorageDefs,
         .. HarvestDefs,
+        .. HabitatDefs,
     ];
 
     // public static Dictionary<char, SegmentDef> Lookup = AllDefs.ToDictionary(s => s.Symbol);
-    public static Dictionary<string, SegmentDef> NameLookup = AllDefs.ToDictionary(s => s.Name);
+    public static Dictionary<string, SegmentDef> BaseNameLookup = AllDefs.ToDictionary(s => s.Name);
+
+    // Cache for dynamically resolved upgraded defs
+    static readonly Dictionary<string, SegmentDef> _upgradeCache = new();
+
+    /// <summary>
+    /// Upgrade prefix definitions for dynamic name parsing.
+    /// Order matters - longer/more specific prefixes should come first.
+    /// </summary>
+    static readonly (string prefix, Func<SegmentDef, int, SegmentDef?> apply)[] UpgradePrefixes = [
+        // Weapon upgrades
+        ("Accurate ", (def, lvl) => def is WeaponDef w ? w.Accurate(lvl) : null),
+        ("Powerful ", (def, lvl) => def is WeaponDef w ? w.Powerful(lvl) : null),
+        ("Sustained ", (def, lvl) => def is WeaponDef w ? w.Sustained(lvl) : null),
+        ("Salvo ", (def, lvl) => def is WeaponDef w ? w.Salvo(lvl) : null),
+        ("Thrifty ", (def, lvl) => def is WeaponDef w ? w.Thrifty(lvl) : null),
+        // Reactor upgrades
+        ("High-Capacity ", (def, lvl) => def is ReactorDef r ? r.HighCapacity(lvl) : null),
+        ("Overcharged ", (def, lvl) => def is ReactorDef r ? r.Overcharged(lvl) : null),
+        // Charger upgrades
+        ("Boosted ", (def, lvl) => def is ChargerDef c ? c.Boosted(lvl) : null),
+        // Traction upgrades
+        ("Swift ", (def, lvl) => def is TractionDef t ? t.Swift(lvl) : null),
+        ("Heavy-Duty ", (def, lvl) => def is TractionDef t ? t.HeavyDuty(lvl) : null),
+        // Armor upgrades
+        ("Reinforced ", (def, lvl) => def is ArmorDef a ? a.Reinforced(lvl) : null),
+        // Plating upgrades
+        ("Thick ", (def, lvl) => def is PlatingDef p ? p.Thick(lvl) : null),
+        // Shield upgrades
+        ("Capacious ", (def, lvl) => def is ShieldDef s ? s.Capacious(lvl) : null),
+        ("Reactive ", (def, lvl) => def is ShieldDef s ? s.Reactive(lvl) : null),
+        // Industry upgrades
+        ("Streamlined ", (def, lvl) => def is IndustryDef i ? i.Streamlined(lvl) : null),
+        ("Optimized ", (def, lvl) => def is IndustryDef i ? i.Optimized(lvl) : null),
+        // Storage upgrades
+        ("Spacious ", (def, lvl) => def is StorageDef st ? st.Spacious(lvl) : null),
+        // Harvest upgrades
+        ("Bountiful ", (def, lvl) => def is HarvestDef h ? h.Bountiful(lvl) : null),
+        // Habitat upgrades
+        ("Roomy ", (def, lvl) => def is HabitatDef hab ? hab.Roomy(lvl) : null),
+        ("Comfortable ", (def, lvl) => def is HabitatDef hab ? hab.Comfortable(lvl) : null),
+        // Universal upgrades (must try on base SegmentDef)
+        ("Hardened ", (def, lvl) => def.Hardened(lvl)),
+        ("Lightened ", (def, lvl) => def.Lightened(lvl)),
+        ("Low-Power ", (def, lvl) => def.LowPower(lvl)),
+    ];
+
+    /// <summary>
+    /// Looks up a segment definition by name, supporting dynamic upgrade parsing.
+    /// For upgraded segments like "Very Accurate Powerful Gun", parses prefixes recursively.
+    /// </summary>
+    public static SegmentDef? LookupByName(string name) {
+        // Try direct lookup first (base defs and pre-generated variants like Heavy/Rapid)
+        if (BaseNameLookup.TryGetValue(name, out var def)) return def;
+
+        // Check upgrade cache
+        if (_upgradeCache.TryGetValue(name, out var cached)) return cached;
+
+        // Parse upgrade prefixes
+        var remaining = name;
+
+        // Strip intensity prefixes and track level
+        int level = 1;
+        if (remaining.StartsWith("Super ")) { level = 4; remaining = remaining[6..]; }
+        else if (remaining.StartsWith("Extra ")) { level = 3; remaining = remaining[6..]; }
+        else if (remaining.StartsWith("Very ")) { level = 2; remaining = remaining[5..]; }
+
+        // Try to find matching upgrade prefix
+        foreach (var (prefix, apply) in UpgradePrefixes) {
+            if (remaining.StartsWith(prefix)) {
+                var baseName = remaining[prefix.Length..];
+                var baseDef = LookupByName(baseName);  // Recursive for compound upgrades
+                if (baseDef != null) {
+                    var result = apply(baseDef, level);
+                    if (result != null) {
+                        _upgradeCache[name] = result;  // Cache for future lookups
+                        return result;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Legacy accessor - now uses dynamic lookup.
+    /// </summary>
+    public static Dictionary<string, SegmentDef> NameLookup => BaseNameLookup;
 
     public static EArray<SegmentKind, SegmentDef[]> SegmentClassLookup = AllDefs
         .GroupBy(s => s.SegmentKind)
@@ -1233,4 +1437,205 @@ public static class SegmentEx {
             yield return weapon.Heavy().Rapid();
         }
     }
+
+    // ============================================
+    // UPGRADE EXTENSION METHODS
+    // ============================================
+
+    /// <summary>
+    /// Returns intensity prefix for upgrade levels.
+    /// Level 1 = no prefix, Level 2 = "Very ", Level 3 = "Extra ", Level 4+ = "Super ".
+    /// </summary>
+    static string IntensityPrefix(int level) => level switch {
+        <= 1 => "",
+        2 => "Very ",
+        3 => "Extra ",
+        _ => "Super "
+    };
+
+    // --- Weapon Upgrades ---
+    // Individual stat upgrades are ~80% efficient compared to Heavy/Rapid combos
+
+    /// <summary>Improves weapon accuracy. Less efficient than combo variants.</summary>
+    public static WeaponDef Accurate(this WeaponDef weapon, int level = 1) => weapon with {
+        Name = $"{IntensityPrefix(level)}Accurate {weapon.Name}",
+        AimTier = weapon.AimTier + level * 0.8f,
+        CostTier = weapon.CostTier + level * 0.2f,
+    };
+
+    /// <summary>Improves weapon damage. Less efficient than Heavy combo.</summary>
+    public static WeaponDef Powerful(this WeaponDef weapon, int level = 1) => weapon with {
+        Name = $"{IntensityPrefix(level)}Powerful {weapon.Name}",
+        DamageTier = weapon.DamageTier + level * 1.5f,
+        CostTier = weapon.CostTier + level * 0.3f,
+    };
+
+    /// <summary>Improves weapon fire rate. Less efficient than Rapid combo.</summary>
+    public static WeaponDef Sustained(this WeaponDef weapon, int level = 1) => weapon with {
+        Name = $"{IntensityPrefix(level)}Sustained {weapon.Name}",
+        RateTier = weapon.RateTier + level * 1.5f,
+        CostTier = weapon.CostTier + level * 0.3f,
+    };
+
+    /// <summary>Improves shots per cycle.</summary>
+    public static WeaponDef Salvo(this WeaponDef weapon, int level = 1) => weapon with {
+        Name = $"{IntensityPrefix(level)}Salvo {weapon.Name}",
+        ShotsTier = weapon.ShotsTier + level * 0.8f,
+        CostTier = weapon.CostTier + level * 0.25f,
+    };
+
+    /// <summary>Reduces ammunition consumption.</summary>
+    public static WeaponDef Thrifty(this WeaponDef weapon, int level = 1) => weapon with {
+        Name = $"{IntensityPrefix(level)}Thrifty {weapon.Name}",
+        AmmoUseTier = weapon.AmmoUseTier - level * 0.5f,
+        CostTier = weapon.CostTier + level * 0.2f,
+    };
+
+    // --- Reactor Upgrades ---
+
+    /// <summary>Improves reactor energy storage capacity.</summary>
+    public static ReactorDef HighCapacity(this ReactorDef reactor, int level = 1) => reactor with {
+        Name = $"{IntensityPrefix(level)}High-Capacity {reactor.Name}",
+        CapacityTier = reactor.CapacityTier + level * 0.8f,
+        CostTier = reactor.CostTier + level * 0.25f,
+    };
+
+    /// <summary>Improves reactor power generation rate.</summary>
+    public static ReactorDef Overcharged(this ReactorDef reactor, int level = 1) => reactor with {
+        Name = $"{IntensityPrefix(level)}Overcharged {reactor.Name}",
+        ChargerTier = reactor.ChargerTier + level * 0.8f,
+        CostTier = reactor.CostTier + level * 0.25f,
+    };
+
+    // --- Charger Upgrades ---
+
+    /// <summary>Improves charger power generation rate.</summary>
+    public static ChargerDef Boosted(this ChargerDef charger, int level = 1) => charger with {
+        Name = $"{IntensityPrefix(level)}Boosted {charger.Name}",
+        ChargeTier = charger.ChargeTier + level * 0.8f,
+        CostTier = charger.CostTier + level * 0.25f,
+    };
+
+    // --- Traction Upgrades ---
+
+    /// <summary>Improves movement speed.</summary>
+    public static TractionDef Swift(this TractionDef traction, int level = 1) => traction with {
+        Name = $"{IntensityPrefix(level)}Swift {traction.Name}",
+        SpeedTier = traction.SpeedTier + level * 0.8f,
+        CostTier = traction.CostTier + level * 0.25f,
+    };
+
+    /// <summary>Improves cargo lift capacity.</summary>
+    public static TractionDef HeavyDuty(this TractionDef traction, int level = 1) => traction with {
+        Name = $"{IntensityPrefix(level)}Heavy-Duty {traction.Name}",
+        LiftTier = traction.LiftTier + level * 0.8f,
+        CostTier = traction.CostTier + level * 0.25f,
+    };
+
+    // --- Armor Upgrades ---
+
+    /// <summary>Improves armor damage reduction.</summary>
+    public static ArmorDef Reinforced(this ArmorDef armor, int level = 1) => armor with {
+        Name = $"{IntensityPrefix(level)}Reinforced {armor.Name}",
+        ReductionTier = armor.ReductionTier + level * 0.8f,
+        CostTier = armor.CostTier + level * 0.25f,
+    };
+
+    // --- Plating Upgrades ---
+
+    /// <summary>Improves plating mitigation percentage.</summary>
+    public static PlatingDef Thick(this PlatingDef plating, int level = 1) => plating with {
+        Name = $"{IntensityPrefix(level)}Thick {plating.Name}",
+        MitigationTier = plating.MitigationTier + level * 0.8f,
+        CostTier = plating.CostTier + level * 0.25f,
+    };
+
+    // --- Shield Upgrades ---
+
+    /// <summary>Improves shield capacity.</summary>
+    public static ShieldDef Capacious(this ShieldDef shield, int level = 1) => shield with {
+        Name = $"{IntensityPrefix(level)}Capacious {shield.Name}",
+        CapacityTier = shield.CapacityTier + level * 0.8f,
+        CostTier = shield.CostTier + level * 0.25f,
+    };
+
+    /// <summary>Improves shield recharge rate.</summary>
+    public static ShieldDef Reactive(this ShieldDef shield, int level = 1) => shield with {
+        Name = $"{IntensityPrefix(level)}Reactive {shield.Name}",
+        ChargeTier = shield.ChargeTier + level * 0.8f,
+        CostTier = shield.CostTier + level * 0.25f,
+    };
+
+    // --- Industry Upgrades ---
+
+    /// <summary>Improves production throughput/speed.</summary>
+    public static IndustryDef Streamlined(this IndustryDef industry, int level = 1) => industry with {
+        Name = $"{IntensityPrefix(level)}Streamlined {industry.Name}",
+        ThroughputTier = industry.ThroughputTier + level * 0.8f,
+        CostTier = industry.CostTier + level * 0.25f,
+    };
+
+    /// <summary>Improves production output efficiency.</summary>
+    public static IndustryDef Optimized(this IndustryDef industry, int level = 1) => industry with {
+        Name = $"{IntensityPrefix(level)}Optimized {industry.Name}",
+        EfficiencyTier = industry.EfficiencyTier + level * 0.8f,
+        CostTier = industry.CostTier + level * 0.25f,
+    };
+
+    // --- Storage Upgrades ---
+
+    /// <summary>Improves storage capacity.</summary>
+    public static StorageDef Spacious(this StorageDef storage, int level = 1) => storage with {
+        Name = $"{IntensityPrefix(level)}Spacious {storage.Name}",
+        CapacityTier = storage.CapacityTier + level * 0.8f,
+        CostTier = storage.CostTier + level * 0.25f,
+    };
+
+    // --- Harvest Upgrades ---
+
+    /// <summary>Improves extraction yield.</summary>
+    public static HarvestDef Bountiful(this HarvestDef harvest, int level = 1) => harvest with {
+        Name = $"{IntensityPrefix(level)}Bountiful {harvest.Name}",
+        YieldTier = harvest.YieldTier + level * 0.8f,
+        CostTier = harvest.CostTier + level * 0.25f,
+    };
+
+    // --- Habitat Upgrades ---
+
+    /// <summary>Improves crew capacity.</summary>
+    public static HabitatDef Roomy(this HabitatDef habitat, int level = 1) => habitat with {
+        Name = $"{IntensityPrefix(level)}Roomy {habitat.Name}",
+        CrewCapacityTier = habitat.CrewCapacityTier + level * 0.8f,
+        CostTier = habitat.CostTier + level * 0.25f,
+    };
+
+    /// <summary>Improves morale bonus.</summary>
+    public static HabitatDef Comfortable(this HabitatDef habitat, int level = 1) => habitat with {
+        Name = $"{IntensityPrefix(level)}Comfortable {habitat.Name}",
+        MoraleBonusTier = habitat.MoraleBonusTier + level * 0.8f,
+        CostTier = habitat.CostTier + level * 0.25f,
+    };
+
+    // --- Universal Upgrades (work on any segment) ---
+
+    /// <summary>Improves segment durability (max hits).</summary>
+    public static SegmentDef Hardened(this SegmentDef def, int level = 1) => def with {
+        Name = $"{IntensityPrefix(level)}Hardened {def.Name}",
+        MaxHitsTier = def.MaxHitsTier + level * 0.8f,
+        CostTier = def.CostTier + level * 0.2f,
+    };
+
+    /// <summary>Reduces segment weight.</summary>
+    public static SegmentDef Lightened(this SegmentDef def, int level = 1) => def with {
+        Name = $"{IntensityPrefix(level)}Lightened {def.Name}",
+        WeightTier = def.WeightTier - (level * 0.5f, 0),
+        CostTier = def.CostTier + level * 0.3f,
+    };
+
+    /// <summary>Reduces segment power drain.</summary>
+    public static SegmentDef LowPower(this SegmentDef def, int level = 1) => def with {
+        Name = $"{IntensityPrefix(level)}Low-Power {def.Name}",
+        DrainTier = def.DrainTier - (level * 0.5f, 0),
+        CostTier = def.CostTier + level * 0.3f,
+    };
 }

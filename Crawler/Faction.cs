@@ -11,6 +11,7 @@ public enum Roles {
     Bandit,      // Extortion/robbery specialist
     Traveler,    // Dynamic quest giver/wanderer
     Harvester,   // Resource extraction specialist
+    Guard,       // Convoy escort specialist
 }
 
 public enum Factions {

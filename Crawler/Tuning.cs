@@ -309,7 +309,7 @@ public static partial class Tuning {
         //   1      17
         //   2      29
         //   3      50             350
-        // Approximate sizes: (in  m)  10 14 20 28 40
+        // Approximate sizes: (in  m)  10 14 20 28 40/56 80 112 160 224
         public static PowerScaling LengthTiers = new PowerScaling(10.0f, (4, 1.2f), "short", "long");
 
         // Base segment parameters
@@ -351,6 +351,10 @@ public static partial class Tuning {
 
         // Harvest parameters
         public static PowerScaling HarvestYieldTiers = new PowerScaling(1, (4, 3), "inefficient", "efficient");
+
+        // Habitat parameters
+        public static PowerScaling CrewCapacityTiers = new PowerScaling(5.0f, (100, 2.0f), "cramped", "spacious");
+        public static PowerScaling MoraleBonusTiers = new PowerScaling(0.1f, (3, 2.0f), "spartan", "luxurious");
     }
 
     public static class Economy {
@@ -480,21 +484,21 @@ public static partial class Tuning {
         ];
 
         public static EArray<EncounterType, EArray<SegmentKind, float>> EncounterSegmentKindMarkup = [
-            // Power, Traction, Offense, Defense, Industry, Storage, Harvest
-            [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f], // None
-            [1.1f, 1.2f, 1.0f, 1.1f, 1.0f, 1.0f, 1.2f], // Crossroads
-            [0.9f, 1.0f, 0.8f, 0.9f, 0.85f, 0.9f, 0.7f], // Settlement - cheap harvest
-            [1.3f, 1.5f, 1.4f, 1.2f, 0.8f, 1.1f, 0.6f], // Resource - very cheap harvest!
-            [1.4f, 1.3f, 1.6f, 1.5f, 1.3f, 1.4f, 1.5f], // Hazard
+            // Power, Traction, Offense, Defense, Industry, Storage, Harvest, Habitat
+            [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f], // None
+            [1.1f, 1.2f, 1.0f, 1.1f, 1.0f, 1.0f, 1.2f, 0.9f], // Crossroads
+            [0.9f, 1.0f, 0.8f, 0.9f, 0.85f, 0.9f, 0.7f, 0.7f], // Settlement - cheap habitat
+            [1.3f, 1.5f, 1.4f, 1.2f, 0.8f, 1.1f, 0.6f, 1.5f], // Resource - expensive habitat
+            [1.4f, 1.3f, 1.6f, 1.5f, 1.3f, 1.4f, 1.5f, 1.6f], // Hazard
         ];
 
         public static EArray<TerrainType, EArray<SegmentKind, float>> LocationSegmentKindMarkup = [
-            // Power, Traction, Offense, Defense, Industry, Storage, Harvest
-            [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f], // Flat
-            [1.1f, 1.2f, 1.0f, 1.1f, 1.1f, 1.1f, 0.9f], // Rough
-            [1.2f, 1.4f, 1.1f, 1.2f, 1.2f, 1.2f, 0.85f], // Broken
-            [1.3f, 1.7f, 1.2f, 1.3f, 1.3f, 1.3f, 0.8f], // Shattered
-            [1.5f, 2.0f, 1.4f, 1.5f, 1.5f, 1.5f, 0.75f], // Ruined - cheaper harvest
+            // Power, Traction, Offense, Defense, Industry, Storage, Harvest, Habitat
+            [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f], // Flat
+            [1.1f, 1.2f, 1.0f, 1.1f, 1.1f, 1.1f, 0.9f, 1.1f], // Rough
+            [1.2f, 1.4f, 1.1f, 1.2f, 1.2f, 1.2f, 0.85f, 1.2f], // Broken
+            [1.3f, 1.7f, 1.2f, 1.3f, 1.3f, 1.3f, 0.8f, 1.3f], // Shattered
+            [1.5f, 2.0f, 1.4f, 1.5f, 1.5f, 1.5f, 0.75f, 1.5f], // Ruined
         ];
 
         public static float LocalMarkup(Commodity commodity, Location location) {

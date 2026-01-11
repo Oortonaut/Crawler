@@ -188,8 +188,8 @@ public class TradeNetwork {
         // Add some random long-distance connections for network resilience
         int extraConnections = tradeLocations.Count / 5;
         for (int i = 0; i < extraConnections; i++) {
-            var a = rng.ChooseRandom(tradeLocations);
-            var b = rng.ChooseRandom(tradeLocations);
+            var a = rng.ChooseRandom(tradeLocations)!;
+            var b = rng.ChooseRandom(tradeLocations)!;
             if (a != b && !network.AreConnected(a, b)) {
                 var (difficulty, worstTerrain) = CalculateRoadDifficulty(a, b, map);
                 network.AddRoad(a, b, difficulty, worstTerrain);
