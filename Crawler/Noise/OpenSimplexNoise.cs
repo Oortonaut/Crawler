@@ -85,7 +85,7 @@ namespace Noise
             for (int i = 0; i < p2D.Length; i += 4)
             {
                 var baseSet = base2D[p2D[i]];
-                Contribution2 previous = null, current = null;
+                Contribution2? previous = null, current = null;
                 for (int k = 0; k < baseSet.Length; k += 3)
                 {
                     current = new Contribution2(baseSet[k], baseSet[k + 1], baseSet[k + 2]);
@@ -99,7 +99,7 @@ namespace Noise
                     }
                     previous = current;
                 }
-                current.Next = new Contribution2(p2D[i + 1], p2D[i + 2], p2D[i + 3]);
+                current!.Next = new Contribution2(p2D[i + 1], p2D[i + 2], p2D[i + 3]);
             }
 
             lookup2D = new Contribution2[64];
@@ -122,7 +122,7 @@ namespace Noise
             for (int i = 0; i < p3D.Length; i += 9)
             {
                 var baseSet = base3D[p3D[i]];
-                Contribution3 previous = null, current = null;
+                Contribution3? previous = null, current = null;
                 for (int k = 0; k < baseSet.Length; k += 4)
                 {
                     current = new Contribution3(baseSet[k], baseSet[k + 1], baseSet[k + 2], baseSet[k + 3]);
@@ -136,7 +136,7 @@ namespace Noise
                     }
                     previous = current;
                 }
-                current.Next = new Contribution3(p3D[i + 1], p3D[i + 2], p3D[i + 3], p3D[i + 4]);
+                current!.Next = new Contribution3(p3D[i + 1], p3D[i + 2], p3D[i + 3], p3D[i + 4]);
                 current.Next.Next = new Contribution3(p3D[i + 5], p3D[i + 6], p3D[i + 7], p3D[i + 8]);
             }
             
@@ -159,7 +159,7 @@ namespace Noise
             for (int i = 0; i < p4D.Length; i += 16)
             {
                 var baseSet = base4D[p4D[i]];
-                Contribution4 previous = null, current = null;
+                Contribution4? previous = null, current = null;
                 for (int k = 0; k < baseSet.Length; k += 5)
                 {
                     current = new Contribution4(baseSet[k], baseSet[k + 1], baseSet[k + 2], baseSet[k + 3], baseSet[k + 4]);
@@ -173,7 +173,7 @@ namespace Noise
                     }
                     previous = current;
                 }
-                current.Next = new Contribution4(p4D[i + 1], p4D[i + 2], p4D[i + 3], p4D[i + 4], p4D[i + 5]);
+                current!.Next = new Contribution4(p4D[i + 1], p4D[i + 2], p4D[i + 3], p4D[i + 4], p4D[i + 5]);
                 current.Next.Next = new Contribution4(p4D[i + 6], p4D[i + 7], p4D[i + 8], p4D[i + 9], p4D[i + 10]);
                 current.Next.Next.Next = new Contribution4(p4D[i + 11], p4D[i + 12], p4D[i + 13], p4D[i + 14], p4D[i + 15]);
             }
@@ -435,7 +435,7 @@ namespace Noise
         {
             public double dx, dy;
             public int xsb, ysb;
-            public Contribution2 Next;
+            public Contribution2? Next;
 
             public Contribution2(double multiplier, int xsb, int ysb)
             {
@@ -450,7 +450,7 @@ namespace Noise
         {
             public double dx, dy, dz;
             public int xsb, ysb, zsb;
-            public Contribution3 Next;
+            public Contribution3? Next;
 
             public Contribution3(double multiplier, int xsb, int ysb, int zsb)
             {
@@ -467,7 +467,7 @@ namespace Noise
         {
             public double dx, dy, dz, dw;
             public int xsb, ysb, zsb, wsb;
-            public Contribution4 Next;
+            public Contribution4? Next;
 
             public Contribution4(double multiplier, int xsb, int ysb, int zsb, int wsb)
             {
