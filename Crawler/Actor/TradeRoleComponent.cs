@@ -14,11 +14,6 @@ public class TradeRoleComponent : ActorComponentBase {
     Commodity _targetCommodity;
     TradeAction _currentAction;
 
-    /// <summary>Maximum age of price information to consider reliable.</summary>
-    static readonly TimeDuration MaxPriceAge = TimeDuration.FromDays(3);
-
-    /// <summary>Minimum profit margin to consider a trade worthwhile.</summary>
-    const float MinProfitMargin = 0.15f;
 
     enum TradeAction {
         Idle,
@@ -113,10 +108,10 @@ public class TradeRoleComponent : ActorComponentBase {
 
     ActorEvent? PlanNextTrade(Crawler crawler, PriceKnowledge knowledge, TimePoint time) {
         // Find best trade opportunity
-        var opportunities = knowledge.FindTradeOpportunities(time, MaxPriceAge, 5).ToList();
+        var opportunities = knowledge.FindTradeOpportunities(time, Tuning.Trader.MaxPriceAge, 5).ToList();
 
         foreach (var (buyLoc, sellLoc, commodity, profit, margin) in opportunities) {
-            if (margin < MinProfitMargin) continue;
+            if (margin < Tuning.Trader.MinProfitMargin) continue;
 
             // Check if we can afford to buy
             float buyPrice = knowledge.GetSnapshot(buyLoc)?.Prices[commodity] ?? 0;
@@ -131,7 +126,7 @@ public class TradeRoleComponent : ActorComponentBase {
         }
 
         // No good trades found, explore for fresh prices
-        if (_rng.NextSingle() < 0.3f) {
+        if (_rng.NextSingle() < Tuning.Trader.ExploreChance) {
             _currentAction = TradeAction.Exploring;
             _destination = PickExploreDestination(crawler, time);
             if (_destination != null) {
@@ -139,9 +134,11 @@ public class TradeRoleComponent : ActorComponentBase {
             }
         }
 
-        // Wait and retry later
-        return crawler.NewEventFor("Waiting for trade opportunity", Priority,
-            TimeDuration.FromHours(1), Post: () => { });
+        // Wait and retry later - priority based on cargo value and capacity
+        float cargoValue = crawler.Cargo.ValueAt(crawler.Location);
+        int priority = EventPriority.ForTrade(crawler, cargoValue);
+        return crawler.NewEventFor("Waiting for trade opportunity", priority,
+            Tuning.Trader.IdleWaitDuration, Post: () => { });
     }
 
     Location? PickExploreDestination(Crawler crawler, TimePoint time) {
@@ -154,7 +151,7 @@ public class TradeRoleComponent : ActorComponentBase {
         var candidates = network.RoadsFrom(crawler.Location)
             .Select(r => r.To)
             .Where(loc => loc.Type is EncounterType.Settlement or EncounterType.Crossroads)
-            .Where(loc => knowledge == null || knowledge.IsStale(loc, time, MaxPriceAge))
+            .Where(loc => knowledge == null || knowledge.IsStale(loc, time, Tuning.Trader.MaxPriceAge))
             .ToList();
 
         if (candidates.Count == 0) {
@@ -181,7 +178,7 @@ public class TradeRoleComponent : ActorComponentBase {
 
         foreach (var (location, snapshot) in knowledge.Snapshots) {
             if (location == currentLocation) continue;
-            if (time - snapshot.Timestamp > MaxPriceAge) continue;
+            if (time - snapshot.Timestamp > Tuning.Trader.MaxPriceAge) continue;
 
             float sellPrice = snapshot.Prices[commodity];
             float profit = sellPrice - buyPrice;
@@ -207,7 +204,7 @@ public class TradeRoleComponent : ActorComponentBase {
         float maxQuantity = available / price;
         float volumeLimit = crawler.Cargo.AvailableVolume / commodity.Volume();
         float quantity = Math.Min(maxQuantity, volumeLimit);
-        quantity = Math.Min(quantity, 100); // Cap per trade
+        quantity = Math.Min(quantity, Tuning.Trader.MaxTradeQuantity); // Cap per trade
 
         if (quantity < 1) return false;
 

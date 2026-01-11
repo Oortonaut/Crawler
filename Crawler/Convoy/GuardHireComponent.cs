@@ -12,11 +12,11 @@ public class GuardHireComponent : ActorComponentBase {
     TimePoint _lastRefresh;
 
     /// <summary>How often guards refresh at settlement.</summary>
-    public static TimeDuration RefreshInterval => TimeDuration.FromDays(1);
+    public static TimeDuration RefreshInterval => Tuning.Convoy.GuardRefreshInterval;
 
     /// <summary>Maximum guards per settlement based on population.</summary>
     public static int MaxGuardsForPopulation(int population) =>
-        Math.Min(3, Math.Max(0, population / 100));
+        Math.Min(Tuning.Convoy.MaxGuardsPerSettlement, Math.Max(0, population / Tuning.Convoy.PopulationPerGuard));
 
     public GuardHireComponent(ulong seed) {
         _rng = new XorShift(seed);
@@ -61,16 +61,16 @@ public class GuardHireComponent : ActorComponentBase {
         var location = Owner.Location;
 
         // Guards scale with location wealth but are combat-focused
-        float wealth = location.Wealth * 0.4f;
+        float wealth = location.Wealth * Tuning.Convoy.GuardWealthMultiplier;
         int crew = Math.Max(3, (int)(wealth / 100));
         crew = Math.Min(crew, 15);
 
         // Segment wealth allocation: prioritize offense and defense
-        float segmentWealth = wealth * 0.7f;
+        float segmentWealth = wealth * Tuning.Convoy.GuardSegmentWealthFraction;
 
         // Create guard with combat-focused loadout
         // supplyDays, goodsWealth, segmentWealth, segmentClassWeights
-        float supplyDays = 10;
+        float supplyDays = Tuning.Convoy.GuardSupplyDays;
         float goodsWealth = 0; // Guards don't carry trade goods
         EArray<SegmentKind, float> weights = [0.6f, 0.6f, 1.5f, 1.3f, 0.2f, 0.3f, 0.1f];
         var guard = Crawler.NewRandom(
@@ -115,12 +115,12 @@ public class GuardHireComponent : ActorComponentBase {
         float riskMultiplier = 1.0f;
         var factionNetwork = FactionRiskNetworks.GetNetwork(Owner.Location.Sector.ControllingFaction);
         float routeRisk = factionNetwork.RiskTracker.GetRouteRisk(path, Owner.Time, network);
-        riskMultiplier = 1.0f + routeRisk * 0.5f;
+        riskMultiplier = 1.0f + routeRisk * Tuning.Convoy.RiskCostMultiplier;
 
         // Guard quality
         float guardQuality = guard.OffenseSegments.OfType<WeaponSegment>().Sum(s => s.Damage) +
                             guard.DefenseSegments.OfType<ArmorSegment>().Sum(s => s.Reduction);
-        float qualityMultiplier = 1.0f + guardQuality * 0.01f;
+        float qualityMultiplier = 1.0f + guardQuality * Tuning.Convoy.QualityCostMultiplier;
 
         // Base rate per km
         float baseRate = Tuning.Convoy.GuardBaseCostPerKm;
@@ -235,7 +235,7 @@ public record HireGuardInteraction(
         return hireComponent.HireGuard(Guard, Mechanic, convoy, destination);
     }
 
-    public override TimeDuration ExpectedDuration => TimeDuration.FromMinutes(5);
+    public override TimeDuration ExpectedDuration => Tuning.Convoy.HireGuardTime;
 }
 
 /// <summary>

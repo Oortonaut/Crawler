@@ -97,8 +97,8 @@ public class ConvoyDecisionComponent : ActorComponentBase {
 
         // Reduce threshold if we have valuable cargo
         float cargoValue = crawler.Supplies.ValueAt(crawler.Location);
-        if (cargoValue > 1000) {
-            formThreshold *= 0.8f;
+        if (cargoValue > Tuning.Trader.HighValueCargoThreshold) {
+            formThreshold *= Tuning.Convoy.HighCargoFormThresholdMultiplier;
         }
 
         return routeRisk > formThreshold;
@@ -126,7 +126,7 @@ public class ConvoyDecisionComponent : ActorComponentBase {
         if (leaderRelation.Hostile) return true;
 
         // Random chance to leave based on independence (very small)
-        if (_rng.NextSingle() < _independenceValue * 0.02f) return true;
+        if (_rng.NextSingle() < _independenceValue * Tuning.Convoy.IndependenceLeaveChance) return true;
 
         return false;
     }
@@ -217,7 +217,7 @@ public record OfferToJoinConvoyInteraction(
         return true;
     }
 
-    public override TimeDuration ExpectedDuration => TimeDuration.FromMinutes(1);
+    public override TimeDuration ExpectedDuration => Tuning.Convoy.JoinConvoyTime;
 }
 
 /// <summary>
@@ -298,7 +298,7 @@ public record BuyRiskIntelInteraction(
         return true;
     }
 
-    public override TimeDuration ExpectedDuration => TimeDuration.FromMinutes(5);
+    public override TimeDuration ExpectedDuration => Tuning.Convoy.BuyIntelTime;
 }
 
 /// <summary>

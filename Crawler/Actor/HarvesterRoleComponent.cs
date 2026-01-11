@@ -9,11 +9,6 @@ public class HarvesterRoleComponent : ActorComponentBase {
     Location? _destination;
     HarvesterAction _currentAction;
 
-    /// <summary>Minimum cargo fullness before seeking a settlement to sell.</summary>
-    const float SellThreshold = 0.7f;
-
-    /// <summary>Maximum distance to search for resources.</summary>
-    const float MaxSearchRadius = 500f;
 
     enum HarvesterAction {
         Idle,
@@ -80,7 +75,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
     ActorEvent? PlanNextAction(Crawler crawler, TimePoint time) {
         // Check if we should sell (cargo getting full)
         float cargoFullness = 1 - (crawler.Cargo.AvailableVolume / crawler.Cargo.MaxVolume);
-        if (cargoFullness >= SellThreshold) {
+        if (cargoFullness >= Tuning.Harvester.SellThreshold) {
             var settlement = FindNearestSettlement(crawler);
             if (settlement != null) {
                 _destination = settlement;
@@ -107,9 +102,11 @@ public class HarvesterRoleComponent : ActorComponentBase {
             }
         }
 
-        // Wait and retry later
-        return crawler.NewEventFor("Waiting for resources", Priority,
-            TimeDuration.FromHours(1), Post: () => { });
+        // Wait and retry later - priority based on cargo value
+        float cargoValue = crawler.Cargo.ValueAt(crawler.Location);
+        int priority = EventPriority.ForTrade(crawler, cargoValue);
+        return crawler.NewEventFor("Waiting for resources", priority,
+            Tuning.Harvester.IdleWaitDuration, Post: () => { });
     }
 
     ActorEvent? TryExtract(Crawler crawler, TimePoint time) {
@@ -157,8 +154,10 @@ public class HarvesterRoleComponent : ActorComponentBase {
             _currentAction = HarvesterAction.Idle;
         }
 
-        // Schedule next extraction cycle
-        return crawler.NewEventFor("Extracting", Priority,
+        // Schedule next extraction cycle - use trade priority based on resource value
+        float resourceValue = resource.ResourceType.BaseCost() * extracted;
+        int extractPriority = EventPriority.ForTrade(crawler, resourceValue);
+        return crawler.NewEventFor("Extracting", extractPriority,
             Tuning.Resource.ExtractionTime, Post: () => { });
     }
 
@@ -183,7 +182,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
 
     Location? FindBestResource(Crawler crawler) {
         var map = crawler.Location.Map;
-        var candidates = map.FindLocationsInRadius(crawler.Location.Position, MaxSearchRadius)
+        var candidates = map.FindLocationsInRadius(crawler.Location.Position, Tuning.Harvester.MaxSearchRadius)
             .Where(loc => loc.Type == EncounterType.Resource)
             .Where(loc => loc.HasEncounter)
             .Where(loc => {
@@ -202,7 +201,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
 
     Location? FindNearestSettlement(Crawler crawler) {
         var map = crawler.Location.Map;
-        return map.FindLocationsInRadius(crawler.Location.Position, MaxSearchRadius * 2)
+        return map.FindLocationsInRadius(crawler.Location.Position, Tuning.Harvester.MaxSearchRadius * 2)
             .Where(loc => loc.Type == EncounterType.Settlement)
             .OrderBy(loc => crawler.Location.Distance(loc))
             .FirstOrDefault();
@@ -210,7 +209,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
 
     Location? PickExploreDestination(Crawler crawler) {
         var map = crawler.Location.Map;
-        var candidates = map.FindLocationsInRadius(crawler.Location.Position, MaxSearchRadius)
+        var candidates = map.FindLocationsInRadius(crawler.Location.Position, Tuning.Harvester.MaxSearchRadius)
             .Where(loc => loc != crawler.Location)
             .Where(loc => loc.Type is EncounterType.Resource or EncounterType.Settlement or EncounterType.Crossroads)
             .ToList();

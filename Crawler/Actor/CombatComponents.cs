@@ -313,7 +313,7 @@ public static class ExtortionInteractions {
             road,
             RiskEventType.BanditExtortion,
             extortioner.Faction,
-            severity: 0.3f,
+            severity: Tuning.Combat.ExtortionRiskSeverity,
             survived: true
         );
     }
@@ -420,7 +420,8 @@ public abstract class CombatComponentBase : ActorComponentBase {
             return null;
         }
         Debug.Assert(duration.IsPositive);
-        return Owner.NewEventFor($"Volley at {target}", Priority, duration,
+        int priority = EventPriority.ForAttack(attacker, target);
+        return Owner.NewEventFor($"Volley at {target}", priority, duration,
             preFire ? () => attacker.Attack(target) : null);
     }
 
@@ -468,7 +469,7 @@ public abstract class CombatComponentBase : ActorComponentBase {
 
         // Calculate severity based on damage taken
         float totalDamage = fire.Sum(h => h.Damage);
-        float severity = Math.Clamp(totalDamage / 100f, 0.1f, 1.0f);
+        float severity = Math.Clamp(totalDamage / Tuning.Combat.DamageSeverityCap, 0.1f, 1.0f);
 
         // Determine risk event type
         var riskType = attacker is Crawler { Role: Roles.Bandit }

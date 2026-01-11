@@ -267,7 +267,7 @@ public class TradeOfferComponent : ActorComponentBase {
     TimePoint _lastOfferGeneration;
 
     /// <summary>How often trade offers/prices are recalculated (2 decimal hours = 1/5 of a day).</summary>
-    public static readonly TimeDuration PriceRecalcInterval = TimeDuration.FromHours(2);
+    public static TimeDuration PriceRecalcInterval => Tuning.Trader.PriceRecalcInterval;
 
     public float Markup { get; set; } = 1.0f;
     public float Spread { get; set; } = 1.0f;

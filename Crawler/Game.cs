@@ -93,6 +93,7 @@ public class Game {
     }
 
     bool quit = false;
+    public bool FastTravel = true;
 
     // Use generic Scheduler for crawler travel scheduling
     Scheduler<Game, ActorEvent, IActor, TimePoint> scheduler;
@@ -868,7 +869,7 @@ public class Game {
             if (TimeDuration.TryParse(args, out var duration)) {
                 Player.ConsumeTime("Wait", 0, duration);
             } else {
-                Player.ConsumeTime("Wait", 0, new(5,0));
+                Player.ConsumeTime("Wait", 0, Tuning.Game.DefaultWaitDuration);
             }
         }
         return true;

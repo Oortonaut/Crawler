@@ -64,9 +64,14 @@ public class ConvoyComponent : ActorComponentBase {
             // Wait for stragglers
             var waited = leader.Time - convoy.DepartureTime;
             if (waited < Tuning.Convoy.MaxWaitForMembers) {
+                // Priority based on convoy's combined cargo value
+                float convoyCargoValue = convoy.AllParticipants
+                    .Where(p => p is Crawler c)
+                    .Sum(p => ((Crawler)p).Cargo.ValueAt(leader.Location));
+                int priority = EventPriority.ForConvoy(leader, routeRisk: 0, convoyCargoValue);
                 return leader.NewEventFor(
                     "Waiting for convoy",
-                    Priority,
+                    priority,
                     Tuning.Convoy.WaypointWaitTime,
                     Post: () => {
                         // Check again after waiting
@@ -232,7 +237,7 @@ public record RequestJoinConvoyInteraction(
         return true;
     }
 
-    public override TimeDuration ExpectedDuration => TimeDuration.FromMinutes(1);
+    public override TimeDuration ExpectedDuration => Tuning.Convoy.JoinConvoyTime;
 }
 
 /// <summary>

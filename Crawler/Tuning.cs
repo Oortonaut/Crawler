@@ -16,6 +16,9 @@ public static partial class Tuning {
     public static class Game {
         public static float LootReturn = 0.5f;
 
+        /// <summary>Default wait duration when player skips turn without specifying time.</summary>
+        public static TimeDuration DefaultWaitDuration = TimeDuration.FromMinutes(5);
+
         // Hazard encounter risk/reward parameters
         public static float hazardWealthFraction = 0.5f;
         public static float hazardNegativePayoffChance = 0.3333f;
@@ -44,6 +47,17 @@ public static partial class Tuning {
             [Commodity.Isotopes] = new(100, 0.4f, 10, 0.25f, false, 0),
             [Commodity.Gems] = new(50, 0.6f, 5, 0.5f, false, 0),  // High variance
         };
+    }
+
+    /// <summary>
+    /// Combat risk tracking parameters.
+    /// </summary>
+    public static class Combat {
+        /// <summary>Damage cap for severity normalization (100 damage = max severity).</summary>
+        public static float DamageSeverityCap = 100f;
+
+        /// <summary>Base severity for extortion risk events.</summary>
+        public static float ExtortionRiskSeverity = 0.3f;
     }
 
     public static class Bandit {
@@ -555,6 +569,85 @@ public static partial class Tuning {
 
         /// <summary>Duration of each transit step (5 minutes).</summary>
         public static TimeDuration TransitStepDuration = TimeDuration.FromMinutes(5);
+
+        /// <summary>Time to process joining a convoy.</summary>
+        public static TimeDuration JoinConvoyTime = TimeDuration.FromMinutes(1);
+
+        /// <summary>Time to hire a guard.</summary>
+        public static TimeDuration HireGuardTime = TimeDuration.FromMinutes(5);
+
+        /// <summary>Time to purchase risk intel.</summary>
+        public static TimeDuration BuyIntelTime = TimeDuration.FromMinutes(5);
+
+        /// <summary>How often guards refresh at settlements.</summary>
+        public static TimeDuration GuardRefreshInterval = TimeDuration.FromDays(1);
+
+        /// <summary>Population required per potential guard.</summary>
+        public static int PopulationPerGuard = 100;
+
+        /// <summary>Maximum guards available at any settlement.</summary>
+        public static int MaxGuardsPerSettlement = 3;
+
+        /// <summary>Guard wealth multiplier relative to location.</summary>
+        public static float GuardWealthMultiplier = 0.4f;
+
+        /// <summary>Fraction of guard wealth allocated to segments.</summary>
+        public static float GuardSegmentWealthFraction = 0.7f;
+
+        /// <summary>Supply days for generated guards.</summary>
+        public static float GuardSupplyDays = 10f;
+
+        /// <summary>Risk contribution to guard hire cost.</summary>
+        public static float RiskCostMultiplier = 0.5f;
+
+        /// <summary>Guard quality contribution to hire cost.</summary>
+        public static float QualityCostMultiplier = 0.01f;
+
+        /// <summary>Threshold multiplier for high cargo when forming convoys.</summary>
+        public static float HighCargoFormThresholdMultiplier = 0.8f;
+
+        /// <summary>Base chance to leave convoy due to independence.</summary>
+        public static float IndependenceLeaveChance = 0.02f;
+    }
+
+    /// <summary>
+    /// Harvester NPC AI parameters.
+    /// </summary>
+    public static class Harvester {
+        /// <summary>Minimum cargo fullness before seeking a settlement to sell.</summary>
+        public static float SellThreshold = 0.7f;
+
+        /// <summary>Maximum distance to search for resources.</summary>
+        public static float MaxSearchRadius = 500f;
+
+        /// <summary>How long to wait when no resources are found.</summary>
+        public static TimeDuration IdleWaitDuration = TimeDuration.FromHours(1);
+    }
+
+    /// <summary>
+    /// Trader NPC AI parameters.
+    /// </summary>
+    public static class Trader {
+        /// <summary>Maximum age of price information to consider reliable.</summary>
+        public static TimeDuration MaxPriceAge = TimeDuration.FromDays(3);
+
+        /// <summary>Minimum profit margin to consider a trade worthwhile.</summary>
+        public static float MinProfitMargin = 0.15f;
+
+        /// <summary>Chance to explore when no good trades are found.</summary>
+        public static float ExploreChance = 0.3f;
+
+        /// <summary>Maximum quantity to trade in a single transaction.</summary>
+        public static float MaxTradeQuantity = 100f;
+
+        /// <summary>Cargo value threshold for high-value cargo decisions.</summary>
+        public static float HighValueCargoThreshold = 1000f;
+
+        /// <summary>How long to wait when no trade opportunities are found.</summary>
+        public static TimeDuration IdleWaitDuration = TimeDuration.FromHours(1);
+
+        /// <summary>How often trade offers/prices are recalculated.</summary>
+        public static TimeDuration PriceRecalcInterval = TimeDuration.FromHours(2);
     }
 
     public static class Manufacturing {
@@ -606,6 +699,56 @@ public static partial class Tuning {
 
         /// <summary>Consumer goods consumed per population per hour (distributed across categories).</summary>
         public static float GoodsPerPopPerHour = 0.00005f;
+    }
+
+    /// <summary>
+    /// Priority scale: 100 (somewhat) -> 200 (desirable) -> 300 (very) -> 500 (critical) -> 1000 (life/death)
+    /// </summary>
+    public static class EventPriority {
+        // Context calculation weights
+        public static float DamageWeight = 0.4f;
+        public static float VulnerabilityWeight = 0.4f;
+        public static float CargoValueWeight = 0.2f;
+        public static float ThreatBonus = 0.15f;
+
+        // Normalization caps
+        public static float CargoValueCap = 10000f;
+        public static float TransactionValueCap = 2000f;
+
+        // Survival/Flee priorities (300-1000)
+        public static int FleeBase = 300;
+        public static int FleeScale = 700;
+        public static int SurvivalMax = 1000;
+
+        // Combat priorities (200-600)
+        public static int CombatBase = 200;
+        public static int CombatScale = 400;
+        public static int CombatMax = 600;
+
+        // Extortion priorities (200-500)
+        public static int ExtortionBase = 200;
+        public static int ExtortionScale = 300;
+        public static int ExtortionMax = 500;
+
+        // Trade priorities (100-300)
+        public static int TradeBase = 100;
+        public static int TradeScale = 200;
+        public static int TradeMax = 300;
+
+        // Travel priorities (50-150)
+        public static int TravelBase = 50;
+        public static int TravelScale = 100;
+        public static int TravelMax = 150;
+
+        // Convoy priorities (200-500)
+        public static int ConvoyBase = 200;
+        public static int ConvoyScale = 300;
+        public static int ConvoyMax = 500;
+
+        // Guard priorities (300-700)
+        public static int GuardBase = 300;
+        public static int GuardScale = 400;
+        public static int GuardMax = 700;
     }
 }
 
