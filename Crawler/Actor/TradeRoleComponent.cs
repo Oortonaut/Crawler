@@ -1,5 +1,6 @@
 namespace Crawler;
 
+using Convoy;
 using Economy;
 using Network;
 
@@ -7,7 +8,7 @@ using Network;
 /// AI component for NPC trade crawlers.
 /// Plans routes based on price knowledge, buys low and sells high.
 /// </summary>
-public class TraderAIComponent : ActorComponentBase {
+public class TradeRoleComponent : ActorComponentBase {
     XorShift _rng;
     Location? _destination;
     Commodity _targetCommodity;
@@ -28,7 +29,7 @@ public class TraderAIComponent : ActorComponentBase {
         Exploring
     }
 
-    public TraderAIComponent(ulong seed) {
+    public TradeRoleComponent(ulong seed) {
         _rng = new XorShift(seed);
     }
 
@@ -159,10 +160,7 @@ public class TraderAIComponent : ActorComponentBase {
         if (candidates.Count == 0) {
             // Just pick a random connected location
             var roads = network.RoadsFrom(crawler.Location).ToList();
-            if (roads.Count > 0) {
-                return _rng.ChooseRandom(roads).To;
-            }
-            return null;
+            return _rng.ChooseRandom(roads)?.To;
         }
 
         return _rng.ChooseRandom(candidates);
@@ -201,11 +199,11 @@ public class TraderAIComponent : ActorComponentBase {
     }
 
     bool TryBuy(Crawler crawler, Commodity commodity) {
-        // Calculate how much we can buy
-        float available = crawler.Supplies[Commodity.Scrap];
+        // Calculate how much we can buy (capped at 100 per trade)
         float price = commodity.CostAt(crawler.Location);
         if (price <= 0) return false;
 
+        float available = crawler.Supplies[Commodity.Scrap];
         float maxQuantity = available / price;
         float volumeLimit = crawler.Cargo.AvailableVolume / commodity.Volume();
         float quantity = Math.Min(maxQuantity, volumeLimit);
@@ -213,30 +211,24 @@ public class TraderAIComponent : ActorComponentBase {
 
         if (quantity < 1) return false;
 
-        // Execute trade
-        float cost = quantity * price;
-        crawler.Supplies.Remove(Commodity.Scrap, cost);
-        crawler.Cargo.Add(commodity, quantity);
-
-        crawler.Message($"{crawler.Name} bought {quantity:F1} {commodity} for {cost:F0} scrap");
-        return true;
+        // Execute trade through settlement (affects settlement inventory)
+        return SettlementTrade.TryBuyFromSettlement(crawler, commodity, quantity);
     }
 
     bool TrySell(Crawler crawler, Commodity commodity) {
         float quantity = crawler.Cargo[commodity];
         if (quantity <= 0) return false;
 
-        float price = commodity.CostAt(crawler.Location);
-        float revenue = quantity * price;
-
-        crawler.Cargo.Remove(commodity, quantity);
-        crawler.Supplies.Add(Commodity.Scrap, revenue);
-
-        crawler.Message($"{crawler.Name} sold {quantity:F1} {commodity} for {revenue:F0} scrap");
-        return true;
+        // Execute trade through settlement (affects settlement inventory)
+        return SettlementTrade.TrySellToSettlement(crawler, commodity, quantity);
     }
 
     ActorEvent? CreateTravelEvent(Crawler crawler, Location destination, TimePoint time) {
+        // Notify convoy decision component of our destination
+        var convoyDecision = crawler.Components
+            .OfType<ConvoyDecisionComponent>().FirstOrDefault();
+        convoyDecision?.SetDestination(destination);
+
         var network = crawler.Location.Map.TradeNetwork;
         if (network == null) return null;
 

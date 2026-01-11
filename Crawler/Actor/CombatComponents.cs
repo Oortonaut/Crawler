@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Crawler.Convoy;
+using Crawler.Economy;
 using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 
@@ -190,6 +192,9 @@ public static class ExtortionInteractions {
             // Mark as surrendered
             Target.To(Extortioner).Surrendered = true;
 
+            // Record risk event for intelligence network
+            RecordExtortionRisk(Target, Extortioner);
+
             // Time consumption for handing over extorted goods
             Extortioner.ConsumeTime("Extorting", 300, ExpectedDuration);
             Target.ConsumeTime("Extorted", 300, ExpectedDuration);
@@ -277,6 +282,40 @@ public static class ExtortionInteractions {
         public override Immediacy GetImmediacy(string args = "") => Immediacy.Immediate;
 
         public override TimeDuration ExpectedDuration => TimeDuration.Zero; // Auto-trigger, no time consumed
+    }
+
+    /// <summary>
+    /// Record an extortion event to the victim's risk tracker and faction network.
+    /// </summary>
+    public static void RecordExtortionRisk(IActor victim, IActor extortioner) {
+        if (victim is not Crawler crawler) return;
+
+        // Find the victim's route knowledge component
+        var routeKnowledge = crawler.Components
+            .OfType<RouteKnowledgeComponent>().FirstOrDefault();
+        if (routeKnowledge == null) return;
+
+        // Find current road (if traveling) - for now just record at location
+        // TODO: Integrate with TransitRegistry to get actual road when in transit
+        var location = crawler.Location;
+        if (location == null) return;
+
+        var network = location.Map?.TradeNetwork;
+        if (network == null) return;
+
+        // Try to find a nearby road to associate the event with
+        var roads = network.RoadsFrom(location).ToList();
+        if (roads.Count == 0) return;
+
+        // Record on the first available road (the one we arrived on or are leaving from)
+        var road = roads[0];
+        routeKnowledge.ReportDanger(
+            road,
+            RiskEventType.BanditExtortion,
+            extortioner.Faction,
+            severity: 0.3f,
+            survived: true
+        );
     }
 }
 
@@ -401,6 +440,49 @@ public abstract class CombatComponentBase : ActorComponentBase {
             Owner is ActorScheduled ownerScheduled) {
             ownerScheduled.IdleUntil("ReceivingFire", scheduled.Time);
         }
+
+        // Record combat risk event
+        RecordCombatRisk(Owner, actor, fire);
+    }
+
+    /// <summary>
+    /// Record a combat event to the victim's risk tracker and faction network.
+    /// </summary>
+    static void RecordCombatRisk(IActor victim, IActor attacker, List<HitRecord> fire) {
+        if (victim is not Crawler crawler) return;
+        if (fire.Count == 0) return;
+
+        // Find the victim's route knowledge component
+        var routeKnowledge = crawler.Components
+            .OfType<RouteKnowledgeComponent>().FirstOrDefault();
+        if (routeKnowledge == null) return;
+
+        var location = crawler.Location;
+        if (location == null) return;
+
+        var network = location.Map?.TradeNetwork;
+        if (network == null) return;
+
+        var roads = network.RoadsFrom(location).ToList();
+        if (roads.Count == 0) return;
+
+        // Calculate severity based on damage taken
+        float totalDamage = fire.Sum(h => h.Damage);
+        float severity = Math.Clamp(totalDamage / 100f, 0.1f, 1.0f);
+
+        // Determine risk event type
+        var riskType = attacker is Crawler { Role: Roles.Bandit }
+            ? RiskEventType.BanditAttack
+            : RiskEventType.CrawlerCombat;
+
+        var road = roads[0];
+        routeKnowledge.ReportDanger(
+            road,
+            riskType,
+            attacker.Faction,
+            severity: severity,
+            survived: victim.Lives()
+        );
     }
 
     public override void Enter(Encounter encounter) {

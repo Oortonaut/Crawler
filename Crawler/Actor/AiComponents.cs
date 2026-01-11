@@ -79,8 +79,24 @@ public class BanditComponent : ActorComponentBase {
     void SetupExtortion(IActor target, TimePoint time) {
         if (Owner == target) return;
         if (Owner is not Crawler bandit) return;
+        if (bandit.Role != Roles.Bandit) return;
 
-        if (bandit.Role != Roles.Bandit || target.Faction != Factions.Player) return;
+        // Skip fellow bandits and settlements
+        if (target is Crawler { Role: Roles.Bandit or Roles.Settlement }) return;
+
+        // Calculate combined standing: faction-to-actor + actor-to-faction + actor-to-actor
+        // Total range is +-1000. Negative = hostile, positive = friendly
+        // bandit.To(target.Faction).FactionStanding = how target's faction feels about bandit
+        // target.To(bandit.Faction).FactionStanding = how bandit's faction feels about target
+        // bandit.To(target).Standing = direct actor-to-actor standing
+        var targetActor = target as ActorBase;
+        int factionToTarget = targetActor?.To(bandit.Faction).FactionStanding ?? 0;
+        int standing = bandit.To(target.Faction).FactionStanding
+                     + factionToTarget
+                     + bandit.To(target).Standing;
+
+        // Don't extort targets we're friendly with
+        if (standing >= 0) return;
 
         float cargoValue = target.Supplies.ValueAt(bandit.Location);
         if (cargoValue >= Tuning.Bandit.minValueThreshold &&

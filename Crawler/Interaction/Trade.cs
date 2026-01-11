@@ -154,3 +154,98 @@ public static class TradeEx {
         return offers;
     }
 }
+
+/// <summary>
+/// Helper methods for NPC-to-settlement trade that affects both inventories.
+/// </summary>
+public static class SettlementTrade {
+    /// <summary>
+    /// Find the settlement actor at a location, if any.
+    /// </summary>
+    public static Crawler? FindSettlement(Location location) {
+        if (!location.HasEncounter) return null;
+        return location.GetEncounter().Actors.OfType<Crawler>()
+            .FirstOrDefault(c => c.Role == Roles.Settlement);
+    }
+
+    /// <summary>
+    /// NPC buys commodity from settlement. Transfers scrap from buyer to settlement,
+    /// and commodity from settlement to buyer.
+    /// </summary>
+    public static bool TryBuyFromSettlement(Crawler buyer, Commodity commodity, float maxQty) {
+        var settlement = FindSettlement(buyer.Location);
+        if (settlement == null) return false;
+
+        float available = settlement.Cargo[commodity];
+        float qty = Math.Min(maxQty, available);
+        if (qty <= 0) return false;
+
+        float price = commodity.CostAt(buyer.Location);
+        float cost = qty * price;
+
+        // Adjust quantity if buyer can't afford full amount
+        float buyerScrap = buyer.Supplies[Commodity.Scrap];
+        if (buyerScrap < cost) {
+            qty = buyerScrap / price;
+            cost = qty * price;
+        }
+        if (qty <= 0) return false;
+
+        // Check buyer has cargo space
+        float volumeNeeded = qty * commodity.Volume();
+        if (buyer.Cargo.AvailableVolume < volumeNeeded) {
+            qty = buyer.Cargo.AvailableVolume / commodity.Volume();
+            cost = qty * price;
+        }
+        if (qty <= 0) return false;
+
+        // Execute transfer
+        buyer.Supplies.Remove(Commodity.Scrap, cost);
+        settlement.Supplies.Add(Commodity.Scrap, cost);
+        settlement.Cargo.Remove(commodity, qty);
+        buyer.Cargo.Add(commodity, qty);
+
+        buyer.Message($"{buyer.Name} bought {qty:F1} {commodity} from {settlement.Name} for {cost:F0} scrap");
+        return true;
+    }
+
+    /// <summary>
+    /// NPC sells commodity to settlement. Transfers commodity from seller to settlement,
+    /// and scrap from settlement to seller.
+    /// </summary>
+    public static bool TrySellToSettlement(Crawler seller, Commodity commodity, float maxQty) {
+        var settlement = FindSettlement(seller.Location);
+        if (settlement == null) return false;
+
+        // Check seller has the commodity (in cargo or supplies)
+        float haveInCargo = seller.Cargo[commodity];
+        float haveInSupplies = seller.Supplies[commodity];
+        float qty = Math.Min(maxQty, haveInCargo + haveInSupplies);
+        if (qty <= 0) return false;
+
+        float price = commodity.CostAt(seller.Location);
+        float revenue = qty * price;
+
+        // Check settlement can afford (settlements have limited scrap)
+        float settlementScrap = settlement.Supplies[Commodity.Scrap];
+        if (settlementScrap < revenue) {
+            qty = settlementScrap / price;
+            revenue = qty * price;
+        }
+        if (qty <= 0) return false;
+
+        // Execute transfer - prefer taking from supplies first (for harvesters)
+        float fromSupplies = Math.Min(qty, haveInSupplies);
+        float fromCargo = qty - fromSupplies;
+
+        if (fromSupplies > 0) seller.Supplies.Remove(commodity, fromSupplies);
+        if (fromCargo > 0) seller.Cargo.Remove(commodity, fromCargo);
+
+        settlement.Cargo.Add(commodity, qty);
+        settlement.Supplies.Remove(Commodity.Scrap, revenue);
+        seller.Supplies.Add(Commodity.Scrap, revenue);
+
+        seller.Message($"{seller.Name} sold {qty:F1} {commodity} to {settlement.Name} for {revenue:F0} scrap");
+        return true;
+    }
+}

@@ -59,6 +59,9 @@ public class ActorToActor {
     public int DamageInflicted = 0;
     public int DamageTaken = 0;
 
+    /// <summary>Direct actor-to-actor standing. Combined with faction standings gives range +-1000.</summary>
+    public int Standing { get; set; } = 0;
+
     // Ultimatum state for demands/threats with timeout
     public class UltimatumState {
         public TimePoint ExpirationTime { get; set; }
@@ -92,6 +95,7 @@ public class ActorToActor {
         public int DamageCreated { get; set; }
         public int DamageInflicted { get; set; }
         public int DamageTaken { get; set; }
+        public int Standing { get; set; }
         public UltimatumState? Ultimatum { get; set; }
     }
 
@@ -101,6 +105,7 @@ public class ActorToActor {
             DamageCreated = this.DamageCreated,
             DamageInflicted = this.DamageInflicted,
             DamageTaken = this.DamageTaken,
+            Standing = this.Standing,
             Ultimatum = this.Ultimatum
         };
     }
@@ -110,6 +115,7 @@ public class ActorToActor {
         this.DamageCreated = data.DamageCreated;
         this.DamageInflicted = data.DamageInflicted;
         this.DamageTaken = data.DamageTaken;
+        this.Standing = data.Standing;
         this.Ultimatum = data.Ultimatum;
     }
 }
@@ -152,6 +158,15 @@ public class ActorFaction {
     public bool CanTrade(CommodityCategory cat, GameTier tier) => GetLicense(cat) >= tier;
     public bool CanTrade(Commodity c) => CanTrade(c.Category(), c.Tier());
     public bool CanTrade(SegmentDef segdef) => segdef.SegmentKind is not SegmentKind.Offense || CanTrade(CommodityCategory.Dangerous, weaponTier(segdef));
+
+    // Standing levels indicate how many resources the target will commit to help or hinder the source
+    // 0 = none
+    // 100 = half crawlers worth - will retreat if losing
+    // 200 = will commit and fight to the death
+    // 400 = a crawler gang
+    // 600 = a small army
+    // 800 = a large army
+    // 1000 = everything
     public int ActorStanding { get; set; } // How the actor feels about the faction
     public int FactionStanding { get; set; } // How the faction feels about the actor
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
@@ -330,6 +345,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
 
         case Roles.Trader:
             // Mobile merchants: primarily trade-focused, convoy capable
+            AddComponent(new TraderKnowledgeComponent());       // Price knowledge storage
+            AddComponent(new TradeRoleComponent(rng.Seed()));   // Trade AI
             var traderGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f,
                 Tuning.Trade.TradeMarkup(traderGaussian),
@@ -712,6 +729,18 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public IEnumerable<HarvestSegment> HarvestSegments => _activeSegmentsByClass.ContainsKey(SegmentKind.Harvest)
         ? _activeSegmentsByClass[SegmentKind.Harvest].Cast<HarvestSegment>()
         : Enumerable.Empty<HarvestSegment>();
+    public IEnumerable<HabitatSegment> HabitatSegments => _activeSegmentsByClass.ContainsKey(SegmentKind.Habitat)
+        ? _activeSegmentsByClass[SegmentKind.Habitat].Cast<HabitatSegment>()
+        : Enumerable.Empty<HabitatSegment>();
+
+    /// <summary>Total crew capacity from all habitat segments.</summary>
+    public float TotalCrewCapacity => HabitatSegments.Sum(h => h.CrewCapacity);
+
+    /// <summary>Total morale bonus per hour from all habitat segments.</summary>
+    public float TotalMoraleBonus => HabitatSegments.Sum(h => h.MoraleBonus);
+
+    /// <summary>Number of domes (habitat segments size 6+).</summary>
+    public override int Domes => HabitatSegments.Count(h => h.IsDome);
 
     /// <summary>Resource reservation tracking for production. Prevents double-booking inputs.</summary>
     public ResourceReservation ResourceReservation { get; } = new();

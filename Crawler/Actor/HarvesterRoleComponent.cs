@@ -4,7 +4,7 @@ namespace Crawler;
 /// AI component for NPC harvester crawlers.
 /// Finds resource deposits, extracts with harvest segments, sells at settlements.
 /// </summary>
-public class HarvesterAIComponent : ActorComponentBase {
+public class HarvesterRoleComponent : ActorComponentBase {
     XorShift _rng;
     Location? _destination;
     HarvesterAction _currentAction;
@@ -24,7 +24,7 @@ public class HarvesterAIComponent : ActorComponentBase {
         Exploring
     }
 
-    public HarvesterAIComponent(ulong seed) {
+    public HarvesterRoleComponent(ulong seed) {
         _rng = new XorShift(seed);
     }
 
@@ -163,7 +163,7 @@ public class HarvesterAIComponent : ActorComponentBase {
     }
 
     void TrySellResources(Crawler crawler) {
-        // Sell all raw materials in cargo
+        // Sell all raw materials in supplies (where extracted resources are stored)
         Commodity[] sellable = [
             Commodity.Ore,
             Commodity.Biomass,
@@ -176,13 +176,8 @@ public class HarvesterAIComponent : ActorComponentBase {
             float quantity = crawler.Supplies[commodity];
             if (quantity <= 0) continue;
 
-            float price = commodity.CostAt(crawler.Location);
-            float revenue = quantity * price;
-
-            crawler.Supplies.Remove(commodity, quantity);
-            crawler.Supplies.Add(Commodity.Scrap, revenue);
-
-            crawler.Message($"{crawler.Name} sold {quantity:F1} {commodity} for {revenue:F0} scrap");
+            // Sell through settlement (affects settlement inventory)
+            SettlementTrade.TrySellToSettlement(crawler, commodity, quantity);
         }
     }
 
