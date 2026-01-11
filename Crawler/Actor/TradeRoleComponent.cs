@@ -224,12 +224,45 @@ public class TradeRoleComponent : ActorComponentBase {
     }
 
     ActorEvent? CreateTravelEvent(Crawler crawler, Location destination, TimePoint time) {
-        // Notify convoy decision component of our destination
+        // Check if we should form/join a convoy instead of traveling solo
         var convoyDecision = crawler.Components
             .OfType<ConvoyDecisionComponent>().FirstOrDefault();
-        convoyDecision?.SetDestination(destination);
 
-        var network = crawler.Location.Map.TradeNetwork;
+        if (convoyDecision != null) {
+            convoyDecision.SetDestination(destination);
+
+            // Check if we're already in a convoy going our way
+            var existingConvoy = ConvoyRegistry.GetConvoy(crawler);
+            if (existingConvoy != null && existingConvoy.Route.Contains(destination)) {
+                // Let ConvoyComponent handle travel
+                return null;
+            }
+
+            // Try to join an existing convoy at this location
+            foreach (var convoy in ConvoyRegistry.ConvoysAt(crawler.Location)) {
+                if (convoyDecision.ShouldJoinConvoy(convoy)) {
+                    convoy.AddMember(crawler);
+                    crawler.Message($"{crawler.Name} joined convoy to {convoy.Destination?.Description}.");
+                    return null; // ConvoyComponent will handle travel
+                }
+            }
+
+            // Try to form a new convoy if route is risky
+            if (convoyDecision.ShouldFormConvoy(destination)) {
+                var tradeNet = crawler.Location.Map?.TradeNetwork;
+                if (tradeNet != null) {
+                    var route = tradeNet.FindPath(crawler.Location, destination);
+                    if (route != null && route.Count >= 2) {
+                        ConvoyRegistry.Create(crawler, route);
+                        crawler.Message($"{crawler.Name} formed convoy to {destination.Description}.");
+                        return null; // ConvoyComponent will handle travel
+                    }
+                }
+            }
+        }
+
+        // No convoy - travel solo
+        var network = crawler.Location.Map?.TradeNetwork;
         if (network == null) return null;
 
         // Find path to destination

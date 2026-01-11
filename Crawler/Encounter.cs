@@ -243,7 +243,7 @@ public sealed class Encounter : IComparable<Encounter> {
 
         // Initialize actor time to arrival time before firing events
         // This ensures message timestamps display correctly
-        const bool simulateAll = true;
+        bool simulateAll = true;
         if (simulateAll) {
             foreach (var other in actors.Keys) {
                 other.SimulateTo(arrivalTime);
@@ -351,13 +351,18 @@ public sealed class Encounter : IComparable<Encounter> {
         // Randomly assign a civilian role
         var roleRoll = actorRng.NextSingle();
         var role = roleRoll switch {
-            < 0.6f => Roles.Trader,    // 60% traders
-            < 0.8f => Roles.Traveler,  // 20% travelers
-            _ => Roles.Customs         // 20% customs officers
+            < 0.45f => Roles.Trader,    // 45% traders
+            < 0.65f => Roles.Harvester, // 20% harvesters
+            < 0.85f => Roles.Traveler,  // 20% travelers
+            _ => Roles.Customs          // 15% customs officers
         };
 
-        // Generate working segments
-        var workingSegments = Inventory.GenerateCoreSegments(actorRng.Seed(), Location, segmentWealth, [1.2f, 0.6f, 0.8f, 1.0f]);
+        // Generate working segments - harvesters need harvest segments
+        // Weights: [Power, Traction, Offense, Defense, Industry, Storage, Harvest, Habitat]
+        EArray<SegmentKind, float> segmentWeights = role == Roles.Harvester
+            ? [1.0f, 1.0f, 0.3f, 0.6f, 0.0f, 0.5f, 1.5f, 0.0f]  // Harvest-focused
+            : [1.2f, 0.6f, 0.8f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f]; // Standard civilian
+        var workingSegments = Inventory.GenerateCoreSegments(actorRng.Seed(), Location, segmentWealth, segmentWeights);
 
         // Generate inventory with essentials and cargo
         var newInv = new Inventory();
