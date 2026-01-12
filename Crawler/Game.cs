@@ -274,7 +274,8 @@ public class Game {
             new MenuAction("M", _LocalMapName(), _ => LocalMap()),
             new MenuAction("G", "Global Map", _ => WorldMap()),
             new MenuAction("R", "Status Report", _ => Report()),
-            new MenuAction("PR", "Production Recipes", _ => ProductionRecipesReport()),
+            new MenuAction("RCP", "Production Recipes", _ => ProductionRecipesReport()),
+            new MenuAction("RCPD", "Recipe Details", _ => ProductionRecipesDetailReport()),
             new MenuAction("K", "Skip Turn/Wait", args => Turn(args)),
             new MenuAction("Q", "Save and Quit", _ => { Save(); return Quit(); }),
             new MenuAction("QQ", "Quit", _ => Quit()),
@@ -735,6 +736,16 @@ public class Game {
         var report = Style.MenuTitle.Format("[Production Recipes Report]") + "\n\n";
         report += RecipeEx.AllRecipes.FormatReport(chargeValue);
         report += "\nDelta: + = profitable (current > suggested), - = needs price increase\n";
+
+        Player.Message(report);
+        return false;
+    }
+
+    bool ProductionRecipesDetailReport() {
+        const float chargeValue = 1.0f;
+
+        var report = Style.MenuTitle.Format("[Production Recipe Details]") + "\n\n";
+        report += RecipeEx.AllRecipes.FormatDetailReport(chargeValue);
 
         Player.Message(report);
         return false;

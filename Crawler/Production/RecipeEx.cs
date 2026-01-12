@@ -379,4 +379,61 @@ public static class RecipeEx {
 
         return table.ToString();
     }
+
+    /// <summary>
+    /// Format recipes as a detailed report showing each input, consumable, and maintenance item.
+    /// </summary>
+    public static string FormatDetailReport(this IEnumerable<ProductionRecipe> recipes, float chargeValue = 1.0f) {
+        var result = new System.Text.StringBuilder();
+
+        foreach (var recipe in recipes) {
+            var table = new Table(
+                ("Type", -8),
+                ("Commodity", -14),
+                ("Qty", 6),
+                ("Unit", 8),
+                ("Cost", 8)
+            );
+
+            float totalCost = 0;
+
+            // Inputs
+            foreach (var (commodity, amount) in recipe.Inputs) {
+                var unitCost = commodity.BaseCost();
+                var lineCost = unitCost * amount;
+                totalCost += lineCost;
+                table.AddRow("Input", commodity.ToString(), $"{amount:F1}", $"{unitCost:F1}", $"{lineCost:F1}");
+            }
+
+            // Consumables
+            foreach (var (commodity, amount) in recipe.Consumables) {
+                var unitCost = commodity.BaseCost();
+                var lineCost = unitCost * amount;
+                totalCost += lineCost;
+                table.AddRow("Consum", commodity.ToString(), $"{amount:F2}", $"{unitCost:F1}", $"{lineCost:F1}");
+            }
+
+            // Maintenance
+            foreach (var (commodity, amount) in recipe.Maintenance) {
+                var unitCost = commodity.BaseCost();
+                var lineCost = unitCost * amount;
+                totalCost += lineCost;
+                table.AddRow("Maint", commodity.ToString(), $"{amount:F2}", $"{unitCost:F1}", $"{lineCost:F1}");
+            }
+
+            // Charge
+            var chargeCost = recipe.ActivateCharge * chargeValue;
+            totalCost += chargeCost;
+            table.AddRow("Charge", "", $"{recipe.ActivateCharge:F0}", $"{chargeValue:F1}", $"{chargeCost:F1}");
+
+            // Total
+            table.AddRow("", "", "", "TOTAL", $"{totalCost:F1}");
+
+            result.AppendLine($"Recipe: {recipe.Name} ({recipe.RequiredIndustry})");
+            result.Append(table.ToString());
+            result.AppendLine();
+        }
+
+        return result.ToString();
+    }
 }
