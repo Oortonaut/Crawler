@@ -65,4 +65,23 @@ public class SettlementStock {
 
         return stock;
     }
+
+    /// <summary>
+    /// Create stock with equilibrium-based baselines.
+    /// Baselines are calculated from consumption rates and production capacity,
+    /// so prices start at 1.0x when cargo matches equilibrium.
+    /// </summary>
+    public static SettlementStock ForEquilibrium(
+        int population,
+        IEnumerable<IndustrySegment> industrySegments) {
+
+        var stock = new SettlementStock();
+        var baselines = EquilibriumStock.CalculateBaselines(population, industrySegments);
+
+        foreach (var c in Enum.GetValues<Commodity>()) {
+            stock._baseline[c] = baselines[c];
+        }
+
+        return stock;
+    }
 }

@@ -794,6 +794,9 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
     /// <summary>Whether production is currently stalled (missing inputs, power, crew)</summary>
     public bool IsStalled { get; set; } = false;
 
+    /// <summary>Accumulated fractional wear damage from running without maintenance</summary>
+    public float WearAccumulator { get; set; } = 0;
+
     public override char ReportCode(Location _) => CurrentRecipe != null ? fracCode(ProductionProgress) : '-';
 
     public override Segment Clone() {
@@ -802,12 +805,14 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
         clone.CurrentRecipe = CurrentRecipe;
         clone.ProductionProgress = ProductionProgress;
         clone.IsStalled = IsStalled;
+        clone.WearAccumulator = WearAccumulator;
         return clone;
     }
 
     public new record class Data : Segment.Data {
         public string? RecipeName { get; set; }
         public float ProductionProgress { get; set; }
+        public float WearAccumulator { get; set; }
     }
 
     public override Segment.Data ToData() {
@@ -819,6 +824,7 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
             Activated = this.Activated,
             RecipeName = this.CurrentRecipe?.Name,
             ProductionProgress = this.ProductionProgress,
+            WearAccumulator = this.WearAccumulator,
         };
     }
 
@@ -827,6 +833,7 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
         if (data is Data industryData) {
             CurrentRecipe = Production.RecipeEx.FindByName(industryData.RecipeName ?? "");
             ProductionProgress = industryData.ProductionProgress;
+            WearAccumulator = industryData.WearAccumulator;
         }
     }
 }

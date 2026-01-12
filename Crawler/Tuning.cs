@@ -735,6 +735,31 @@ public static partial class Tuning {
     }
 
     /// <summary>
+    /// Settlement auto-production AI parameters.
+    /// Uses fuzzy priorities: TotalScore = DeficitUrgency * 0.40 + InputAvailability * 0.25
+    ///                                   + DownstreamDemand * 0.25 + ProfitMargin * 0.10
+    /// </summary>
+    public static class SettlementProduction {
+        /// <summary>Weight for output deficit urgency (how badly we need the outputs).</summary>
+        public static float DeficitUrgencyWeight = 0.40f;
+
+        /// <summary>Weight for input availability (can we run this recipe?).</summary>
+        public static float InputAvailabilityWeight = 0.25f;
+
+        /// <summary>Weight for downstream demand (pressure from production chain).</summary>
+        public static float DownstreamDemandWeight = 0.25f;
+
+        /// <summary>Weight for profit margin (tiebreaker).</summary>
+        public static float ProfitMarginWeight = 0.10f;
+
+        /// <summary>Decay factor for downstream demand propagation per tier.</summary>
+        public static float DemandDecayFactor = 0.5f;
+
+        /// <summary>Minimum total score to consider a recipe.</summary>
+        public static float MinRecipeScore = 0.1f;
+    }
+
+    /// <summary>
     /// Settlement population consumption parameters.
     /// </summary>
     public static class Settlement {

@@ -430,8 +430,21 @@ public sealed class Encounter : IComparable<Encounter> {
         settlement.Flags |= ActorFlags.Settlement;
         settlement.Flags &= ~ActorFlags.Mobile;
         settlement.Role = Roles.Settlement;
-        // Initialize stock baseline for dynamic pricing
-        settlement.Stock = Economy.SettlementStock.ForPopulation(Location.Population, settlement.Cargo);
+
+        // Replace ad-hoc cargo with equilibrium-based initialization
+        // Clear the random cargo added by NewRandom, keep only essentials
+        foreach (var c in Enum.GetValues<Commodity>()) {
+            if (!c.IsEssential() && c != Commodity.Scrap) {
+                settlement.Cargo.Remove(c, settlement.Cargo[c]);
+            }
+        }
+        // Initialize cargo with equilibrium stock levels
+        Economy.EquilibriumStock.InitializeCargo(settlement);
+
+        // Initialize stock baseline for dynamic pricing using equilibrium
+        settlement.Stock = Economy.SettlementStock.ForEquilibrium(
+            Location.Population,
+            settlement.IndustrySegments);
 
         // Add base components
         settlement.AddComponent(new LifeSupportComponent());
@@ -444,6 +457,9 @@ public sealed class Encounter : IComparable<Encounter> {
         settlement.AddComponent(new UpgradeComponent());
         settlement.AddComponent(new DemolitionComponent());
         settlement.AddComponent(new SettlementGrowthComponent(settlementRng.Seed()));
+        settlement.AddComponent(new PopulationConsumptionComponent());
+        settlement.AddComponent(new ProductionAIComponent(settlementRng.Seed()));
+        settlement.AddComponent(new IndustryComponent());
 
         IEnumerable<string> EncounterNames = [];
         if (t < 0.15f) {

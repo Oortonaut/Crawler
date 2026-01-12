@@ -71,13 +71,18 @@ public class IndustryComponent : ActorComponentBase {
         // Consume consumables proportionally
         recipe.ConsumeConsumables(crawler.Supplies, progressThisTick);
 
-        // Apply maintenance (returns fraction satisfied)
+        // Try to consume maintenance - if available, no wear; if not, accumulate wear damage
         float maintenanceSatisfied = recipe.ConsumeMaintenance(crawler.Supplies, progressThisTick);
 
-        // If maintenance not fully satisfied, apply wear to segment
         if (maintenanceSatisfied < 1.0f) {
-            // TODO: Apply wear damage to segment based on missing maintenance
-            // For now, just note that maintenance was partially satisfied
+            // Maintenance not satisfied - accumulate wear proportional to progress
+            segment.WearAccumulator += recipe.Wear * progressThisTick;
+
+            // Apply accumulated wear as integer hits
+            while (segment.WearAccumulator >= 1.0f) {
+                segment.Hits++;
+                segment.WearAccumulator -= 1.0f;
+            }
         }
 
         // Add progress

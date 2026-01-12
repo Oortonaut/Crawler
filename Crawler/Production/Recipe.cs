@@ -20,7 +20,8 @@ public record ProductionRecipe(
     float CrewRequired,
     float ActivateCharge,
     TimeDuration CycleTime,
-    GameTier TechTier
+    GameTier TechTier,
+    float Wear = 1.0f
 ) {
     /// <summary>
     /// Check if all required inputs are available in the inventory.
