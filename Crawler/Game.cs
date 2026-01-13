@@ -1731,18 +1731,18 @@ public class Game {
         XorShift rng = new XorShift(1);
         Console.Write(AnsiEx.CursorPosition(1, 1) + AnsiEx.ClearScreen);
         Console.WriteLine("Surveying all locations for price statistics...");
-        Console.WriteLine("\nPrice Factors Analysis (NEW BID-ASK MODEL):");
-        Console.WriteLine("MidPrice = BaseValue * LocationMarkup * ScarcityPremium * RestrictedMarkup");
+        Console.WriteLine("\nPrice Factors Analysis (STOCK-AWARE BID-ASK MODEL):");
+        Console.WriteLine("MidPrice = BaseValue * LocationMarkup * StockMultiplier * PolicyMultiplier");
         Console.WriteLine("Spread = MidPrice * BaseBidAskSpread * FactionMultiplier");
         Console.WriteLine("AskPrice (Buy) = MidPrice + Spread/2");
         Console.WriteLine("BidPrice (Sell) = MidPrice - Spread/2");
         Console.WriteLine();
         Console.WriteLine("Factors:");
         Console.WriteLine("- LocationMarkup: EncounterMarkup * TerrainMarkup * ScrapInflation");
-        Console.WriteLine("- ScarcityPremium: 1 + (1-Availability) * Weight (Essential=0.3x, Luxury=1.5x)");
+        Console.WriteLine("- StockMultiplier: 0.5x (double stock) to 2.0x (half stock) based on settlement inventory");
+        Console.WriteLine("- PolicyMultiplier: Subsidized=0.7x, Legal=1.0x, Taxed=1.3x, Controlled=1.75x, etc.");
         Console.WriteLine("- BaseBidAskSpread: 20% base");
-        Console.WriteLine("- FactionMultiplier: Trade=0.8±0.05 (16% spread), Bandit=1.5±0.1 (30% spread)");
-        Console.WriteLine("- Result: Symmetric variance, location patterns preserved\n");
+        Console.WriteLine("- FactionMultiplier: Trade=0.8±0.05 (16% spread), Bandit=1.5±0.1 (30% spread)\n");
 
         // Dictionary to store buy/sell prices for each commodity
         var buyPrices = new Dictionary<Commodity, List<float>>();

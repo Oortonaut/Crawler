@@ -111,11 +111,6 @@ public static partial class Tuning {
         public static float TradeSpread(GaussianSampler gaussian) => gaussian.NextSingle(baseBidAskSpread * tradeSpreadMultiplier, tradeSpreadSd);
         public static float BanditSpread(GaussianSampler gaussian) => gaussian.NextSingle(baseBidAskSpread * banditSpreadMultiplier, banditSpreadSd);
 
-        // Scarcity pricing
-        public static float scarcityWeight = 1.0f;      // Multiplier for scarcity effect
-        public static float scarcityEssential = 0.3f;   // Lower premium for essentials
-        public static float scarcityLuxury = 0.8f;      // Was 1.5
-
         // Bandit markup settings
         public static float banditHostilityThreshold = 5.0f; // Evilness threshold for hostility check
         public static float banditHostilityChance = 0.3f;    // Base chance of turning hostile at threshold
@@ -518,29 +513,61 @@ public static partial class Tuning {
             [1.5f, 2.0f, 1.4f, 1.5f, 1.5f, 1.5f, 0.75f, 1.5f], // Ruined
         ];
 
-        public static float LocalMarkup(Commodity commodity, Location location) {
-            return _LocalMarkup(commodity, location) * ScrapInflation(location);
+        /// <summary>
+        /// Scrap inflation factor normalizes prices relative to local scrap value.
+        /// </summary>
+        public static float ScrapInflation(Location location) {
+            float scrapMarkup = EncounterCommodityMarkup[location.Type][Commodity.Scrap]
+                              * TerrainCommodityMarkup[location.Terrain][Commodity.Scrap];
+            return 1 / scrapMarkup;
         }
-        public static float LocalMarkup(SegmentKind kind, Location location) {
-            return _LocalMarkup(kind, location) * ScrapInflation(location);
-        }
-        public static float _LocalMarkup(Commodity commodity, Location location) {
-            return EncounterCommodityMarkup[location.Type][commodity] * TerrainCommodityMarkup[location.Terrain][commodity];
-        }
-        public static float _LocalMarkup(SegmentKind kind, Location location) {
-            return EncounterSegmentKindMarkup[location.Type][kind] * LocationSegmentKindMarkup[location.Terrain][kind];
-        }
-        public static float ScrapInflation(Location location) => 1 / _LocalMarkup(Commodity.Scrap, location);
     }
 
     public static float EvilLimit = 10.0f;
     public static int MaxDelay = 5000; // Half decimal hour
 
-    public static float CostAt(this Commodity commodity, Location location) {
-        return Commodity.Scrap.Round(commodity.BaseCost() * Economy.LocalMarkup(commodity, location));
+    /// <summary>
+    /// Calculate commodity price at location with optional stock-aware pricing.
+    /// </summary>
+    /// <param name="commodity">The commodity to price</param>
+    /// <param name="location">The location for terrain/encounter markup</param>
+    /// <param name="seller">Optional seller for stock-based pricing</param>
+    /// <param name="policy">Optional policy override (defaults to seller's faction policy)</param>
+    public static float CostAt(this Commodity commodity, Location location, IActor? seller = null, TradePolicy? policy = null) {
+        // Base price with terrain/encounter markup
+        float price = commodity.BaseCost()
+            * Economy.EncounterCommodityMarkup[location.Type][commodity]
+            * Economy.TerrainCommodityMarkup[location.Terrain][commodity]
+            * Economy.ScrapInflation(location);
+
+        // Stock-based multiplier (0.5x to 2.0x)
+        if (seller?.Stock != null)
+            price *= seller.Stock.PriceMultiplier(commodity, seller.Cargo[commodity]);
+
+        // Policy multiplier
+        if (policy.HasValue)
+            price *= Trade.PolicyMultiplier(policy.Value);
+        else if (seller != null)
+            price *= Trade.PolicyMultiplier(seller.Faction.GetPolicy(commodity));
+
+        return Commodity.Scrap.Round(price);
     }
-    public static float CostAt(this Segment segment, Location location) {
-        return Commodity.Scrap.Round(segment.Cost * Economy.LocalMarkup(segment.SegmentKind, location));
+
+    /// <summary>
+    /// Calculate segment price at location with optional policy pricing.
+    /// </summary>
+    public static float CostAt(this Segment segment, Location location, IActor? seller = null, TradePolicy? policy = null) {
+        float price = segment.Cost
+            * Economy.EncounterSegmentKindMarkup[location.Type][segment.SegmentKind]
+            * Economy.LocationSegmentKindMarkup[location.Terrain][segment.SegmentKind]
+            * Economy.ScrapInflation(location);
+
+        if (policy.HasValue)
+            price *= Trade.PolicyMultiplier(policy.Value);
+        else if (seller != null)
+            price *= Trade.PolicyMultiplier(seller.Faction.GetPolicy(segment.SegmentKind));
+
+        return Commodity.Scrap.Round(price);
     }
 
     public static TimePoint StartGameTime = new(3126, 0, 0, 0, 0, 0);

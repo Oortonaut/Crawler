@@ -123,7 +123,7 @@ public record SegmentOffer(Segment Segment): IOffer {
         Segment.Packaged = true;
         Subject.Supplies.Add(Segment);
     }
-    public float ValueFor(IActor Agent) => Segment.Cost * Tuning.Economy.LocalMarkup(Segment.SegmentKind, Agent.Location);
+    public float ValueFor(IActor Agent) => Segment.CostAt(Agent.Location);
 }
 
 public record HostilityOffer(string Reason): IOffer {

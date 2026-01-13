@@ -467,7 +467,7 @@ public interface IActorComponent : IEncounterEventHandler {
 **CombatComponentAdvanced (CombatComponentBase):**
 - Priority: 600
 - ThinkAction: Intelligent targeting and combat for NPCs
-- Subscribes to: HostilityChanged event (via OnComponentsDirty)
+- Subscribes to: HostilityChanged event (via Attach)
 - Used by: Bandits
 
 **CombatComponentDefense (CombatComponentBase):**
@@ -754,20 +754,26 @@ ScanForContraband(target):
 
 **Mid-Price Formula:**
 ```
-MidPrice = BaseValue × LocationMarkup × ScarcityPremium × PolicyMultiplier
+MidPrice = BaseValue × LocationMarkup × StockMultiplier × PolicyMultiplier
 ```
 
 **Where:**
-- **BaseValue:** Commodity's base cost (CommodityEx.Data)
-- **LocationMarkup:** `LocalMarkup(commodity, location)` based on terrain and tech level
-- **ScarcityPremium:** `1 + (1 - Availability) × CategoryWeight`
-  - Availability = `1 - Unavailability.Value(population/100, techLatitude*2 - commodityTech)`
-  - Uses power scaling with 0.7 exponent and (0.15, 0.3) powers for primitive/tech axes
-  - Essential goods: 0.3× weight (stable prices)
-  - Luxury goods: 1.5× weight (volatile prices)
+- **BaseValue:** Commodity's base cost (`CommodityEx.Data[commodity].BaseValue`)
+- **LocationMarkup:** `EncounterMarkup × TerrainMarkup × ScrapInflation`
+  - EncounterMarkup: Based on encounter type (Settlement, Resource, Crossroads, Hazard)
+  - TerrainMarkup: Based on terrain type (Flat, Rough, Broken, Shattered, Ruined)
+  - ScrapInflation: Normalizes prices relative to local scrap value
+- **StockMultiplier:** `1.0 / clamp(currentStock / baseline, 0.5, 2.0)`
+  - Range: 0.5× (double stock) to 2.0× (half stock)
+  - Settlements dynamically adjust prices based on inventory vs baseline
+  - When seller is null, defaults to 1.0×
 - **PolicyMultiplier:** From `Tuning.Trade.PolicyMultiplier(policy)`
+  - Subsidized: 0.7×
   - Legal: 1.0×
-  - Controlled: 1.2×
+  - Taxed: 1.3×
+  - Controlled: 1.75×
+  - Restricted: 2.75×
+  - Prohibited: 5.0×
 
 **Bid-Ask Spread:**
 ```
@@ -791,17 +797,17 @@ Each crawler has personal markup (Gaussian: mean=1.05, sd=0.07)
 Selling Fuel at Trade Settlement:
   BaseValue: 10¢¢
   LocationMarkup: 1.2× (rough terrain)
-  ScarcityPremium: 1.1× (90% availability)
+  StockMultiplier: 1.5× (settlement low on fuel)
   PolicyMultiplier: 1.0× (legal)
-  MidPrice = 10 × 1.2 × 1.1 × 1.0 = 13.2¢¢
+  MidPrice = 10 × 1.2 × 1.5 × 1.0 = 18¢¢
 
   BaseBidAskSpread: 0.20 (20%)
   FactionMultiplier: 0.8 (trader)
   TraderMarkup: 1.05 (this specific NPC)
-  Spread = 13.2 × 0.20 × 0.8 × 1.05 = 2.22¢¢
+  Spread = 18 × 0.20 × 0.8 × 1.05 = 3.02¢¢
 
-  AskPrice = 13.2 + 1.11 = 14.31¢¢ (player pays)
-  BidPrice = 13.2 - 1.11 = 12.09¢¢ (player receives)
+  AskPrice = 18 + 1.51 = 19.51¢¢ (player pays)
+  BidPrice = 18 - 1.51 = 16.49¢¢ (player receives)
 ```
 
 ### Trade Proposal Generation

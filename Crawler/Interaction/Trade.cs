@@ -66,13 +66,8 @@ public static class TradeEx {
                 continue;
             }
 
-            var locationMarkup = Tuning.Economy.LocalMarkup(commodity, Location);
-            var scarcityPremium = commodity.ScarcityPremium(Location);
-            var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
-            // Dynamic stock multiplier: low stock = higher prices, high stock = lower prices
-            var stockMultiplier = Seller.Stock?.PriceMultiplier(commodity, Seller.Cargo[commodity]) ?? 1.0f;
-
-            float midPrice = commodity.CostAt(Location) * scarcityPremium * policyMultiplier * stockMultiplier;
+            // CostAt now includes stock-based pricing and policy multiplier
+            float midPrice = commodity.CostAt(Location, Seller, policy);
 
             float bidAskSpread = Tuning.Trade.baseBidAskSpread;
             bidAskSpread *= tradeComponent?.Spread ?? 1.0f;
@@ -81,7 +76,7 @@ public static class TradeEx {
             float askPrice = midPrice + spreadAmount / 2;
             float bidPrice = midPrice - spreadAmount / 2;
 
-            var quantity = Inventory.QuantitySold(CFrac / locationMarkup, commodity, Location);
+            var quantity = Inventory.QuantitySold(CFrac, commodity, Location);
             Seller.Cargo[commodity] += quantity;
 
             var saleQuantity = 1f;
@@ -111,9 +106,7 @@ public static class TradeEx {
                 continue;
             }
 
-            var localCost = segment.CostAt(Location);
-            var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
-            var price = localCost * merchantMarkup * policyMultiplier;
+            var price = segment.CostAt(Location, Seller, policy) * merchantMarkup;
 
             offers.Add(new TradeOffer {
                 Segment = segment,
@@ -135,13 +128,9 @@ public static class TradeEx {
                 continue;
             }
 
-            var markup = Tuning.Economy.LocalMarkup(segment.SegmentKind, Location);
-            var policyMultiplier = Tuning.Trade.PolicyMultiplier(policy);
-            markup *= merchantMarkup * policyMultiplier;
-
             // Segments are packaged by default, so just add to cargo
             Seller.Cargo.Segments.Add(segment);
-            var price = segment.Cost * markup;
+            var price = segment.CostAt(Location, Seller, policy) * merchantMarkup;
 
             offers.Add(new TradeOffer {
                 Segment = segment,
@@ -180,7 +169,8 @@ public static class SettlementTrade {
         float qty = Math.Min(maxQty, available);
         if (qty <= 0) return false;
 
-        float price = commodity.CostAt(buyer.Location);
+        // Price includes settlement's stock-based pricing
+        float price = commodity.CostAt(buyer.Location, settlement);
         float cost = qty * price;
 
         // Adjust quantity if buyer can't afford full amount
@@ -223,7 +213,8 @@ public static class SettlementTrade {
         float qty = Math.Min(maxQty, haveInCargo + haveInSupplies);
         if (qty <= 0) return false;
 
-        float price = commodity.CostAt(seller.Location);
+        // Price includes settlement's stock-based pricing
+        float price = commodity.CostAt(seller.Location, settlement);
         float revenue = qty * price;
 
         // Check settlement can afford (settlements have limited scrap)

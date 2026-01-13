@@ -180,17 +180,6 @@ public static class CommodityEx {
 
         return 1 - Unavailability.Value(location.Population / 100, location.TechLatitude * 2 - commodityTech);
     }
-    public static float ScarcityPremium(this Commodity commodity, Location location) {
-        float availability = commodity.AvailabilityAt(location);
-        float scarcity = 1.0f - availability;
-
-        // Essential goods have lower scarcity premium
-        float weight = commodity.IsEssential() ?
-            Tuning.Trade.scarcityEssential :
-            Tuning.Trade.scarcityLuxury;
-
-        return 1.0f + scarcity * Tuning.Trade.scarcityWeight * weight;
-    }
     public static PowerScaling Unavailability = new(0.7f, new(0.15f, 0.3f), "primitive", "tech");
     public static float Round(this Commodity commodity, float value) {
         if (commodity.IsIntegral()) {
