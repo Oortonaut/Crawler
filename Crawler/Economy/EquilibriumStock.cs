@@ -68,9 +68,10 @@ public static class EquilibriumStock {
 
             // Cycles per hour = throughput / cycle_time_hours
             float cyclesPerHour = segment.Throughput / (float)bestRecipe.CycleTime.TotalHours;
+            float batchSize = segment.BatchSize;
 
             foreach (var (output, amount) in bestRecipe.Outputs) {
-                capacity[output] += amount * cyclesPerHour * segment.Efficiency;
+                capacity[output] += amount * cyclesPerHour * segment.Efficiency * batchSize;
             }
         }
 

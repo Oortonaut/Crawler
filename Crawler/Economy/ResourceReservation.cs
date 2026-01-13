@@ -12,25 +12,25 @@ public class ResourceReservation {
     readonly Dictionary<IndustrySegment, Commitment> _commitments = new();
 
     /// <summary>Tracks remaining input commitment for a segment.</summary>
-    record Commitment(ProductionRecipe Recipe, EArray<Commodity, float> Remaining);
+    record Commitment(ProductionRecipe Recipe, float BatchSize, EArray<Commodity, float> Remaining);
 
     /// <summary>
     /// Try to commit resources for a recipe on a segment.
     /// Returns true if all required inputs are available after existing commitments.
     /// </summary>
-    public bool TryCommit(IndustrySegment segment, ProductionRecipe recipe, Inventory inventory) {
+    public bool TryCommit(IndustrySegment segment, ProductionRecipe recipe, Inventory inventory, float batchSize = 1.0f) {
         // Check if all inputs are available after existing commitments
         foreach (var (commodity, amount) in recipe.Inputs) {
             float available = AvailableStock(inventory, commodity);
-            if (available < amount) return false;
+            if (available < amount * batchSize) return false;
         }
 
-        // Create commitment for full input amounts
+        // Create commitment for full input amounts (scaled by batch size)
         var remaining = new EArray<Commodity, float>();
         foreach (var (commodity, amount) in recipe.Inputs) {
-            remaining[commodity] = amount;
+            remaining[commodity] = amount * batchSize;
         }
-        _commitments[segment] = new Commitment(recipe, remaining);
+        _commitments[segment] = new Commitment(recipe, batchSize, remaining);
         return true;
     }
 
@@ -41,9 +41,9 @@ public class ResourceReservation {
     public void UpdateCommitment(IndustrySegment segment, float progressDelta) {
         if (!_commitments.TryGetValue(segment, out var commitment)) return;
 
-        // Reduce remaining commitment by the consumed fraction
+        // Reduce remaining commitment by the consumed fraction (already scaled by batch size in commitment)
         foreach (var (commodity, amount) in commitment.Recipe.Inputs) {
-            float consumed = amount * progressDelta;
+            float consumed = amount * commitment.BatchSize * progressDelta;
             commitment.Remaining[commodity] = Math.Max(0, commitment.Remaining[commodity] - consumed);
         }
     }
@@ -72,9 +72,9 @@ public class ResourceReservation {
     /// <summary>
     /// Check if a recipe can be started (all inputs available after commitments).
     /// </summary>
-    public bool CanStart(ProductionRecipe recipe, Inventory inventory) {
+    public bool CanStart(ProductionRecipe recipe, Inventory inventory, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in recipe.Inputs) {
-            if (AvailableStock(inventory, commodity) < amount) return false;
+            if (AvailableStock(inventory, commodity) < amount * batchSize) return false;
         }
         return true;
     }

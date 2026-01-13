@@ -1,4 +1,6 @@
-﻿namespace Crawler;
+﻿using System.Diagnostics;
+
+namespace Crawler;
 
 /// <summary>
 /// Parameters for resource deposit extraction.
@@ -356,9 +358,10 @@ public static partial class Tuning {
         public static PowerScaling ShieldChargeTiers = new PowerScaling(5.0f, (8, 1.2f), "slow", "fast");
 
         // Industry parameters
-        public static PowerScaling ThroughputTiers = new PowerScaling(1.0f, (1.5f, 1.5f), "slow", "fast");
-        public static PowerScaling EfficiencyTiers = new PowerScaling(0.85f, (0.95f, 1.2f), "wasteful", "efficient");
+        public static PowerScaling ThroughputTiers = new PowerScaling(1.0f, (3.5f, 2.0f), "slow", "fast");
+        public static EfficiencyScaling EfficiencyTiers = new EfficiencyScaling(0.85f, (0.55f, 0.35f), "wasteful", "efficient");
         public static PowerScaling ActivateChargeTiers = new PowerScaling(10.0f, (30, 1.5f), "light", "heavy");
+        public static PowerScaling BatchSizeTiers = new PowerScaling(1.0f, (8.5f, 1.5f), "small", "bulk");
 
         // Storage parameters
         public static PowerScaling StorageCapacityTiers = new PowerScaling(10.0f, (50, 2.0f), "cramped", "spacious");
@@ -857,10 +860,30 @@ public record PowerScaling(float Min, Tier Tier, string badName, string goodName
     float numUpgrades = 3;
     public const int NA = -1000;
     public float Value(float size, float quality) {
-        double l = Math.Exp((size - 1) * Math.Log(Tier.Size) / (numSizes - 1));
-        double u = Math.Exp(quality * Math.Log(Tier.Quality) / numUpgrades);
-        double Y = Min * l * u;
+        double t = (size - 1) / (numSizes - 1);
+        double tAdj = Math.Exp(t * Math.Log(Tier.Size));
+        double u = quality / numUpgrades;
+        double uAdj = Math.Exp(u * Math.Log(Tier.Quality));
+        double Y = Min * tAdj * uAdj;
         return ( float ) Y;
+    }
+    public float this[Tier tier] => tier.Size <= NA / 2.0f ? 0 : Value(tier.Size, tier.Quality);
+}
+
+// Efficiency scaling goes from Min efficiency up to 1.
+public record EfficiencyScaling(float Min, Tier Tier, string badName, string goodName) {
+    float numSizes = 5;
+    float numUpgrades = 3;
+    public const int NA = -1000;
+    public float Value(float size, float quality) {
+        double t = (size - 1) / (numSizes - 1);
+        double tAdj = Math.Exp(t * Math.Log(1 - Tier.Size));
+        tAdj = Math.Clamp(tAdj, 0.0, 1.0);
+        double u = quality / numUpgrades;
+        double uAdj = Math.Exp(u * Math.Log(1 - Tier.Quality));
+        uAdj = Math.Clamp(uAdj, 0.0, 1.0);
+        double Y = 1 - (1 - Min) * tAdj * uAdj;
+        return (float)Y;
     }
     public float this[Tier tier] => tier.Size <= NA / 2.0f ? 0 : Value(tier.Size, tier.Quality);
 }

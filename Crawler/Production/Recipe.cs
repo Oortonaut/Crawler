@@ -26,9 +26,9 @@ public record ProductionRecipe(
     /// <summary>
     /// Check if all required inputs are available in the inventory.
     /// </summary>
-    public bool HasInputs(Inventory inventory) {
+    public bool HasInputs(Inventory inventory, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Inputs) {
-            if (inventory[commodity] < amount) return false;
+            if (inventory[commodity] < amount * batchSize) return false;
         }
         return true;
     }
@@ -36,9 +36,9 @@ public record ProductionRecipe(
     /// <summary>
     /// Check if all required consumables are available in the inventory.
     /// </summary>
-    public bool HasConsumables(Inventory inventory) {
+    public bool HasConsumables(Inventory inventory, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Consumables) {
-            if (inventory[commodity] < amount) return false;
+            if (inventory[commodity] < amount * batchSize) return false;
         }
         return true;
     }
@@ -46,14 +46,15 @@ public record ProductionRecipe(
     /// <summary>
     /// Check if maintenance materials are available (partial is OK, but affects wear).
     /// </summary>
-    public float MaintenanceFraction(Inventory inventory) {
+    public float MaintenanceFraction(Inventory inventory, float batchSize = 1.0f) {
         if (Maintenance.Count == 0) return 1.0f;
 
         float totalRequired = 0;
         float totalAvailable = 0;
         foreach (var (commodity, amount) in Maintenance) {
-            totalRequired += amount;
-            totalAvailable += Math.Min(inventory[commodity], amount);
+            float scaled = amount * batchSize;
+            totalRequired += scaled;
+            totalAvailable += Math.Min(inventory[commodity], scaled);
         }
         return totalRequired > 0 ? totalAvailable / totalRequired : 1.0f;
     }
@@ -61,18 +62,18 @@ public record ProductionRecipe(
     /// <summary>
     /// Consume inputs proportionally to the given progress fraction.
     /// </summary>
-    public void ConsumeInputs(Inventory inventory, float fraction) {
+    public void ConsumeInputs(Inventory inventory, float fraction, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Inputs) {
-            inventory.Remove(commodity, amount * fraction);
+            inventory.Remove(commodity, amount * fraction * batchSize);
         }
     }
 
     /// <summary>
     /// Consume consumables proportionally to the given progress fraction.
     /// </summary>
-    public void ConsumeConsumables(Inventory inventory, float fraction) {
+    public void ConsumeConsumables(Inventory inventory, float fraction, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Consumables) {
-            inventory.Remove(commodity, amount * fraction);
+            inventory.Remove(commodity, amount * fraction * batchSize);
         }
     }
 
@@ -80,12 +81,12 @@ public record ProductionRecipe(
     /// Consume maintenance materials proportionally to the given progress fraction.
     /// Returns the fraction of maintenance that was satisfied.
     /// </summary>
-    public float ConsumeMaintenance(Inventory inventory, float fraction) {
+    public float ConsumeMaintenance(Inventory inventory, float fraction, float batchSize = 1.0f) {
         if (Maintenance.Count == 0) return 1.0f;
 
-        float satisfied = MaintenanceFraction(inventory);
+        float satisfied = MaintenanceFraction(inventory, batchSize);
         foreach (var (commodity, amount) in Maintenance) {
-            float consume = Math.Min(inventory[commodity], amount * fraction);
+            float consume = Math.Min(inventory[commodity], amount * fraction * batchSize);
             inventory.Remove(commodity, consume);
         }
         return satisfied;
@@ -94,18 +95,18 @@ public record ProductionRecipe(
     /// <summary>
     /// Produce outputs into the inventory.
     /// </summary>
-    public void ProduceOutputs(Inventory inventory, float efficiency = 1.0f) {
+    public void ProduceOutputs(Inventory inventory, float efficiency = 1.0f, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Outputs) {
-            inventory.Add(commodity, amount * efficiency);
+            inventory.Add(commodity, amount * efficiency * batchSize);
         }
     }
 
     /// <summary>
     /// Produce waste into the inventory.
     /// </summary>
-    public void ProduceWaste(Inventory inventory) {
+    public void ProduceWaste(Inventory inventory, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Waste) {
-            inventory.Add(commodity, amount);
+            inventory.Add(commodity, amount * batchSize);
         }
     }
 }

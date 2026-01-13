@@ -755,6 +755,7 @@ public record IndustryDef(
     Tier ThroughputTier,
     Tier EfficiencyTier,
     Tier ActivateChargeTier,
+    Tier BatchSizeTier,
     Production.IndustryType IndustryType
 ) : SegmentDef(Symbol, Size, Name, SegmentKind.Industry, WeightTier, DrainTier, CostTier, MaxHitsTier) {
     public override IndustrySegment NewSegment(ulong seed) => new(seed, this, null);
@@ -769,12 +770,13 @@ public record IndustryDef(
     /// <summary>Reactor charge consumed per production cycle</summary>
     public float ActivateCharge => Tuning.Segments.ActivateChargeTiers[ActivateChargeTier];
 
+    /// <summary>Quantity multiplier per production cycle (scales with segment size)</summary>
+    public float BatchSize => Tuning.Segments.BatchSizeTiers[BatchSizeTier];
+
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - base.Size.Size);
         return ((IndustryDef)base.Resize(Size)) with {
-            ThroughputTier = ThroughputTier + delta,
-            EfficiencyTier = EfficiencyTier + delta,
-            ActivateChargeTier = ActivateChargeTier + delta,
+            BatchSizeTier = BatchSizeTier + delta,
         };
     }
 }
@@ -784,6 +786,7 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
     public float Throughput => industryDef.Throughput;
     public float Efficiency => industryDef.Efficiency;
     public float ActivateCharge => industryDef.ActivateCharge;
+    public float BatchSize => industryDef.BatchSize;
 
     /// <summary>Currently executing recipe, or null if idle</summary>
     public Production.ProductionRecipe? CurrentRecipe { get; set; }
@@ -1276,12 +1279,12 @@ public static class SegmentEx {
 
     public static IEnumerable<DefenseDef> CoreDefenseDefs => DefenseDefs;
 
-    // Industry definitions (Throughput, Efficiency, ActivateCharge)
+    // Industry definitions (Throughput, Efficiency, ActivateCharge, BatchSize)
     public static List<IndustryDef> IndustryDefs = [
-        new IndustryDef('R', 2, "Refinery", 2, 1.5f, 2, 1.5f, 1, 1, 1, Production.IndustryType.Refinery),
-        new IndustryDef('F', 2, "Fabricator", 1.5f, 1.2f, 2.5f, 1.5f, 1, 1.2f, 1.5f, Production.IndustryType.Fabricator),
-        new IndustryDef('A', 2, "Assembler", 1.2f, 1, 3, 1.5f, 1.2f, 1, 2, Production.IndustryType.Assembler),
-        new IndustryDef('Y', 1.5f, "Recycler", 1.5f, 0.8f, 1.5f, 1, 0.8f, 0.7f, 0.5f, Production.IndustryType.Recycler),
+        new IndustryDef('R', 2, "Refinery", 2, 1.5f, 2, 1.5f, 1, 1, 1, 2, Production.IndustryType.Refinery),
+        new IndustryDef('F', 2, "Fabricator", 1.5f, 1.2f, 2.5f, 1.5f, 1, 1.2f, 1.5f, 2, Production.IndustryType.Fabricator),
+        new IndustryDef('A', 2, "Assembler", 1.2f, 1, 3, 1.5f, 1.2f, 1, 2, 2, Production.IndustryType.Assembler),
+        new IndustryDef('Y', 1.5f, "Recycler", 1.5f, 0.8f, 1.5f, 1, 0.8f, 0.7f, 0.5f, 1.5f, Production.IndustryType.Recycler),
     ];
 
     public static IEnumerable<IndustryDef> CoreIndustryDefs => IndustryDefs;

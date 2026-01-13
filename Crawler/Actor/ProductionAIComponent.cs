@@ -119,7 +119,7 @@ public class ProductionAIComponent : ActorComponentBase {
             if (assignedSegments.Contains(eval.Segment)) continue;
 
             // Check if we can still start this recipe (resources may have been committed)
-            if (!reservation.CanStart(eval.Recipe, crawler.Supplies)) continue;
+            if (!reservation.CanStart(eval.Recipe, crawler.Supplies, eval.Segment.BatchSize)) continue;
 
             // Try to assign the recipe
             if (IndustryComponent.TrySetRecipe(crawler, eval.Segment, eval.Recipe)) {
@@ -154,16 +154,18 @@ public class ProductionAIComponent : ActorComponentBase {
         ResourceReservation reservation,
         Location location) {
 
+        float batchSize = segment.BatchSize;
+
         // Check basic requirements (but don't reject - score input availability instead)
         if (crawler.PowerBalance < segment.Drain) return null;
         if (crawler.CrewInv < recipe.CrewRequired) return null;
 
         // 1. Input Availability (0-1): Can we run this recipe?
-        float inputAvailability = CalculateInputAvailability(recipe, crawler, reservation);
+        float inputAvailability = CalculateInputAvailability(recipe, crawler, reservation, batchSize);
         if (inputAvailability <= 0) return null; // Can't run at all
 
         // 2. Deficit Urgency (0-1): How badly do we need the outputs?
-        float deficitUrgency = CalculateDeficitUrgency(recipe, crawler);
+        float deficitUrgency = CalculateDeficitUrgency(recipe, crawler, batchSize);
 
         // 3. Downstream Demand (0-1): Is there demand from production chain?
         float downstreamDemand = 0;
@@ -172,7 +174,7 @@ public class ProductionAIComponent : ActorComponentBase {
         }
 
         // 4. Profit Margin (normalized 0-1): Tiebreaker
-        float profitMargin = CalculateNormalizedProfit(recipe, segment, crawler, location);
+        float profitMargin = CalculateNormalizedProfit(recipe, segment, crawler, location, batchSize);
 
         // Weighted combination
         float totalScore =
@@ -191,23 +193,25 @@ public class ProductionAIComponent : ActorComponentBase {
     /// Calculate input availability score (0-1).
     /// 1.0 = all inputs fully available, 0 = missing critical inputs.
     /// </summary>
-    float CalculateInputAvailability(ProductionRecipe recipe, Crawler crawler, ResourceReservation reservation) {
-        if (!reservation.CanStart(recipe, crawler.Supplies)) return 0;
+    float CalculateInputAvailability(ProductionRecipe recipe, Crawler crawler, ResourceReservation reservation, float batchSize) {
+        if (!reservation.CanStart(recipe, crawler.Supplies, batchSize)) return 0;
 
         float minRatio = 1.0f;
 
-        // Check inputs
+        // Check inputs (scaled by batch size)
         foreach (var (commodity, required) in recipe.Inputs) {
             float available = crawler.Supplies[commodity] + crawler.Cargo[commodity];
-            float ratio = required > 0 ? Math.Min(available / required, 2.0f) / 2.0f : 1.0f;
+            float scaledRequired = required * batchSize;
+            float ratio = scaledRequired > 0 ? Math.Min(available / scaledRequired, 2.0f) / 2.0f : 1.0f;
             minRatio = Math.Min(minRatio, ratio);
         }
 
-        // Check consumables (less strict - can run with partial)
+        // Check consumables (less strict - can run with partial, scaled by batch size)
         foreach (var (commodity, required) in recipe.Consumables) {
             float available = crawler.Supplies[commodity];
-            if (required > 0) {
-                float ratio = Math.Clamp(available / (required * 5), 0, 1); // 5 cycles buffer
+            float scaledRequired = required * batchSize;
+            if (scaledRequired > 0) {
+                float ratio = Math.Clamp(available / (scaledRequired * 5), 0, 1); // 5 cycles buffer
                 minRatio = Math.Min(minRatio, 0.5f + ratio * 0.5f); // Floor at 0.5
             }
         }
@@ -220,7 +224,7 @@ public class ProductionAIComponent : ActorComponentBase {
     /// Higher when outputs are below baseline stock levels.
     /// Essential goods get boosted urgency.
     /// </summary>
-    float CalculateDeficitUrgency(ProductionRecipe recipe, Crawler crawler) {
+    float CalculateDeficitUrgency(ProductionRecipe recipe, Crawler crawler, float batchSize) {
         if (crawler.Stock == null) return 0;
 
         float totalUrgency = 0;
@@ -233,9 +237,9 @@ public class ProductionAIComponent : ActorComponentBase {
             float current = crawler.Supplies[commodity] + crawler.Cargo[commodity];
             float deficitRatio = Math.Clamp((baseline - current) / baseline, 0, 1);
 
-            // Essential goods get boosted urgency
+            // Essential goods get boosted urgency (output scaled by batch size)
             float boost = commodity.IsEssential() ? 1.5f : 1.0f;
-            float weight = commodity.BaseCost() * amount * boost;
+            float weight = commodity.BaseCost() * amount * batchSize * boost;
 
             totalUrgency += deficitRatio * weight;
             totalWeight += weight;
@@ -247,14 +251,14 @@ public class ProductionAIComponent : ActorComponentBase {
     /// <summary>
     /// Calculate normalized profit margin (0-1).
     /// </summary>
-    float CalculateNormalizedProfit(ProductionRecipe recipe, IndustrySegment segment, Crawler crawler, Location location) {
-        float inputCost = recipe.Inputs.Sum(kv => kv.Key.CostAt(location) * kv.Value);
-        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.CostAt(location) * kv.Value);
-        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.CostAt(location) * kv.Value);
+    float CalculateNormalizedProfit(ProductionRecipe recipe, IndustrySegment segment, Crawler crawler, Location location, float batchSize) {
+        float inputCost = recipe.Inputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
+        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
+        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
         float chargeCost = (segment.ActivateCharge + recipe.ActivateCharge) * Tuning.Production.ChargeValue;
         float totalCost = inputCost + consumableCost + maintenanceCost + chargeCost;
 
-        float outputValue = recipe.Outputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * segment.Efficiency);
+        float outputValue = recipe.Outputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * segment.Efficiency * batchSize);
 
         if (totalCost <= 0) return 1.0f;
 
@@ -276,29 +280,31 @@ public class ProductionAIComponent : ActorComponentBase {
         ResourceReservation reservation,
         Location location) {
 
+        float batchSize = segment.BatchSize;
+
         // Check basic requirements
-        if (!reservation.CanStart(recipe, crawler.Supplies)) return null;
-        if (!recipe.HasConsumables(crawler.Supplies)) return null;
+        if (!reservation.CanStart(recipe, crawler.Supplies, batchSize)) return null;
+        if (!recipe.HasConsumables(crawler.Supplies, batchSize)) return null;
         if (crawler.PowerBalance < segment.Drain) return null;
         if (crawler.CrewInv < recipe.CrewRequired) return null;
 
-        // Calculate costs (using base costs - could use local prices if PriceKnowledge available)
-        float inputCost = recipe.Inputs.Sum(kv => kv.Key.CostAt(location) * kv.Value);
-        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.CostAt(location) * kv.Value);
-        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.CostAt(location) * kv.Value);
+        // Calculate costs (scaled by batch size)
+        float inputCost = recipe.Inputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
+        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
+        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
         float chargeCost = (segment.ActivateCharge + recipe.ActivateCharge) * Tuning.Production.ChargeValue;
 
         float totalCost = inputCost + consumableCost + maintenanceCost + chargeCost;
 
-        // Calculate output value
-        float outputValue = recipe.Outputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * segment.Efficiency);
+        // Calculate output value (scaled by batch size and efficiency)
+        float outputValue = recipe.Outputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * segment.Efficiency * batchSize);
 
         // Calculate profit
         float profitPerCycle = outputValue - totalCost;
         float cycleHours = (float)recipe.CycleTime.TotalHours / segment.Throughput;
         float profitPerHour = profitPerCycle / cycleHours;
 
-        // Calculate stock priority bonus
+        // Calculate stock priority bonus (output amounts scaled by batch size)
         float stockBonus = 0;
         foreach (var (commodity, amount) in recipe.Outputs) {
             float currentStock = crawler.Supplies[commodity] + crawler.Cargo[commodity];

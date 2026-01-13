@@ -29,6 +29,7 @@ public class IndustryComponent : ActorComponentBase {
         var recipe = segment.CurrentRecipe!;
         var reservation = crawler.ResourceReservation;
         float hours = (float)elapsed.TotalHours;
+        float batchSize = segment.BatchSize;
 
         // Check if we have enough power generation for baseload
         float baseloadRequired = segment.Drain;
@@ -38,13 +39,13 @@ public class IndustryComponent : ActorComponentBase {
         }
 
         // Check inputs using reservation-aware availability
-        if (!HasInputsWithReservation(recipe, crawler, segment)) {
+        if (!HasInputsWithReservation(recipe, crawler, segment, batchSize)) {
             segment.IsStalled = true;
             return;
         }
 
         // Check consumables
-        if (!recipe.HasConsumables(crawler.Supplies)) {
+        if (!recipe.HasConsumables(crawler.Supplies, batchSize)) {
             segment.IsStalled = true;
             return;
         }
@@ -62,17 +63,17 @@ public class IndustryComponent : ActorComponentBase {
         float progressPerHour = segment.Throughput / (float)recipe.CycleTime.TotalHours;
         float progressThisTick = progressPerHour * hours;
 
-        // Consume inputs proportionally to progress
-        recipe.ConsumeInputs(crawler.Supplies, progressThisTick);
+        // Consume inputs proportionally to progress (scaled by batch size)
+        recipe.ConsumeInputs(crawler.Supplies, progressThisTick, batchSize);
 
         // Update reservation to reflect consumed inputs
         reservation.UpdateCommitment(segment, progressThisTick);
 
-        // Consume consumables proportionally
-        recipe.ConsumeConsumables(crawler.Supplies, progressThisTick);
+        // Consume consumables proportionally (scaled by batch size)
+        recipe.ConsumeConsumables(crawler.Supplies, progressThisTick, batchSize);
 
         // Try to consume maintenance - if available, no wear; if not, accumulate wear damage
-        float maintenanceSatisfied = recipe.ConsumeMaintenance(crawler.Supplies, progressThisTick);
+        float maintenanceSatisfied = recipe.ConsumeMaintenance(crawler.Supplies, progressThisTick, batchSize);
 
         if (maintenanceSatisfied < 1.0f) {
             // Maintenance not satisfied - accumulate wear proportional to progress
@@ -104,15 +105,15 @@ public class IndustryComponent : ActorComponentBase {
             // Release the completed cycle's reservation
             reservation.Release(segment);
 
-            // Produce outputs with efficiency bonus
-            recipe.ProduceOutputs(crawler.Cargo, segment.Efficiency);
+            // Produce outputs with efficiency bonus (scaled by batch size)
+            recipe.ProduceOutputs(crawler.Cargo, segment.Efficiency, batchSize);
 
-            // Produce waste
-            recipe.ProduceWaste(crawler.Cargo);
+            // Produce waste (scaled by batch size)
+            recipe.ProduceWaste(crawler.Cargo, batchSize);
 
             // If continuing to next cycle, try to commit resources
             if (segment.ProductionProgress > 0) {
-                if (!reservation.TryCommit(segment, recipe, crawler.Supplies)) {
+                if (!reservation.TryCommit(segment, recipe, crawler.Supplies, batchSize)) {
                     // Can't commit for next cycle - will stall on next tick
                     break;
                 }
@@ -121,14 +122,14 @@ public class IndustryComponent : ActorComponentBase {
 
         // Ensure we have a commitment for ongoing production
         if (segment.ProductionProgress > 0 && !reservation.HasCommitment(segment)) {
-            reservation.TryCommit(segment, recipe, crawler.Supplies);
+            reservation.TryCommit(segment, recipe, crawler.Supplies, batchSize);
         }
     }
 
     /// <summary>
     /// Check if inputs are available, considering this segment's existing commitment.
     /// </summary>
-    static bool HasInputsWithReservation(ProductionRecipe recipe, Crawler crawler, IndustrySegment segment) {
+    static bool HasInputsWithReservation(ProductionRecipe recipe, Crawler crawler, IndustrySegment segment, float batchSize) {
         var reservation = crawler.ResourceReservation;
 
         // If this segment already has a commitment, check against that
@@ -142,7 +143,7 @@ public class IndustryComponent : ActorComponentBase {
         }
 
         // No commitment yet - check if we can start fresh
-        return reservation.CanStart(recipe, crawler.Supplies);
+        return reservation.CanStart(recipe, crawler.Supplies, batchSize);
     }
 
     /// <summary>
@@ -162,11 +163,13 @@ public class IndustryComponent : ActorComponentBase {
             return false;
         }
 
+        float batchSize = segment.BatchSize;
+
         // Release any existing commitment
         crawler.ResourceReservation.Release(segment);
 
         // Try to commit resources for the new recipe
-        if (!crawler.ResourceReservation.TryCommit(segment, recipe, crawler.Supplies)) {
+        if (!crawler.ResourceReservation.TryCommit(segment, recipe, crawler.Supplies, batchSize)) {
             return false;
         }
 
