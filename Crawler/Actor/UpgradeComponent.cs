@@ -129,7 +129,8 @@ public class UpgradeComponent : ActorComponentBase {
                     break;
                 case (IndustrySegment srcIndustry, IndustrySegment tgtIndustry):
                     tgtIndustry.CurrentRecipe = srcIndustry.CurrentRecipe;
-                    tgtIndustry.ProductionProgress = srcIndustry.ProductionProgress;
+                    tgtIndustry.ProductionStartTime = srcIndustry.ProductionStartTime;
+                    tgtIndustry.CycleDuration = srcIndustry.CycleDuration;
                     tgtIndustry.IsStalled = srcIndustry.IsStalled;
                     break;
             }

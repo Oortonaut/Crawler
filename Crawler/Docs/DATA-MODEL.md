@@ -355,7 +355,7 @@ public interface ICrawlerComponent {
 **Methods:**
 - `Attach(owner)` - Called when component is attached to crawler
 - `Detach()` - Called when component is detached from crawler
-- `OnComponentsDirty()` - Called after component list changes (for late initialization)
+- `OnComponentsDirty()` - Called after component list changes (for late or re-initialization)
 - `EnumerateInteractions(subject)` - Generate interactions on-demand between owner and subject
 - `ThinkAction()` - NPC AI behavior, returns AP cost if action taken (0 = no action)
 - `SubscribeToEncounter()/UnsubscribeFromEncounter()` - Register/unregister event handlers
@@ -402,7 +402,7 @@ void OnEncounterTick(long time);
 Components can also subscribe to crawler-specific events:
 
 ```csharp
-// In Attach() or OnComponentsDirty():
+// In Attach() or OnComponentsDirty() with checks to avoid double registration:
 Owner.HostilityChanged += OnHostilityChanged;
 Owner.ReceivingFire += OnReceivingFire;
 

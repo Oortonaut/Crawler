@@ -540,8 +540,6 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             return;
         }
 
-        // Let components provide proactive behaviors
-        CleanComponents(true);
         ActorEvent? nextEvent = null;
         foreach (var component in Components) {
             var componentEvent = component.GetNextEvent();
@@ -659,6 +657,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         segment.Packaged = false;
         _allSegments.Add(segment);
         UpdateSegmentCache();
+        NotifySegmentsChanged();
     }
 
     /// <summary>
@@ -675,6 +674,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         segment.Packaged = true;
         Supplies.Add(segment);
         UpdateSegmentCache();
+        NotifySegmentsChanged();
     }
 
     /// <summary>
@@ -691,6 +691,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         segment.Packaged = true;
         Cargo.Add(segment);
         UpdateSegmentCache();
+        NotifySegmentsChanged();
     }
 
     /// <summary>
@@ -707,6 +708,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         newSegment.Owner = this;
 
         UpdateSegmentCache();
+        NotifySegmentsChanged();
     }
 
     /// <summary>
@@ -726,8 +728,29 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             Debug.Assert(segment.IsDestroyed, "Cannot remove active working segment");
             _allSegments.Remove(segment);
             UpdateSegmentCache();
+            NotifySegmentsChanged();
         }
         segment.Owner = null;
+    }
+
+    /// <summary>
+    /// Notify all components that the segment list has changed.
+    /// </summary>
+    void NotifySegmentsChanged() {
+        foreach (var component in Components) {
+            component.SegmentsChanged();
+        }
+    }
+
+    /// <summary>
+    /// Called when a segment's state changes (e.g., from damage).
+    /// Updates the segment cache and notifies components.
+    /// </summary>
+    public void OnSegmentStateChanged(Segment segment) {
+        UpdateSegmentCache();
+        foreach (var component in Components) {
+            component.SegmentStateChanged(segment);
+        }
     }
 
     List<Segment> _allSegments = [];

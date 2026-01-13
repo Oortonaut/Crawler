@@ -318,7 +318,10 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
             Recipe.ConsumeConsumables(Crawler.Supplies, 1.0f, batchSize);
 
             Segment.IsStalled = false;
-            Segment.ProductionProgress = 0;
+
+            // Track production timing for progress calculation
+            Segment.ProductionStartTime = Crawler.Time;
+            Segment.CycleDuration = TimeDuration.FromHours(Recipe.CycleTime.TotalHours / Segment.Throughput);
         }
 
         public override void OnEnd() {
@@ -338,7 +341,9 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
                 }
             }
 
-            Segment.ProductionProgress = 1.0f; // Mark cycle complete
+            // Clear timing info (ProductionProgress becomes 0)
+            Segment.ProductionStartTime = TimePoint.Zero;
+            Segment.CycleDuration = TimeDuration.Zero;
 
             // Clear recipe so ProductionAIComponent can schedule next cycle
             // (it will re-evaluate and potentially assign a different recipe)
@@ -515,13 +520,13 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
 
     public IEnumerable<IActorComponent> Components => _components;
 
-    protected void CleanComponents(bool notify) {
+    protected void ComponentsChanged(bool notify) {
         if (_componentsDirty) {
             _components.Sort((a, b) => b.Priority.CompareTo(a.Priority));
             _componentsDirty = false;
             if (notify) {
                 foreach (var component in _components) {
-                    component.OnComponentsDirty();
+                    component.ComponentsChanged();
                 }
             }
         }
@@ -576,7 +581,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
             _components.Add(component);
         }
         _newComponents.Clear();
-        CleanComponents(false);
+        ComponentsChanged(false);
     }
 
     // Returns elapsed, >= 0
@@ -633,7 +638,6 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         foreach (var component in _newComponents) {
             component.Enter(encounter);
         }
-        CleanComponents(true);
     }
 
     public void Left(Encounter encounter) {

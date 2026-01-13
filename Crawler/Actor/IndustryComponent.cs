@@ -73,7 +73,8 @@ public class IndustryComponent : ActorComponentBase {
         }
 
         segment.CurrentRecipe = recipe;
-        segment.ProductionProgress = 0;
+        segment.ProductionStartTime = TimePoint.Zero;
+        segment.CycleDuration = TimeDuration.Zero;
         segment.IsStalled = false;
         return true;
     }
@@ -87,7 +88,8 @@ public class IndustryComponent : ActorComponentBase {
             throw new ArgumentException($"Recipe requires {recipe.RequiredIndustry} but segment is {segment.IndustryType}");
         }
         segment.CurrentRecipe = recipe;
-        segment.ProductionProgress = 0;
+        segment.ProductionStartTime = TimePoint.Zero;
+        segment.CycleDuration = TimeDuration.Zero;
         segment.IsStalled = false;
     }
 
@@ -97,7 +99,8 @@ public class IndustryComponent : ActorComponentBase {
     public static void StopProduction(Crawler crawler, IndustrySegment segment) {
         crawler.ResourceReservation.Release(segment);
         segment.CurrentRecipe = null;
-        segment.ProductionProgress = 0;
+        segment.ProductionStartTime = TimePoint.Zero;
+        segment.CycleDuration = TimeDuration.Zero;
         segment.IsStalled = false;
     }
 
@@ -107,7 +110,8 @@ public class IndustryComponent : ActorComponentBase {
     /// </summary>
     public static void StopProduction(IndustrySegment segment) {
         segment.CurrentRecipe = null;
-        segment.ProductionProgress = 0;
+        segment.ProductionStartTime = TimePoint.Zero;
+        segment.CycleDuration = TimeDuration.Zero;
         segment.IsStalled = false;
     }
 }

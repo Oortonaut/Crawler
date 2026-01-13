@@ -49,8 +49,18 @@ public interface IActorComponent {
     IEnumerable<Interaction> EnumerateInteractions(IActor subject);
 
     /// <summary>Called when the actors component list changes. During construction and loading,
-    /// called once all components are installed.</summary>
-    void OnComponentsDirty();
+    /// called once all components and segmentsare installed. During runtime, called immediately after the list
+    /// changes.</summary>
+    void ComponentsChanged();
+
+    /// <summary>Called when the actors segment list changes. During construction and loading,
+    /// called once all components and segments are installed. During runtime, called immediately after the segment list
+    /// changed.</summary>
+    void SegmentsChanged();
+
+    /// <summary>Called when a segment's operation state changes. Called once at initialization and
+    /// thereafter when the state changes.
+    void SegmentStateChanged(Segment segment);
 
     /// <summary>
     /// Called during Think() to allow proactive component behaviors.
@@ -80,7 +90,9 @@ public abstract class ActorComponentBase : IActorComponent {
 
     public virtual IEnumerable<Interaction> EnumerateInteractions(IActor subject) => [];
 
-    public virtual void OnComponentsDirty() { }
+    public virtual void ComponentsChanged() { }
+    public virtual void SegmentsChanged() { }
+    public virtual void SegmentStateChanged(Segment segment) { }
 
     public virtual void Enter(Encounter encounter) { }
 

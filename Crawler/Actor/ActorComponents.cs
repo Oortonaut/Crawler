@@ -860,9 +860,9 @@ public class EncounterMessengerComponent : ActorComponentBase {
         Owner.ReceivingFire -= OnReceivingFire;
         base.Detach();
     }
-    public override void OnComponentsDirty() {
+    public override void ComponentsChanged() {
         Owner.Message($"{Owner.Name} component list changed.");
-        base.OnComponentsDirty();
+        base.ComponentsChanged();
     }
 
     public override ActorEvent? GetNextEvent() {

@@ -538,9 +538,9 @@ public class CombatComponentAdvanced : CombatComponentBase {
 
     public override int Priority => 600; // Advanced combat behavior
 
-    public override void OnComponentsDirty() {
-        base.OnComponentsDirty();
-        if (Owner is Crawler crawler) {
+    public override void Attach(IActor actor) {
+        base.Attach(actor);
+        if (actor is Crawler crawler) {
             crawler.HostilityChanged += HostilityChanged;
         }
     }

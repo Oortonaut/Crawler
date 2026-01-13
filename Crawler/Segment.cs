@@ -124,11 +124,38 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
     int _hits = 0;
     public int Hits {
         get => _hits;
-        set => _hits = Math.Clamp(value, 0, SegmentDef.MaxHits);
+        set {
+            var oldState = State;
+            _hits = Math.Clamp(value, 0, SegmentDef.MaxHits);
+            if (State != oldState && Owner is Crawler crawler) {
+                crawler.OnSegmentStateChanged(this);
+            }
+        }
     }
 
-    public bool Packaged { get; set; } = true;  // Default to packaged for safety
-    public bool Activated { get; set; } = true;
+    bool _packaged = true;  // Default to packaged for safety
+    public bool Packaged {
+        get => _packaged;
+        set {
+            var oldState = State;
+            _packaged = value;
+            if (State != oldState && Owner is Crawler crawler) {
+                crawler.OnSegmentStateChanged(this);
+            }
+        }
+    }
+
+    bool _activated = true;
+    public bool Activated {
+        get => _activated;
+        set {
+            var oldState = State;
+            _activated = value;
+            if (State != oldState && Owner is Crawler crawler) {
+                crawler.OnSegmentStateChanged(this);
+            }
+        }
+    }
     // Returns amount of damage sunk (not necessarily dealt)
     public virtual (int remaining, string desc) AddDmg(HitType hitType, int delta) {
         if (hitType is HitType.Misses) {
@@ -792,8 +819,17 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
     /// <summary>Currently executing recipe, or null if idle</summary>
     public Production.ProductionRecipe? CurrentRecipe { get; set; }
 
-    /// <summary>Progress through current production cycle (0.0 to 1.0)</summary>
-    public float ProductionProgress { get; set; } = 0;
+    /// <summary>Time when current production cycle started</summary>
+    public TimePoint ProductionStartTime { get; set; } = TimePoint.Zero;
+
+    /// <summary>Duration of current production cycle</summary>
+    public TimeDuration CycleDuration { get; set; } = TimeDuration.Zero;
+
+    /// <summary>Progress through current production cycle (0.0 to 1.0), computed from elapsed time</summary>
+    public float ProductionProgress =>
+        CycleDuration.IsPositive && Owner != null
+            ? Math.Clamp((float)(Owner.Time - ProductionStartTime).TotalSeconds / (float)CycleDuration.TotalSeconds, 0, 1)
+            : 0;
 
     /// <summary>Whether production is currently stalled (missing inputs, power, crew)</summary>
     public bool IsStalled { get; set; } = false;
@@ -807,7 +843,8 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
         var clone = new IndustrySegment(Seed, (IndustryDef)SegmentDef, Owner);
         CopyBaseTo(clone);
         clone.CurrentRecipe = CurrentRecipe;
-        clone.ProductionProgress = ProductionProgress;
+        clone.ProductionStartTime = ProductionStartTime;
+        clone.CycleDuration = CycleDuration;
         clone.IsStalled = IsStalled;
         clone.WearAccumulator = WearAccumulator;
         return clone;
@@ -815,7 +852,8 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
 
     public new record class Data : Segment.Data {
         public string? RecipeName { get; set; }
-        public float ProductionProgress { get; set; }
+        public long ProductionStartTime { get; set; }
+        public long CycleDuration { get; set; }
         public float WearAccumulator { get; set; }
     }
 
@@ -827,7 +865,8 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
             Packaged = this.Packaged,
             Activated = this.Activated,
             RecipeName = this.CurrentRecipe?.Name,
-            ProductionProgress = this.ProductionProgress,
+            ProductionStartTime = this.ProductionStartTime.Elapsed,
+            CycleDuration = this.CycleDuration.TotalSeconds,
             WearAccumulator = this.WearAccumulator,
         };
     }
@@ -836,7 +875,8 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? Owner)
         base.FromData(data);
         if (data is Data industryData) {
             CurrentRecipe = Production.RecipeEx.FindByName(industryData.RecipeName ?? "");
-            ProductionProgress = industryData.ProductionProgress;
+            ProductionStartTime = new TimePoint(industryData.ProductionStartTime);
+            CycleDuration = new TimeDuration(industryData.CycleDuration);
             WearAccumulator = industryData.WearAccumulator;
         }
     }
