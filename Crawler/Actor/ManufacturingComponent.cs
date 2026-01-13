@@ -109,6 +109,7 @@ public class ManufacturingComponent : ActorComponentBase {
             Subject.ConsumeTime("Manufacturing", 300, ExpectedDuration, post: () => {
                 // Deliver the manufactured segment to cargo
                 crawler.Cargo.Add(segment);
+                Game.Instance?.TrackSegmentProduction(segment.NameSize);
                 Subject.Message($"Manufacturing of {segment.NameSize} completed");
                 // Clear the Ultimatums
                 Subject.To(Mechanic).Ultimatum = null;

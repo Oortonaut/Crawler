@@ -340,6 +340,7 @@ public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? Owner): Offe
             float ammoNeeded = Shots * AmmoPerShot;
             if (crawler.Supplies[AmmoType!.Value] < ammoNeeded) yield break;
             crawler.Supplies.Remove(AmmoType!.Value, ammoNeeded);
+            Game.Instance?.TrackAmmoConsumption(AmmoType!.Value.ToString(), (int)Math.Ceiling(ammoNeeded));
         }
 
         var rng = new XorShift(seed);
@@ -613,7 +614,7 @@ public class ArmorSegment(ulong seed, ArmorDef armorDef, IActor? Owner): Defense
 public record PlatingDef(char Symbol, Tier Size, string Name, Tier WeightTier, Tier CostTier, Tier MaxHitsTier, Tier MitigationTier)
     : DefenseDef(Symbol, Size, Name, SegmentKind.Defense, WeightTier, Tier.NA, CostTier, MaxHitsTier) {
     public override PlatingSegment NewSegment(ulong seed) => new(seed, this, null);
-    public float Mitigation => 1 - Tuning.Segments.MitigationTiers[MitigationTier];
+    public float Mitigation => Tuning.Segments.MitigationTiers[MitigationTier];
 
     public override SegmentDef Resize(int Size) {
         Tier delta = new(Size - (( SegmentDef ) this).Size.Size);

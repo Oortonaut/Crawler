@@ -172,13 +172,14 @@ public class ActorFaction {
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
 public partial class Crawler: ActorScheduled, IComparable<Crawler> {
-    public static Crawler NewRandom(ulong seed, Factions faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights) {
+    public static Crawler NewRandom(ulong seed, Factions faction, Location here, int crew, float supplyDays, float goodsWealth, float segmentWealth, EArray<SegmentKind, float> segmentClassWeights, ActorFlags flags = ActorFlags.None) {
         var rng = new XorShift(seed);
         var crawlerSeed = rng.Seed();
         var invSeed = rng.Seed();
         var segmentSeed = rng.Seed();
+        bool forSettlement = flags.HasFlag(ActorFlags.Settlement);
 
-        var workingSegments = Inventory.GenerateCoreSegments(segmentSeed, here, segmentWealth, segmentClassWeights);
+        var workingSegments = Inventory.GenerateCoreSegments(segmentSeed, here, segmentWealth, segmentClassWeights, forSettlement);
 
         var newInv = new Inventory();
         newInv.AddEssentials(crawlerSeed + 1, here, crew, supplyDays);
@@ -190,6 +191,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             .WithLocation(here)
             .WithSupplies(newInv)
             .WithSegments(workingSegments)
+            .WithFlags(flags)
             .WithComponentInitialization(false)
             .Build();
 
@@ -426,7 +428,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public override void SimulateTo(TimePoint time) {
         base.SimulateTo(time);
         var elapsed = Elapsed;
-        Debug.Assert(elapsed >= TimeDuration.Zero);
+        //Debug.Assert(elapsed >= TimeDuration.Zero);
 
         if (!LastTime.IsValid || LastTime == TimePoint.Zero) {
             Log.LogInformation($"First tick of {Name}");

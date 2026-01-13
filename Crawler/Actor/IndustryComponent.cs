@@ -11,139 +11,38 @@ public class IndustryComponent : ActorComponentBase {
     public override void Enter(Encounter encounter) { }
     public override void Leave(Encounter encounter) { }
 
+    /// <summary>
+    /// Tick is now minimal - production is event-driven via ProductionCycleEvent.
+    /// This only updates stall status for reporting purposes.
+    /// </summary>
     public override void Tick() {
         if (Owner is not Crawler crawler) return;
 
         foreach (var segment in crawler.IndustrySegments) {
             if (!segment.IsActive) continue;
-            if (segment.CurrentRecipe == null) continue;
-
-            ProcessProduction(crawler, segment, Owner.Elapsed);
-        }
-    }
-
-    /// <summary>
-    /// Process production for a single industry segment.
-    /// </summary>
-    void ProcessProduction(Crawler crawler, IndustrySegment segment, TimeDuration elapsed) {
-        var recipe = segment.CurrentRecipe!;
-        var reservation = crawler.ResourceReservation;
-        float hours = (float)elapsed.TotalHours;
-        float batchSize = segment.BatchSize;
-
-        // Check if we have enough power generation for baseload
-        float baseloadRequired = segment.Drain;
-        if (crawler.PowerBalance < baseloadRequired) {
-            segment.IsStalled = true;
-            return; // Not enough power generation
-        }
-
-        // Check inputs using reservation-aware availability
-        if (!HasInputsWithReservation(recipe, crawler, segment, batchSize)) {
-            segment.IsStalled = true;
-            return;
-        }
-
-        // Check consumables
-        if (!recipe.HasConsumables(crawler.Supplies, batchSize)) {
-            segment.IsStalled = true;
-            return;
-        }
-
-        // Check crew availability
-        if (crawler.CrewInv < recipe.CrewRequired) {
-            segment.IsStalled = true;
-            return;
-        }
-
-        segment.IsStalled = false;
-
-        // Calculate production rate
-        // Progress per hour = throughput / cycle time in hours
-        float progressPerHour = segment.Throughput / (float)recipe.CycleTime.TotalHours;
-        float progressThisTick = progressPerHour * hours;
-
-        // Consume inputs proportionally to progress (scaled by batch size)
-        recipe.ConsumeInputs(crawler.Supplies, progressThisTick, batchSize);
-
-        // Update reservation to reflect consumed inputs
-        reservation.UpdateCommitment(segment, progressThisTick);
-
-        // Consume consumables proportionally (scaled by batch size)
-        recipe.ConsumeConsumables(crawler.Supplies, progressThisTick, batchSize);
-
-        // Try to consume maintenance - if available, no wear; if not, accumulate wear damage
-        float maintenanceSatisfied = recipe.ConsumeMaintenance(crawler.Supplies, progressThisTick, batchSize);
-
-        if (maintenanceSatisfied < 1.0f) {
-            // Maintenance not satisfied - accumulate wear proportional to progress
-            segment.WearAccumulator += recipe.Wear * progressThisTick;
-
-            // Apply accumulated wear as integer hits
-            while (segment.WearAccumulator >= 1.0f) {
-                segment.Hits++;
-                segment.WearAccumulator -= 1.0f;
+            if (segment.CurrentRecipe == null) {
+                segment.IsStalled = false;
+                continue;
             }
-        }
 
-        // Add progress
-        segment.ProductionProgress += progressThisTick;
+            // Update stall status based on current conditions
+            var recipe = segment.CurrentRecipe;
+            float batchSize = segment.BatchSize;
 
-        // Complete production cycles
-        while (segment.ProductionProgress >= 1.0f) {
-            // Check if we have enough reactor charge for this cycle
-            float chargeRequired = segment.ActivateCharge + recipe.ActivateCharge;
-            if (!crawler.ConsumeBurstPower(chargeRequired)) {
-                // Not enough charge - stall until charge accumulates
-                segment.ProductionProgress = 1.0f; // Cap at 1.0 until we can complete
+            // Check power
+            if (crawler.PowerBalance < segment.Drain) {
                 segment.IsStalled = true;
-                return;
+                continue;
             }
 
-            segment.ProductionProgress -= 1.0f;
-
-            // Release the completed cycle's reservation
-            reservation.Release(segment);
-
-            // Produce outputs with efficiency bonus (scaled by batch size)
-            recipe.ProduceOutputs(crawler.Cargo, segment.Efficiency, batchSize);
-
-            // Produce waste (scaled by batch size)
-            recipe.ProduceWaste(crawler.Cargo, batchSize);
-
-            // If continuing to next cycle, try to commit resources
-            if (segment.ProductionProgress > 0) {
-                if (!reservation.TryCommit(segment, recipe, crawler.Supplies, batchSize)) {
-                    // Can't commit for next cycle - will stall on next tick
-                    break;
-                }
+            // Check crew
+            if (crawler.CrewInv < recipe.CrewRequired) {
+                segment.IsStalled = true;
+                continue;
             }
+
+            segment.IsStalled = false;
         }
-
-        // Ensure we have a commitment for ongoing production
-        if (segment.ProductionProgress > 0 && !reservation.HasCommitment(segment)) {
-            reservation.TryCommit(segment, recipe, crawler.Supplies, batchSize);
-        }
-    }
-
-    /// <summary>
-    /// Check if inputs are available, considering this segment's existing commitment.
-    /// </summary>
-    static bool HasInputsWithReservation(ProductionRecipe recipe, Crawler crawler, IndustrySegment segment, float batchSize) {
-        var reservation = crawler.ResourceReservation;
-
-        // If this segment already has a commitment, check against that
-        if (reservation.HasCommitment(segment)) {
-            // Segment has reserved its inputs, check if they're still in inventory
-            foreach (var (commodity, _) in recipe.Inputs) {
-                // Just check that we haven't gone negative (shouldn't happen normally)
-                if (crawler.Supplies[commodity] < 0) return false;
-            }
-            return true;
-        }
-
-        // No commitment yet - check if we can start fresh
-        return reservation.CanStart(recipe, crawler.Supplies, batchSize);
     }
 
     /// <summary>

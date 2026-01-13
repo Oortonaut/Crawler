@@ -4,6 +4,7 @@ using Crawler.Convoy;
 using Crawler.Logging;
 using Crawler.Network;
 using Microsoft.Extensions.Logging;
+using Crawler.Production;
 
 namespace Crawler;
 
@@ -279,6 +280,69 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
                 Destination
             );
             Game.Instance!.Schedule(nextStep);
+        }
+    }
+
+    /// <summary>
+    /// Event for a single production cycle on an industry segment.
+    /// OnStart consumes all inputs, OnEnd produces all outputs.
+    /// </summary>
+    public record ProductionCycleEvent(
+        Crawler Crawler,
+        TimePoint Time,
+        IndustrySegment Segment,
+        ProductionRecipe Recipe
+    ) : ActorEvent(Crawler, Time, Priority: 150) {
+
+        public override string ToString() =>
+            base.ToString() + $" producing {Recipe.Name} on {Segment.IndustryType}";
+
+        public override void OnStart() {
+            float batchSize = Segment.BatchSize;
+
+            // Verify and consume inputs
+            if (!Recipe.HasInputs(Crawler.Supplies, batchSize)) {
+                Segment.IsStalled = true;
+                return;
+            }
+
+            // Consume burst power for activation
+            float chargeRequired = Segment.ActivateCharge + Recipe.ActivateCharge;
+            if (!Crawler.ConsumeBurstPower(chargeRequired)) {
+                Segment.IsStalled = true;
+                return;
+            }
+
+            // Consume all inputs upfront
+            Recipe.ConsumeInputs(Crawler.Supplies, 1.0f, batchSize);
+            Recipe.ConsumeConsumables(Crawler.Supplies, 1.0f, batchSize);
+
+            Segment.IsStalled = false;
+            Segment.ProductionProgress = 0;
+        }
+
+        public override void OnEnd() {
+            float batchSize = Segment.BatchSize;
+
+            // Produce outputs with efficiency bonus
+            Recipe.ProduceOutputs(Crawler.Cargo, Segment.Efficiency, batchSize);
+            Recipe.ProduceWaste(Crawler.Cargo, batchSize);
+
+            // Handle maintenance - if not satisfied, accumulate wear
+            float maintenanceSatisfied = Recipe.ConsumeMaintenance(Crawler.Supplies, 1.0f, batchSize);
+            if (maintenanceSatisfied < 1.0f) {
+                Segment.WearAccumulator += Recipe.Wear;
+                while (Segment.WearAccumulator >= 1.0f) {
+                    Segment.Hits++;
+                    Segment.WearAccumulator -= 1.0f;
+                }
+            }
+
+            Segment.ProductionProgress = 1.0f; // Mark cycle complete
+
+            // Clear recipe so ProductionAIComponent can schedule next cycle
+            // (it will re-evaluate and potentially assign a different recipe)
+            Segment.CurrentRecipe = null;
         }
     }
 }

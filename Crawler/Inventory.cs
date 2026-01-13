@@ -346,37 +346,37 @@ public class Inventory {
         }
         return this;
     }
-    public static List<Segment> GenerateCoreSegments(ulong seed, Location location, float Wealth, EArray<SegmentKind, float>? baseWeights = null) => GenerateSegments(seed, location, Wealth, true, baseWeights);
-    public static List<Segment> GenerateCargoSegments(ulong seed, Location location, float Wealth, EArray<SegmentKind, float>? baseWeights = null) => GenerateSegments(seed, location, Wealth, false, baseWeights);
-    static List<Segment> GenerateSegments(ulong seed, Location location, float Wealth, bool includeCore = true, EArray<SegmentKind, float>? baseWeights = null) {
+    public static List<Segment> GenerateCoreSegments(ulong seed, Location location, float Wealth, EArray<SegmentKind, float>? baseWeights = null, bool forSettlement = false) => GenerateSegments(seed, location, Wealth, true, baseWeights, forSettlement);
+    public static List<Segment> GenerateCargoSegments(ulong seed, Location location, float Wealth, EArray<SegmentKind, float>? baseWeights = null) => GenerateSegments(seed, location, Wealth, false, baseWeights, false);
+    static List<Segment> GenerateSegments(ulong seed, Location location, float Wealth, bool includeCore, EArray<SegmentKind, float>? baseWeights, bool forSettlement) {
         var segments = new List<Segment>();
         var rng = new XorShift(seed);
-        // Power, Traction, Offense, Defense, Industry, Storage, Harvest
-        EArray<SegmentKind, float> BaseWeights = baseWeights ?? [1, 1, 1, 1, 0, 0, 0];
+        // Power, Traction, Offense, Defense, Industry, Storage, Harvest, Habitat
+        EArray<SegmentKind, float> BaseWeights = baseWeights ?? [1, 1, 1, 1, 0, 0, 0, 0];
         EArray<SegmentKind, float> Weights;
 
         float M = 1.5f;
         float H = 2.5f;
 
+        // Terrain weights for combat segments (Power, Traction, Offense, Defense)
+        // Industry, Storage, Harvest, Habitat use baseWeights directly (terrain doesn't affect them)
         switch (location.Terrain) {
         default:
         case TerrainType.Flat:
-            Weights = [1, M, 1, H, 0, 0, 0];
+            Weights = [1, M, 1, H, 1, 1, 1, 1];
             break;
         case TerrainType.Rough:
-            Weights = [M, 1, H, 1, 0, 0, 0];
+            Weights = [M, 1, H, 1, 1, 1, 1, 1];
             break;
         case TerrainType.Broken:
-            Weights = [H, 1, 1, M, 0, 0, 0];
+            Weights = [H, 1, 1, M, 1, 1, 1, 1];
             break;
         case TerrainType.Shattered:
-            Weights = [1, H, M, 1, 0, 0, 0];
+            Weights = [1, H, M, 1, 1, 1, 1, 1];
             break;
         }
         var gaussian = new GaussianSampler(seed);
         Weights = Weights
-            //.ToArray()
-            //.ToList()
             .Zip(BaseWeights)
             .Select(ab => ab.First * ab.Second * gaussian.NextSingle(1, 0.1f))
             .ToEArray<SegmentKind, float>();
@@ -408,12 +408,21 @@ public class Inventory {
         //////////////////////////////
         void _add(SegmentDef? def) {
             if (def != null) {
-                // Embiggen industry segments by 2+ tiers for settlements/large crawlers
-                // Industry defs start at size 2, so this results in size 4+ typically
-                if (def.SegmentKind == SegmentKind.Industry) {
-                    int boost = 2 + CrawlerEx.PoissonQuantile(0.5f, ref rng);
-                    int newSize = (int)def.Size.Size + boost;
-                    def = def.Resize(Math.Clamp(newSize, 3, 8));
+                // For settlements, embiggen most segment kinds by 2-4 tiers
+                // Power needs extra boost to support industry drain
+                if (forSettlement) {
+                    int boost = def.SegmentKind switch {
+                        SegmentKind.Power => 4 + CrawlerEx.PoissonQuantile(0.5f, ref rng),    // 4-6 tiers (more power for industry)
+                        SegmentKind.Industry => 2 + CrawlerEx.PoissonQuantile(0.5f, ref rng), // 2-4 tiers
+                        SegmentKind.Defense => 2 + CrawlerEx.PoissonQuantile(0.5f, ref rng),  // 2-4 tiers
+                        SegmentKind.Storage => 2 + CrawlerEx.PoissonQuantile(0.5f, ref rng),  // 2-4 tiers
+                        SegmentKind.Offense => 1 + CrawlerEx.PoissonQuantile(0.5f, ref rng),  // 1-3 tiers
+                        _ => 0 // Traction, Harvest, Habitat - no boost
+                    };
+                    if (boost > 0) {
+                        int newSize = (int)def.Size.Size + boost;
+                        def = def.Resize(Math.Clamp(newSize, 3, 9));
+                    }
                 }
 
                 weightedWealth[def.SegmentKind] -= def.Cost;

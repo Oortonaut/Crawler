@@ -93,13 +93,28 @@ var arena = new ActionMenuItem("A", "Crawler Arena", _ => {
     crawlerArena.Run();
     return false;
 });
+var simulation = new ActionMenuItem("S", "Simulation Mode", _ => {
+    int minSize = 2;
+    int maxSize = 9;
+    int size = 6;
+    var sizeStr = CrawlerEx.Input($"Size ({minSize}-{maxSize}): ", size.ToString());
+    if (!int.TryParse(sizeStr, out size)) {
+        size = minSize;
+    }
+    size = Math.Clamp(size, minSize, maxSize);
+    var seedStr = CrawlerEx.Input($"Seed: ", seed.ToString());
+    ulong.TryParse(seedStr, out seed);
+    var sim = SimulationMode.New(seed, size);
+    sim.Run();
+    return false;
+});
 var quit = new MenuItem("Q", "Quit");
 
 
 // Main Menu
 var (choice, mainArgs) = CrawlerEx.Menu(
     "Main Menu", newGame.Option,
-    newGame, loadGame, arena, quit);
+    newGame, loadGame, arena, simulation, quit);
 
 if (choice is ActionMenuItem action) {
     action.Run(mainArgs);

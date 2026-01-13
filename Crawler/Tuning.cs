@@ -353,7 +353,7 @@ public static partial class Tuning {
         
         // Defense parameters
         public static PowerScaling ReductionTiers = new PowerScaling(5f, (7, 1.5f), "weak", "strong");
-        public static PowerScaling MitigationTiers = new PowerScaling(0.75f, (0.6f, 0.75f), "thin", "thick");
+        public static EfficiencyScaling MitigationTiers = new EfficiencyScaling(0.25f, (0.4f, 0.55f), "thin", "thick");
         public static PowerScaling ShieldCapacityTiers = new PowerScaling(12.0f, (15, 1.3f), "weak", "strong");
         public static PowerScaling ShieldChargeTiers = new PowerScaling(5.0f, (8, 1.2f), "slow", "fast");
 

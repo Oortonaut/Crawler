@@ -42,32 +42,41 @@ public class ProductionAIComponent : ActorComponentBase {
         var segments = crawler.IndustrySegments.ToList();
         if (segments.Count == 0) return null;
 
-        // Throttle evaluation frequency
-        var time = crawler.Time;
-        if (_lastEvaluationTime.IsValid && time - _lastEvaluationTime < EvaluationInterval) {
+        // Check for idle segments (no recipe assigned)
+        var idleSegments = segments.Where(s => s.IsActive && s.CurrentRecipe == null).ToList();
+
+        if (idleSegments.Count == 0) {
+            return null; // All segments are busy
+        }
+
+        // Evaluate and find the best recipe for an idle segment
+        var bestEval = EvaluateBestRecipe(crawler, idleSegments);
+        if (bestEval == null) {
             return null;
         }
 
-        // Check for idle segments
-        var idleSegments = segments.Where(s => s.IsActive && s.CurrentRecipe == null).ToList();
-        var stalledSegments = segments.Where(s => s.IsActive && s.IsStalled).ToList();
+        _lastEvaluationTime = crawler.Time;
 
-        if (idleSegments.Count == 0 && stalledSegments.Count == 0) {
-            return null; // All segments are busy and running
-        }
+        // Calculate cycle duration based on recipe and segment throughput
+        var cycleDuration = TimeDuration.FromHours(
+            bestEval.Recipe.CycleTime.TotalHours / bestEval.Segment.Throughput);
 
-        // Evaluate and assign recipes
-        if (EvaluateAndAssignRecipes(crawler, idleSegments.Concat(stalledSegments).ToList())) {
-            _lastEvaluationTime = time;
-        }
+        // Mark the segment as having a recipe (prevents re-evaluation)
+        bestEval.Segment.CurrentRecipe = bestEval.Recipe;
 
-        return null; // No event needed - production runs via IndustryComponent.Tick()
+        // Return the production cycle event
+        return new ActorEvent.ProductionCycleEvent(
+            crawler,
+            crawler.Time + cycleDuration,
+            bestEval.Segment,
+            bestEval.Recipe
+        );
     }
 
     /// <summary>
-    /// Evaluate all possible recipes for idle segments and assign the best ones.
+    /// Evaluate all possible recipes for idle segments and return the best one.
     /// </summary>
-    bool EvaluateAndAssignRecipes(Crawler crawler, List<IndustrySegment> candidates) {
+    RecipeEvaluation? EvaluateBestRecipe(Crawler crawler, List<IndustrySegment> candidates) {
         var evaluations = new List<RecipeEvaluation>();
         var stockTargets = crawler.StockTargets ?? StockTargets.Default();
         var reservation = crawler.ResourceReservation;
@@ -88,12 +97,12 @@ public class ProductionAIComponent : ActorComponentBase {
         var maxTier = GameTier.Late; // TODO: Get from Game.Instance or crawler property
 
         foreach (var segment in candidates) {
-            // Skip segments that already have a recipe and aren't stalled
-            if (segment.CurrentRecipe != null && !segment.IsStalled) continue;
-
             var availableRecipes = IndustryComponent.GetAvailableRecipes(segment, maxTier);
 
             foreach (var recipe in availableRecipes) {
+                // Check if we can start this recipe with available resources
+                if (!reservation.CanStart(recipe, crawler.Supplies, segment.BatchSize)) continue;
+
                 RecipeEvaluation? eval;
                 if (isSettlement) {
                     eval = EvaluateRecipeForSettlement(recipe, segment, crawler, reservation, location);
@@ -106,29 +115,12 @@ public class ProductionAIComponent : ActorComponentBase {
             }
         }
 
-        if (evaluations.Count == 0) return false;
-
-        // Sort by total score (highest first)
-        evaluations = evaluations.OrderByDescending(e => e.TotalScore).ToList();
-
-        // Greedy assignment - best scores first
-        var assignedSegments = new HashSet<IndustrySegment>();
-        bool anyAssigned = false;
-
-        foreach (var eval in evaluations) {
-            if (assignedSegments.Contains(eval.Segment)) continue;
-
-            // Check if we can still start this recipe (resources may have been committed)
-            if (!reservation.CanStart(eval.Recipe, crawler.Supplies, eval.Segment.BatchSize)) continue;
-
-            // Try to assign the recipe
-            if (IndustryComponent.TrySetRecipe(crawler, eval.Segment, eval.Recipe)) {
-                assignedSegments.Add(eval.Segment);
-                anyAssigned = true;
-            }
+        if (evaluations.Count == 0) {
+            return null;
         }
 
-        return anyAssigned;
+        // Return the highest scoring evaluation
+        return evaluations.MaxBy(e => e.TotalScore);
     }
 
     /// <summary>
@@ -184,7 +176,9 @@ public class ProductionAIComponent : ActorComponentBase {
             profitMargin * Tuning.SettlementProduction.ProfitMarginWeight;
 
         // Minimum threshold
-        if (totalScore < Tuning.SettlementProduction.MinRecipeScore) return null;
+        if (totalScore < Tuning.SettlementProduction.MinRecipeScore) {
+            return null;
+        }
 
         return new RecipeEvaluation(recipe, segment, 0, 0, deficitUrgency, totalScore);
     }

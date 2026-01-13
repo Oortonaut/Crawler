@@ -37,6 +37,18 @@ public class Game {
         game.Construct(saveData);
         return game;
     }
+
+    public bool IsSimulation { get; private set; } = false;
+
+    public static Game NewSimulation(ulong seed, int H) {
+        using var activity = Scope($"NewSimulation with H={H}");
+
+        var game = new Game(seed);
+        game.IsSimulation = true;
+        game.ConstructSimulation(H);
+        return game;
+    }
+
     ulong Seed = 0;
     Game(ulong seed) {
         _instance = this;
@@ -92,8 +104,49 @@ public class Game {
         ScheduleTravel(_player, _player.Time, currentLocation);
     }
 
+    void ConstructSimulation(int H) {
+        // Match the RNG consumption pattern of Construct() for seed compatibility
+        Gaussian = new GaussianSampler(Rng.Seed());
+        _map = new Map(Rng.Seed(), H, H * 5 / 2);
+        _map.Construct();
+        // No player creation - world runs autonomously
+        // Consume the player seed to keep RNG in sync with normal game
+        _ = Rng.Seed();
+    }
+
     bool quit = false;
     public bool FastTravel = true;
+
+    // Production/consumption tracking for simulation monitoring
+    public Inventory GrossConsumption { get; } = new();
+    public Inventory GrossProduction { get; } = new();
+    public Dictionary<string, int> SegmentProduction { get; } = new();
+    public Dictionary<string, int> AmmoConsumption { get; } = new();
+
+    public void TrackConsumption(Commodity commodity, float amount) {
+        if (amount > 0) GrossConsumption.Add(commodity, amount);
+    }
+
+    public void TrackProduction(Commodity commodity, float amount) {
+        if (amount > 0) GrossProduction.Add(commodity, amount);
+    }
+
+    public void TrackSegmentProduction(string segmentName) {
+        SegmentProduction.TryGetValue(segmentName, out var count);
+        SegmentProduction[segmentName] = count + 1;
+    }
+
+    public void TrackAmmoConsumption(string ammoName, int amount = 1) {
+        AmmoConsumption.TryGetValue(ammoName, out var count);
+        AmmoConsumption[ammoName] = count + amount;
+    }
+
+    public void ResetTracking() {
+        GrossConsumption.Clear();
+        GrossProduction.Clear();
+        SegmentProduction.Clear();
+        AmmoConsumption.Clear();
+    }
 
     // Use generic Scheduler for crawler travel scheduling
     Scheduler<Game, ActorEvent, IActor, TimePoint> scheduler;
@@ -218,8 +271,8 @@ public class Game {
                 // Then tick the crawler to the current game time
                 actor.HandleEvent(nextEvent);
 
-                // If this is the player, check if all pending events are processed before giving control
-                if (actor == Player) {
+                // If this is the player in non-simulation mode, check if all pending events are processed before giving control
+                if (actor == Player && !IsSimulation) {
                     // Continue processing any events that are scheduled at or before current time
                     // (e.g., dynamic crawlers spawned by UpdateTo with past arrival times)
                     if (scheduler.Peek(out var nextEvt, out var nextTime) && nextTime!.Value <= currentTime) {
@@ -705,6 +758,35 @@ public class Game {
         }
 
         Console.WriteLine("Thanks for playing!");
+    }
+
+    // Simulation support: expose scheduler state and batch processing
+    public TimePoint CurrentTime => scheduler.Peek(out _, out var t) ? t!.Value : TimePoint.Zero;
+    public int ScheduledEventCount => scheduler.Count;
+
+    /// <summary>
+    /// Process events until endTime or until shouldStop returns true.
+    /// Returns true if completed (no more events or reached endTime), false if stopped early.
+    /// </summary>
+    public bool ProcessEventsUntil(TimePoint endTime, Func<bool> shouldStop) {
+        TimePoint lastTime = CurrentTime;
+        while (!quit && scheduler.Peek(out var evt, out var nextTime)) {
+            if (nextTime!.Value > endTime || shouldStop()) {
+                return false;
+            }
+
+            if (nextTime.Value < lastTime) {
+                throw new InvalidOperationException($"CRITICAL: Time moved backwards! Current={TimeString(lastTime)}, Next={TimeString(nextTime.Value)}");
+            }
+
+            ProcessSchedule(nextTime.Value);
+
+            if (lastTime.IsValid) {
+                CheckRoadContacts(lastTime, nextTime.Value);
+            }
+            lastTime = nextTime.Value;
+        }
+        return true; // completed - no more events or quit
     }
 
     public Location PlayerLocation => _player!.Location;

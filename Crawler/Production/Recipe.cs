@@ -64,7 +64,9 @@ public record ProductionRecipe(
     /// </summary>
     public void ConsumeInputs(Inventory inventory, float fraction, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Inputs) {
-            inventory.Remove(commodity, amount * fraction * batchSize);
+            var consumed = amount * fraction * batchSize;
+            inventory.Remove(commodity, consumed);
+            Game.Instance?.TrackConsumption(commodity, consumed);
         }
     }
 
@@ -73,7 +75,9 @@ public record ProductionRecipe(
     /// </summary>
     public void ConsumeConsumables(Inventory inventory, float fraction, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Consumables) {
-            inventory.Remove(commodity, amount * fraction * batchSize);
+            var consumed = amount * fraction * batchSize;
+            inventory.Remove(commodity, consumed);
+            Game.Instance?.TrackConsumption(commodity, consumed);
         }
     }
 
@@ -88,6 +92,7 @@ public record ProductionRecipe(
         foreach (var (commodity, amount) in Maintenance) {
             float consume = Math.Min(inventory[commodity], amount * fraction * batchSize);
             inventory.Remove(commodity, consume);
+            Game.Instance?.TrackConsumption(commodity, consume);
         }
         return satisfied;
     }
@@ -97,7 +102,9 @@ public record ProductionRecipe(
     /// </summary>
     public void ProduceOutputs(Inventory inventory, float efficiency = 1.0f, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Outputs) {
-            inventory.Add(commodity, amount * efficiency * batchSize);
+            var produced = amount * efficiency * batchSize;
+            inventory.Add(commodity, produced);
+            Game.Instance?.TrackProduction(commodity, produced);
         }
     }
 
@@ -106,7 +113,9 @@ public record ProductionRecipe(
     /// </summary>
     public void ProduceWaste(Inventory inventory, float batchSize = 1.0f) {
         foreach (var (commodity, amount) in Waste) {
-            inventory.Add(commodity, amount * batchSize);
+            var produced = amount * batchSize;
+            inventory.Add(commodity, produced);
+            Game.Instance?.TrackProduction(commodity, produced);
         }
     }
 }

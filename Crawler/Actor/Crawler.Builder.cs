@@ -23,8 +23,19 @@ public partial class Crawler {
         internal Roles _role = Roles.None;
         internal bool _initializeComponents = true;
         internal List<Segment> _workingSegments = new();
+        internal ActorFlags _flags = ActorFlags.None;
 
         public Builder() : base() { }
+
+        public Builder WithFlags(ActorFlags flags) {
+            _flags = flags;
+            return this;
+        }
+
+        public Builder AddFlag(ActorFlags flag) {
+            _flags |= flag;
+            return this;
+        }
 
         public new Builder WithSeed(ulong seed) {
             base.WithSeed(seed);
@@ -137,9 +148,11 @@ public partial class Crawler {
         internal Roles GetRole() => _role;
         internal bool GetInitializeComponents() => _initializeComponents;
         internal List<Segment> GetWorkingSegments() => _workingSegments;
+        internal ActorFlags GetFlags() => _flags;
 
         public Crawler Build() {
             var result = new Crawler(this);
+            result.Flags |= _flags;
             result.Begin();
             return result;
         }

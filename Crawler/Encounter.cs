@@ -253,6 +253,13 @@ public sealed class Encounter : IComparable<Encounter> {
             actor.SimulateTo(arrivalTime);
         }
 
+        // Schedule initial event for the newly added actor so Think() gets called
+        // This kicks off the scheduler loop for actors that aren't arriving via ScheduleTravel
+        // (e.g., settlements, resources). The scheduler handles duplicates - won't replace higher priority events.
+        if (!actor.HasFlag(ActorFlags.Player) && Game.Instance != null) {
+            Game.Instance.Schedule(actor.NewIdleEvent());
+        }
+
         // CRITICAL: Event handlers receive historical arrival time
         // Actors have already been simulated to arrivalTime via SimulateTo above
         LogCat.Log.LogInformation($"Encounter.AddActorAt: Firing ActorArrived event for {actor.Name} at time {Game.TimeString(arrivalTime)}, subscribers={ActorArrived?.GetInvocationList().Length ?? 0}");
@@ -412,9 +419,10 @@ public sealed class Encounter : IComparable<Encounter> {
         float goodsWealth = Location.Wealth * domes * 0.5f;
         float segmentWealth = Location.Wealth * domes * 0.25f;
         // Segment weights: Power, Traction, Offense, Defense, Industry, Storage, Harvest, Habitat
-        var settlement = Crawler.NewRandom(settlementRng.Seed(), Faction, Location, crew, 15, goodsWealth, segmentWealth, [4, 0, 1, 3, 2, 1, 0, 0]);
+        // Power weight is high (10) to account for dome drain added later + industry + defense
+        var settlement = Crawler.NewRandom(settlementRng.Seed(), Faction, Location, crew, 15, goodsWealth, segmentWealth, [10, 0, 1, 3, 2, 1, 0, 0], ActorFlags.Settlement);
 
-        // Add dome habitat segments based on population
+        // Add dome habitat segments based on population, plus reactors to power them
         for (int i = 0; i < domes; i++) {
             // Larger settlements get bigger domes: size 6 for first few, scaling up to 9
             int domeSize = Math.Min(6 + i / 2, 9);
@@ -425,6 +433,15 @@ public sealed class Encounter : IComparable<Encounter> {
             domeSegment.Packaged = false;
             domeSegment.Owner = settlement;
             settlement.Segments.Add(domeSegment);
+
+            // Add a reactor sized to power the dome plus some margin
+            int reactorSize = Math.Clamp(domeSize + 2, 5, 9);
+            var baseReactorDef = SegmentEx.PowerDefs.OfType<ReactorDef>().First();
+            var reactorDef = (ReactorDef)baseReactorDef.Resize(reactorSize);
+            var reactorSegment = reactorDef.NewSegment(settlementRng.Seed());
+            reactorSegment.Packaged = false;
+            reactorSegment.Owner = settlement;
+            settlement.Segments.Add(reactorSegment);
         }
         settlement.UpdateSegmentCache();
         settlement.Flags |= ActorFlags.Settlement;
