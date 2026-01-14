@@ -164,3 +164,4 @@ fastlane/report.xml
 fastlane/screenshots
 *.user
 project.lock.json
+/node_modules/

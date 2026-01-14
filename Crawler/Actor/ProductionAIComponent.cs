@@ -77,7 +77,6 @@ public class ProductionAIComponent : ActorComponentBase {
     /// Evaluate all possible recipes for idle segments and return the best one.
     /// </summary>
     RecipeEvaluation? EvaluateBestRecipe(Crawler crawler, List<IndustrySegment> candidates) {
-        var evaluations = new List<RecipeEvaluation>();
         var stockTargets = crawler.StockTargets ?? StockTargets.Default();
         var reservation = crawler.ResourceReservation;
         var location = crawler.Location;
@@ -96,31 +95,28 @@ public class ProductionAIComponent : ActorComponentBase {
         // Get max tech tier (could come from game state or crawler)
         var maxTier = GameTier.Late; // TODO: Get from Game.Instance or crawler property
 
-        foreach (var segment in candidates) {
-            var availableRecipes = IndustryComponent.GetAvailableRecipes(segment, maxTier);
-
-            foreach (var recipe in availableRecipes) {
-                // Check if we can start this recipe with available resources
-                if (!reservation.CanStart(recipe, crawler.Supplies, segment.BatchSize)) continue;
-
-                RecipeEvaluation? eval;
-                if (isSettlement) {
-                    eval = EvaluateRecipeForSettlement(recipe, segment, crawler, reservation, location);
-                } else {
-                    eval = EvaluateRecipe(recipe, segment, crawler, stockTargets, reservation, location);
-                }
-                if (eval != null) {
-                    evaluations.Add(eval);
-                }
-            }
-        }
+        // Parallel evaluation of all segment/recipe combinations
+        // Note: All evaluation methods are read-only and thread-safe
+        var evaluations = candidates
+            .AsParallel()
+            .WithDegreeOfParallelism(Environment.ProcessorCount)
+            .SelectMany(segment => {
+                var availableRecipes = IndustryComponent.GetAvailableRecipes(segment, maxTier);
+                return availableRecipes
+                    .Where(recipe => reservation.CanStart(recipe, crawler.Supplies, segment.BatchSize))
+                    .Select(recipe => isSettlement
+                        ? EvaluateRecipeForSettlement(recipe, segment, crawler, reservation, location)
+                        : EvaluateRecipe(recipe, segment, crawler, stockTargets, reservation, location))
+                    .Where(eval => eval != null);
+            })
+            .ToList();
 
         if (evaluations.Count == 0) {
             return null;
         }
 
         // Return the highest scoring evaluation
-        return evaluations.MaxBy(e => e.TotalScore);
+        return evaluations.MaxBy(e => e!.TotalScore);
     }
 
     /// <summary>

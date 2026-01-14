@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(git -C \"D:\\\\Documents\\\\repos\\\\Crawler\" status:*)",
+      "Bash(git -C \"D:\\\\Documents\\\\repos\\\\Crawler\" log:*)",
+      "Bash(git -C \"D:\\\\Documents\\\\repos\\\\Crawler\" diff:*)",
+      "Bash(git -C \"D:\\\\Documents\\\\repos\\\\Crawler\" add:*)",
+      "Bash(git -C \"D:\\\\Documents\\\\repos\\\\Crawler\" commit:*)",
+      "mcp__ide__getDiagnostics",
+      "WebSearch",
+      "mcp__cclsp__find_references",
+      "mcp__cclsp__rename_symbol",
+      "Bash(dotnet:*)",
+      "Bash(/mnt/c/Program\\\\ Files/dotnet/dotnet.exe build:*)",
+      "mcp__cclsp__find_definition",
+      "mcp__cclsp__get_diagnostics",
+      "Bash(\"/mnt/c/Program Files/dotnet/dotnet.exe\" build Crawler.sln)",
+      "Bash(dotnet.exe build:*)",
+      "Bash(timeout 30 dotnet run:*)"
+    ]
+  }
+}

@@ -596,9 +596,11 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     }
 
     public void UpdateSegmentCache() {
-        // _allSegments is already maintained as the working segments list
-        // No need to re-sort unless segments were added/removed
-        _allSegments = _allSegments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
+        // Only re-sort when segments were added/removed
+        if (_segmentListModified) {
+            _allSegments = _allSegments.OrderBy(s => (s.ClassCode, s.Cost)).ToList();
+            _segmentListModified = false;
+        }
 
         // Assert that all working segments are not packaged
         Debug.Assert(_allSegments.All(s => !s.IsPackaged), "Working segments should not be packaged");
@@ -635,6 +637,20 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
                 break;
             }
         }
+
+        // Cache reactor/charger sublists
+        _cachedReactors.Clear();
+        _cachedChargers.Clear();
+        if (_activeSegmentsByClass.ContainsKey(SegmentKind.Power)) {
+            foreach (var seg in _activeSegmentsByClass[SegmentKind.Power]) {
+                if (seg is ReactorSegment reactor) _cachedReactors.Add(reactor);
+                else if (seg is ChargerSegment charger) _cachedChargers.Add(charger);
+            }
+        }
+
+        // Cache power values
+        _cachedTotalDrain = _activeSegments.Sum(s => s.Drain);
+        _cachedTotalGeneration = _cachedReactors.Sum(r => r.Generation) + _cachedChargers.Sum(c => c.Generation);
     }
 
     /// <summary>
@@ -656,6 +672,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         // Unpack and add to working segments
         segment.Packaged = false;
         _allSegments.Add(segment);
+        _segmentListModified = true;
         UpdateSegmentCache();
         NotifySegmentsChanged();
     }
@@ -669,6 +686,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
 
         // Remove from working segments
         _allSegments.Remove(segment);
+        _segmentListModified = true;
 
         // Package and add to supplies
         segment.Packaged = true;
@@ -686,6 +704,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
 
         // Remove from working segments
         _allSegments.Remove(segment);
+        _segmentListModified = true;
 
         // Package and add to cargo
         segment.Packaged = true;
@@ -706,6 +725,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         int index = _allSegments.IndexOf(oldSegment);
         _allSegments[index] = newSegment;
         newSegment.Owner = this;
+        _segmentListModified = true;
 
         UpdateSegmentCache();
         NotifySegmentsChanged();
@@ -727,6 +747,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             // Working segment - must be destroyed to remove
             Debug.Assert(segment.IsDestroyed, "Cannot remove active working segment");
             _allSegments.Remove(segment);
+            _segmentListModified = true;
             UpdateSegmentCache();
             NotifySegmentsChanged();
         }
@@ -760,6 +781,17 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     List<Segment> _undestroyedSegments = [];
     EArray<SegmentKind, List<Segment>> _segmentsByClass = new();
     EArray<SegmentKind, List<Segment>> _activeSegmentsByClass = new();
+
+    // Cached segment sublists (populated by UpdateSegmentCache)
+    List<ReactorSegment> _cachedReactors = [];
+    List<ChargerSegment> _cachedChargers = [];
+
+    // Cached power values (populated by UpdateSegmentCache)
+    float _cachedTotalDrain;
+    float _cachedTotalGeneration;
+
+    // Dirty flag for segment list sorting - set when segments added/removed
+    bool _segmentListModified = true;
     public List<Segment> SegmentsFor(SegmentKind segmentKind) => _segmentsByClass[segmentKind];
     public List<Segment> ActiveSegmentsFor(SegmentKind segmentKind) => _activeSegmentsByClass[segmentKind];
     public List<Segment> Segments => _allSegments;
@@ -776,8 +808,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public IEnumerable<DefenseSegment> DefenseSegments => _activeSegmentsByClass[SegmentKind.Defense].Cast<DefenseSegment>();
     public IEnumerable<DefenseSegment> CoreDefenseSegments => _activeSegmentsByClass[SegmentKind.Defense].Cast<DefenseSegment>();
     public IEnumerable<PowerSegment> PowerSegments => _activeSegmentsByClass[SegmentKind.Power].Cast<PowerSegment>();
-    public IEnumerable<ReactorSegment> ReactorSegments => PowerSegments.OfType<ReactorSegment>();
-    public IEnumerable<ChargerSegment> ChargerSegments => PowerSegments.OfType<ChargerSegment>();
+    public IReadOnlyList<ReactorSegment> ReactorSegments => _cachedReactors;
+    public IReadOnlyList<ChargerSegment> ChargerSegments => _cachedChargers;
     public IEnumerable<IndustrySegment> IndustrySegments => _activeSegmentsByClass.ContainsKey(SegmentKind.Industry)
         ? _activeSegmentsByClass[SegmentKind.Industry].Cast<IndustrySegment>()
         : Enumerable.Empty<IndustrySegment>();
@@ -821,7 +853,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     public float MovementDrain => MovementDrainOn(Location.Terrain);
     public float OffenseDrain => OffenseSegments.Sum(s => s.Drain);
     public float DefenseDrain => DefenseSegments.Sum(s => s.Drain);
-    public float TotalDrain => ActiveSegments.Sum(s => s.Drain);
+    public float TotalDrain => _cachedTotalDrain;
     public float StandbyDrain => TotalDrain * Tuning.Crawler.StandbyFraction;
 
     public float SpeedOn(TerrainType t) {
@@ -870,9 +902,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
 
     public float Mass => Supplies.Mass + Cargo.Mass;
     public float TotalCharge => ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Charge);
-    public float TotalGeneration =>
-        ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Generation) +
-        ChargerSegments.Aggregate(0.0f, (i, s) => i + s.Generation);
+    public float TotalGeneration => _cachedTotalGeneration;
 
     /// <summary>Power balance: generation minus total drain. Positive = surplus.</summary>
     public float PowerBalance => TotalGeneration - TotalDrain;
@@ -1061,10 +1091,9 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         var rng = new XorShift(Rng.Seed());
         List<HitRecord> fire = new();
         float availablePower = TotalCharge;
-        var offense = OffenseSegments.GroupBy(s => s is WeaponSegment).ToDictionary(s => s.Key, s => s.ToList());
-        var weapons = offense.GetValueOrDefault(true) ?? new();
-        var selectedWeapons = new List<OffenseSegment>();
-        var nonWeapons = offense.GetValueOrDefault(false) ?? new();
+        var weapons = OffenseSegments.OfType<WeaponSegment>().ToList();
+        var nonWeapons = OffenseSegments.Where(s => s is not WeaponSegment).ToList();
+        var selectedWeapons = new List<WeaponSegment>();
         var selectedNonWeapons = new List<OffenseSegment>();
         rng.Shuffle(weapons);
         foreach (var segment in weapons) {
@@ -1082,7 +1111,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         var used = TotalCharge - availablePower;
         DrawPower(used);
 
-        foreach (WeaponSegment segment in selectedWeapons.OfType<WeaponSegment>()) {
+        foreach (var segment in selectedWeapons) {
             fire.AddRange(segment.GenerateFire(rng.Seed(), 0));
         }
 
@@ -1375,6 +1404,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
                 _allSegments.Add(segment);
             }
         }
+        _segmentListModified = true;
 
         // Restore other state
         this.EvilPoints = data.EvilPoints;

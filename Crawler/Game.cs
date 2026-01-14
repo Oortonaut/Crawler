@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Drawing;
 using System.Numerics;
@@ -179,7 +180,6 @@ public class Game {
         }
         evt.OnStart();
         scheduler.Schedule(evt);
-        //Log.LogInformation("Game.Schedule: after scheduling, scheduler has {Count} events", scheduler.Count);
     }
 
     public void Unschedule(IActor Actor) {
@@ -244,11 +244,12 @@ public class Game {
             $"{contact.Road.From.PosString}->{contact.Road.To.PosString}");
     }
 
-    HashSet<Encounter> updatedEncounters = new();
+    // Thread-safe tracking of updated encounters (for parallel simulation)
+    ConcurrentDictionary<Encounter, byte> updatedEncounters = new();
 
     void ProcessSchedule(TimePoint currentTime) {
         // Track which encounters we've already updated this tick to avoid redundant updates
-        // Note: This HashSet is cleared when the player gets control (start of their turn)
+        // Note: This dictionary is cleared when the player gets control (start of their turn)
 
         while (!quit && scheduler.Peek(out var evt, out var time)) {
             if (time!.Value > currentTime) {
@@ -264,7 +265,7 @@ public class Game {
                 // Update the actor's encounter to current game time FIRST, but only once per encounter per turn
                 // This spawns dynamic crawlers and fires EncounterTicked before player enters
                 var encounter = actor.Location.GetEncounter();
-                if (updatedEncounters.Add(encounter)) {
+                if (updatedEncounters.TryAdd(encounter, 0)) {
                     encounter.UpdateTo(currentTime);
                 }
 
@@ -291,6 +292,42 @@ public class Game {
 
                 if (!actor.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(actor)) {
                     Schedule(actor.NewIdleEvent());
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Batched event processing for simulation mode.
+    /// Processes all events at the same timestamp together for efficiency.
+    /// </summary>
+    void ProcessScheduleBatched(TimePoint currentTime) {
+        while (!quit && scheduler.Peek(out var evt, out var time)) {
+            if (time!.Value > currentTime) {
+                break;
+            }
+
+            // Collect all events at this exact timestamp
+            var batch = scheduler.CollectEventsAtTime(time.Value);
+            if (batch.Count == 0) continue;
+
+            // Update encounters before processing actors
+            foreach (var e in batch) {
+                var encounter = e.Tag.Location.GetEncounter();
+                if (updatedEncounters.TryAdd(encounter, 0)) {
+                    encounter.UpdateTo(time.Value);
+                }
+            }
+
+            // Process events sequentially in seed order for determinism
+            foreach (var e in batch.OrderBy(ev => ev.Tag.Seed)) {
+                e.Tag.HandleEvent(e);
+            }
+
+            // Schedule idle events for actors that don't have events
+            foreach (var e in batch.OrderBy(ev => ev.Tag.Seed)) {
+                if (!e.Tag.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(e.Tag)) {
+                    Schedule(e.Tag.NewIdleEvent());
                 }
             }
         }
@@ -767,6 +804,7 @@ public class Game {
     /// <summary>
     /// Process events until endTime or until shouldStop returns true.
     /// Returns true if completed (no more events or reached endTime), false if stopped early.
+    /// Uses batched processing in simulation mode for better performance.
     /// </summary>
     public bool ProcessEventsUntil(TimePoint endTime, Func<bool> shouldStop) {
         TimePoint lastTime = CurrentTime;
@@ -779,7 +817,12 @@ public class Game {
                 throw new InvalidOperationException($"CRITICAL: Time moved backwards! Current={TimeString(lastTime)}, Next={TimeString(nextTime.Value)}");
             }
 
-            ProcessSchedule(nextTime.Value);
+            // Use batched processing in simulation mode for better parallelization
+            if (IsSimulation) {
+                ProcessScheduleBatched(nextTime.Value);
+            } else {
+                ProcessSchedule(nextTime.Value);
+            }
 
             if (lastTime.IsValid) {
                 CheckRoadContacts(lastTime, nextTime.Value);

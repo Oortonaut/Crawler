@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Crawler.Network;
 
 namespace Crawler.Convoy;
@@ -38,10 +39,12 @@ public class TransitState {
 /// <summary>
 /// Global registry tracking all actors currently traveling on roads.
 /// Enables O(1) lookup by actor and efficient lookup by road for contact detection.
+/// Thread-safe for parallel simulation processing.
 /// </summary>
 public static class TransitRegistry {
-    static readonly Dictionary<IActor, TransitState> _actorTransit = new();
-    static readonly Dictionary<Road, List<TransitState>> _roadActors = new();
+    static readonly ConcurrentDictionary<IActor, TransitState> _actorTransit = new();
+    static readonly ConcurrentDictionary<Road, List<TransitState>> _roadActors = new();
+    static readonly object _roadActorsLock = new();
 
     /// <summary>Get transit state for an actor, or null if not in transit.</summary>
     public static TransitState? GetTransit(IActor actor) =>
@@ -58,21 +61,21 @@ public static class TransitRegistry {
         var state = new TransitState(actor, road, 0, direction, departureTime, speed);
         _actorTransit[actor] = state;
 
-        if (!_roadActors.TryGetValue(road, out var list)) {
-            list = [];
-            _roadActors[road] = list;
+        lock (_roadActorsLock) {
+            var list = _roadActors.GetOrAdd(road, _ => []);
+            list.Add(state);
         }
-        list.Add(state);
     }
 
     /// <summary>End transit for an actor.</summary>
     public static void EndTransit(IActor actor) {
-        if (_actorTransit.TryGetValue(actor, out var state)) {
-            _actorTransit.Remove(actor);
-            if (_roadActors.TryGetValue(state.Road, out var list)) {
-                list.Remove(state);
-                if (list.Count == 0) {
-                    _roadActors.Remove(state.Road);
+        if (_actorTransit.TryRemove(actor, out var state)) {
+            lock (_roadActorsLock) {
+                if (_roadActors.TryGetValue(state.Road, out var list)) {
+                    list.Remove(state);
+                    if (list.Count == 0) {
+                        _roadActors.TryRemove(state.Road, out _);
+                    }
                 }
             }
         }
@@ -85,19 +88,30 @@ public static class TransitRegistry {
         }
     }
 
-    /// <summary>Get all actors currently on a road.</summary>
-    public static IEnumerable<TransitState> ActorsOnRoad(Road road) =>
-        _roadActors.TryGetValue(road, out var list) ? list : [];
+    /// <summary>Get all actors currently on a road (snapshot for iteration).</summary>
+    public static IEnumerable<TransitState> ActorsOnRoad(Road road) {
+        lock (_roadActorsLock) {
+            return _roadActors.TryGetValue(road, out var list) ? list.ToList() : [];
+        }
+    }
 
-    /// <summary>Get all roads with actors in transit.</summary>
-    public static IEnumerable<Road> ActiveRoads => _roadActors.Keys;
+    /// <summary>Get all roads with actors in transit (snapshot for iteration).</summary>
+    public static IEnumerable<Road> ActiveRoads {
+        get {
+            lock (_roadActorsLock) {
+                return _roadActors.Keys.ToList();
+            }
+        }
+    }
 
     /// <summary>Get count of actors in transit.</summary>
     public static int TransitCount => _actorTransit.Count;
 
     /// <summary>Clear all transit state (for save/load).</summary>
     public static void Clear() {
-        _actorTransit.Clear();
-        _roadActors.Clear();
+        lock (_roadActorsLock) {
+            _actorTransit.Clear();
+            _roadActors.Clear();
+        }
     }
 }

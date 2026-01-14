@@ -6,6 +6,8 @@ Upgrade your crawler, a massive train with legs or treads that lets you explore,
 
 Inspired by BBS door games, Elite, and Eve Online.
 
+Currently optimizing living world simulation. Object Oriented C# isn't the best for performance. A medium-sized world (#1) has 256 crawlers and 22 settlements. I want to run it for hundreds of years, but it's only running 200x on my machine. I think the end result will be some sort of encounter-based scheduling (again; I had this before and removed it as too complicated) alongside an actual ECS. 
+
 ## Author's Note
 
 This is obviously a work in progress, but I'm finally somewhat pleased with it.
@@ -13,7 +15,8 @@ This as an experiment in creating a minimal viable product and publishing it.
 I didn't quite get the publishing done, but it did start as a minimal viable product.
 I accidentally grew attached to it and kept poking and adding.
 
-Lately I've been trying to accelerate things with AI coding using Claude Agent in Rider
+Using Claude Code now. Big improvement in so many ways.
+<prior>Lately I've been trying to accelerate things with AI coding using Claude Agent in Rider
 and this has improved a lot of things but also pushes some of the cognitive burdens in
 the wrong direction. I've let it write and maintain the load/save system, and I just pray
 that they work. Vibe coding at its best! And without direct control of the debugger, it's
@@ -22,9 +25,7 @@ useless for debugging.
 ## Future Plans
 
 ### Simulation
-Only the player's encounter is simulated. Further down the line, I'd like an entire world
-simulation. This would involve proper movement for persistent crawlers and a parallel
-update of all encounters. 
+...a parallel update of all encounters. Yup this is really slow when it's serial. 
 
 The economy is completely nonreactive. It's likely that there are locations where the 
 player can make infinite money in one sector or location. Improvements there include:
