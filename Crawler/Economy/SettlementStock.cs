@@ -7,6 +7,7 @@ namespace Crawler.Economy;
 /// </summary>
 public class SettlementStock {
     readonly EArray<Commodity, float> _baseline = new();
+    readonly EArray<Commodity, float> _prices = new();
     TimePoint _lastPriceUpdate;
 
     /// <summary>Get the baseline stock level for a commodity.</summary>
@@ -14,6 +15,9 @@ public class SettlementStock {
 
     /// <summary>Set the baseline stock level for a commodity.</summary>
     public void SetBaseline(Commodity c, float value) => _baseline[c] = Math.Max(0, value);
+
+    /// <summary>Get the current price for a commodity at this settlement.</summary>
+    public float Price(Commodity c) => _prices[c];
 
     /// <summary>
     /// Calculate price multiplier based on current stock vs baseline.
@@ -32,6 +36,27 @@ public class SettlementStock {
 
     /// <summary>Mark prices as recalculated at the given time.</summary>
     public void MarkPriceUpdate(TimePoint time) => _lastPriceUpdate = time;
+
+    /// <summary>
+    /// Initialize prices from commodity InitialValue.
+    /// Call after baselines are set.
+    /// </summary>
+    public void InitializePrices() {
+        foreach (var c in Enum.GetValues<Commodity>()) {
+            _prices[c] = CommodityEx.Data[c].InitialValue;
+        }
+    }
+
+    /// <summary>
+    /// Update prices based on current stock vs baseline.
+    /// Prices adjust within 0.5x-2.0x of InitialValue based on supply pressure.
+    /// </summary>
+    public void UpdatePrices(Inventory cargo) {
+        foreach (var c in Enum.GetValues<Commodity>()) {
+            float multiplier = PriceMultiplier(c, cargo[c]);
+            _prices[c] = CommodityEx.Data[c].InitialValue * multiplier;
+        }
+    }
 
     /// <summary>
     /// Initialize baseline from current cargo inventory.
@@ -73,10 +98,11 @@ public class SettlementStock {
     /// </summary>
     public static SettlementStock ForEquilibrium(
         int population,
-        IEnumerable<IndustrySegment> industrySegments) {
+        IEnumerable<IndustrySegment> industrySegments,
+        Location location) {
 
         var stock = new SettlementStock();
-        var baselines = EquilibriumStock.CalculateBaselines(population, industrySegments);
+        var baselines = EquilibriumStock.CalculateBaselines(population, industrySegments, location);
 
         foreach (var c in Enum.GetValues<Commodity>()) {
             stock._baseline[c] = baselines[c];

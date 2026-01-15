@@ -203,16 +203,16 @@ public class Inventory {
     /// <summary>Volume utilization as a fraction (0.0 to 1.0+).</summary>
     public float VolumeUtilization => MaxVolume < float.MaxValue ? Volume / MaxVolume : 0;
 
-    public float ItemValueAt(Location loc) => _commodities.Pairs().Sum(ii => ii.Key.CostAt(loc) * ii.Value);
+    public float ItemValueAt(Location loc) => _commodities.Pairs().Sum(ii => ii.Key.MidAt(loc) * ii.Value);
     public float SegmentValueAt(Location loc) => Segments.Sum(s => s.CostAt(loc));
     public float ValueAt(Location loc) => ItemValueAt(loc) + SegmentValueAt(loc);
 
     public static float QuantityBought(float spent, Commodity comm, Location location) {
-        spent /= comm.CostAt(location);
+        spent /= comm.MidAt(location);
         return comm.Round(spent);
     }
     public static float QuantitySold(float paid, Commodity comm, Location location) {
-        paid /= comm.CostAt(location);
+        paid /= comm.MidAt(location);
         return comm.Round(paid);
     }
 

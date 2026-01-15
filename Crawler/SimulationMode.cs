@@ -264,7 +264,7 @@ public class SimulationMode {
         };
 
         foreach (var commodity in priceCommodities) {
-            var prices = settlements.Select(s => commodity.CostAt(s.Location)).ToList();
+            var prices = settlements.Select(s => commodity.MidAt(s.Location)).ToList();
             var pStats = ComputeStats(prices);
             Console.WriteLine($"  {commodity,-12}: {pStats.Min:F2} - {pStats.Max:F2} (spread {(pStats.Max - pStats.Min) / pStats.Mean * 100:F0}%)");
         }
@@ -377,22 +377,22 @@ public class SimulationMode {
         var prodLoc = _game.Map.AllLocations.First();
         var topProduced = Enum.GetValues<Commodity>()
             .Where(c => _game.GrossProduction[c] > 0)
-            .OrderByDescending(c => _game.GrossProduction[c] * c.CostAt(prodLoc))
+            .OrderByDescending(c => _game.GrossProduction[c] * c.MidAt(prodLoc))
             .Take(10);
         foreach (var c in topProduced) {
             var amt = _game.GrossProduction[c];
-            var val = amt * c.CostAt(prodLoc);
+            var val = amt * c.MidAt(prodLoc);
             Console.WriteLine($"  {c,-14}: {amt,12:N0} ({val,10:N0} value)");
         }
 
         Console.WriteLine("\n--- Gross Consumption (cumulative) ---");
         var topConsumed = Enum.GetValues<Commodity>()
             .Where(c => _game.GrossConsumption[c] > 0)
-            .OrderByDescending(c => _game.GrossConsumption[c] * c.CostAt(prodLoc))
+            .OrderByDescending(c => _game.GrossConsumption[c] * c.MidAt(prodLoc))
             .Take(10);
         foreach (var c in topConsumed) {
             var amt = _game.GrossConsumption[c];
-            var val = amt * c.CostAt(prodLoc);
+            var val = amt * c.MidAt(prodLoc);
             Console.WriteLine($"  {c,-14}: {amt,12:N0} ({val,10:N0} value)");
         }
 
@@ -401,10 +401,10 @@ public class SimulationMode {
         var netByValue = Enum.GetValues<Commodity>()
             .Select(c => (commodity: c, net: _game.GrossProduction[c] - _game.GrossConsumption[c]))
             .Where(x => Math.Abs(x.net) > 0.1f)
-            .OrderByDescending(x => x.net * x.commodity.CostAt(prodLoc))
+            .OrderByDescending(x => x.net * x.commodity.MidAt(prodLoc))
             .Take(10);
         foreach (var (c, net) in netByValue) {
-            var val = net * c.CostAt(prodLoc);
+            var val = net * c.MidAt(prodLoc);
             var sign = net >= 0 ? "+" : "";
             Console.WriteLine($"  {c,-14}: {sign}{net,12:N0} ({sign}{val,10:N0} value)");
         }

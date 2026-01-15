@@ -104,7 +104,7 @@ public record CommodityOffer(Commodity commodity, float amount): IOffer {
         Agent.Supplies[commodity] -= Amount;
         Subject.Supplies[commodity] += Amount;
     }
-    public float ValueFor(IActor Agent) => commodity.CostAt(Agent.Location);
+    public float ValueFor(IActor Agent) => commodity.MidAt(Agent.Location);
 }
 
 // A cash-only offer, for convenience

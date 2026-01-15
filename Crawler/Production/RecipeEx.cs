@@ -288,51 +288,51 @@ public static class RecipeEx {
         AllRecipes.FirstOrDefault(r => r.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Calculate the total input cost for a recipe based on commodity base values.
+    /// Calculate the total input cost for a recipe at a location.
     /// </summary>
-    public static float InputCost(this ProductionRecipe recipe) =>
-        recipe.Inputs.Sum(kv => kv.Key.BaseCost() * kv.Value);
+    public static float InputCost(this ProductionRecipe recipe, Location location) =>
+        recipe.Inputs.Sum(kv => kv.Key.MidAt(location) * kv.Value);
 
     /// <summary>
-    /// Calculate the total consumable cost for a recipe.
+    /// Calculate the total consumable cost for a recipe at a location.
     /// </summary>
-    public static float ConsumableCost(this ProductionRecipe recipe) =>
-        recipe.Consumables.Sum(kv => kv.Key.BaseCost() * kv.Value);
+    public static float ConsumableCost(this ProductionRecipe recipe, Location location) =>
+        recipe.Consumables.Sum(kv => kv.Key.MidAt(location) * kv.Value);
 
     /// <summary>
-    /// Calculate the total maintenance cost for a recipe.
+    /// Calculate the total maintenance cost for a recipe at a location.
     /// </summary>
-    public static float MaintenanceCost(this ProductionRecipe recipe) =>
-        recipe.Maintenance.Sum(kv => kv.Key.BaseCost() * kv.Value);
+    public static float MaintenanceCost(this ProductionRecipe recipe, Location location) =>
+        recipe.Maintenance.Sum(kv => kv.Key.MidAt(location) * kv.Value);
 
     /// <summary>
     /// Calculate the total production cost including charge (valued at scrap-per-charge rate).
     /// </summary>
-    public static float TotalCost(this ProductionRecipe recipe, float chargeValue = 1.0f) =>
-        recipe.InputCost() + recipe.ConsumableCost() + recipe.MaintenanceCost() +
+    public static float TotalCost(this ProductionRecipe recipe, Location location, float chargeValue = 1.0f) =>
+        recipe.InputCost(location) + recipe.ConsumableCost(location) + recipe.MaintenanceCost(location) +
         recipe.ActivateCharge * chargeValue;
 
     /// <summary>
     /// Calculate suggested price per unit of primary output based on costs + margin.
     /// </summary>
-    public static float SuggestedPrice(this ProductionRecipe recipe, float margin = 1.5f, float chargeValue = 1.0f) {
+    public static float SuggestedPrice(this ProductionRecipe recipe, Location location, float margin = 1.5f, float chargeValue = 1.0f) {
         var primaryOutput = recipe.Outputs.FirstOrDefault();
         if (primaryOutput.Value <= 0) return 0;
-        return recipe.TotalCost(chargeValue) * margin / primaryOutput.Value;
+        return recipe.TotalCost(location, chargeValue) * margin / primaryOutput.Value;
     }
 
     /// <summary>
-    /// Get the current base price of the primary output.
+    /// Get the current price of the primary output at a location.
     /// </summary>
-    public static float CurrentPrice(this ProductionRecipe recipe) {
+    public static float CurrentPrice(this ProductionRecipe recipe, Location location) {
         var primaryOutput = recipe.Outputs.FirstOrDefault();
-        return primaryOutput.Key.BaseCost();
+        return primaryOutput.Key.MidAt(location);
     }
 
     /// <summary>
-    /// Format recipes as a report string showing costs and suggested prices.
+    /// Format recipes as a report string showing costs and suggested prices at a location.
     /// </summary>
-    public static string FormatReport(this IEnumerable<ProductionRecipe> recipes, float chargeValue = 1.0f) {
+    public static string FormatReport(this IEnumerable<ProductionRecipe> recipes, Location location, float chargeValue = 1.0f) {
         var table = new Table(
             ("Recipe", -22),
             ("Industry", -11),
@@ -352,12 +352,12 @@ public static class RecipeEx {
             var outputQty = primaryOutput.Value;
             var outputName = primaryOutput.Key.ToString();
 
-            var inputCost = recipe.InputCost();
-            var consumCost = recipe.ConsumableCost();
-            var maintCost = recipe.MaintenanceCost();
-            var totalCost = recipe.TotalCost(chargeValue);
-            var currentPrice = recipe.CurrentPrice();
-            var suggestedPrice = recipe.SuggestedPrice(1.5f, chargeValue);
+            var inputCost = recipe.InputCost(location);
+            var consumCost = recipe.ConsumableCost(location);
+            var maintCost = recipe.MaintenanceCost(location);
+            var totalCost = recipe.TotalCost(location, chargeValue);
+            var currentPrice = recipe.CurrentPrice(location);
+            var suggestedPrice = recipe.SuggestedPrice(location, 1.5f, chargeValue);
 
             var delta = currentPrice > 0 ? (currentPrice - suggestedPrice) / suggestedPrice * 100 : 0;
             var deltaStr = delta >= 0 ? $"+{delta:F0}%" : $"{delta:F0}%";
@@ -383,7 +383,7 @@ public static class RecipeEx {
     /// <summary>
     /// Format recipes as a detailed report showing each input, consumable, and maintenance item.
     /// </summary>
-    public static string FormatDetailReport(this IEnumerable<ProductionRecipe> recipes, float chargeValue = 1.0f) {
+    public static string FormatDetailReport(this IEnumerable<ProductionRecipe> recipes, Location location, float chargeValue = 1.0f) {
         var result = new System.Text.StringBuilder();
 
         foreach (var recipe in recipes) {
@@ -399,7 +399,7 @@ public static class RecipeEx {
 
             // Inputs
             foreach (var (commodity, amount) in recipe.Inputs) {
-                var unitCost = commodity.BaseCost();
+                var unitCost = commodity.MidAt(location);
                 var lineCost = unitCost * amount;
                 totalCost += lineCost;
                 table.AddRow("Input", commodity.ToString(), $"{amount:F1}", $"{unitCost:F1}", $"{lineCost:F1}");
@@ -407,7 +407,7 @@ public static class RecipeEx {
 
             // Consumables
             foreach (var (commodity, amount) in recipe.Consumables) {
-                var unitCost = commodity.BaseCost();
+                var unitCost = commodity.MidAt(location);
                 var lineCost = unitCost * amount;
                 totalCost += lineCost;
                 table.AddRow("Consum", commodity.ToString(), $"{amount:F2}", $"{unitCost:F1}", $"{lineCost:F1}");
@@ -415,7 +415,7 @@ public static class RecipeEx {
 
             // Maintenance
             foreach (var (commodity, amount) in recipe.Maintenance) {
-                var unitCost = commodity.BaseCost();
+                var unitCost = commodity.MidAt(location);
                 var lineCost = unitCost * amount;
                 totalCost += lineCost;
                 table.AddRow("Maint", commodity.ToString(), $"{amount:F2}", $"{unitCost:F1}", $"{lineCost:F1}");

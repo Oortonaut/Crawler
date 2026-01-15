@@ -18,7 +18,7 @@ public record PriceSnapshot(
 
         // Calculate prices based on location
         foreach (var commodity in Enum.GetValues<Commodity>()) {
-            prices[commodity] = commodity.CostAt(location);
+            prices[commodity] = commodity.MidAt(location);
             // Supply/demand would come from encounter inventory or settlement data
             // For now, use placeholder values based on encounter type
             supply[commodity] = EstimateSupply(location, commodity);

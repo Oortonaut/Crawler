@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using Crawler.Economy;
 
 namespace Crawler;
 
@@ -370,131 +371,6 @@ public static partial class Tuning {
     }
 
     public static class Economy {
-        public static EArray<EncounterType, EArray<Commodity, float>> EncounterCommodityMarkup = [
-            // None - all commodities at base price
-            [
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.0f, 1.0f, 1.0f,                     // Air, Water, Rations
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 1.0f, 1.0f,                     // Idols, Texts, Relics
-                1.0f, 1.0f, 1.0f, 1.0f,              // Slag, Lubricants, Coolant, SpareParts
-                1.0f, 1.0f, 1.0f                      // Slugs, Cells, Rockets
-            ],
-            // Crossroads - cheap scrap, fuel premium
-            [
-                0.9f, 1.2f, 1.3f, 1.0f, 1.0f, 1.1f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.1f, 1.0f, 1.1f,                     // Air, Water, Rations
-                1.0f, 1.0f, 1.0f, 1.1f, 1.1f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.0f, 1.0f, 1.1f, 1.0f, 1.2f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.1f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.9f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                0.9f, 1.0f, 1.0f, 1.0f, 1.1f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 0.9f, 1.1f,                     // Idols, Texts, Relics
-                0.8f, 1.0f, 1.0f, 1.1f,              // Slag, Lubricants, Coolant, SpareParts - cheap waste
-                1.1f, 1.1f, 1.2f                      // Slugs, Cells, Rockets - slight premium
-            ],
-            // Settlement - cheap basics, morale services, manufactured goods
-            [
-                0.8f, 0.9f, 0.9f, 1.2f, 1.0f, 0.95f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                0.8f, 0.7f, 0.8f,                     // Air, Water, Rations - cheap life support
-                0.9f, 1.0f, 1.0f, 1.0f, 0.9f, 0.9f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                0.9f, 0.9f, 1.0f, 0.9f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                0.8f, 0.8f, 0.9f, 0.8f, 0.9f, 0.9f, 0.8f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.0f, 1.3f, 1.3f, 1.3f, 1.2f,        // Liquor, Stims, Downers, Trips, SmallArms - vice taxed
-                0.9f, 0.8f, 1.0f,                     // Idols, Texts, Relics
-                0.7f, 0.85f, 0.85f, 0.9f,            // Slag, Lubricants, Coolant, SpareParts - cheap industrial
-                0.9f, 0.9f, 1.0f                      // Slugs, Cells, Rockets - standard
-            ],
-            // Resource - expensive scrap/crew, cheap raw materials
-            [
-                2.0f, 0.7f, 2.5f, 0.8f, 0.7f, 1.3f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.2f, 1.0f, 1.4f,                     // Air, Water, Rations
-                0.6f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass - cheap raw
-                0.9f, 0.9f, 0.8f, 1.1f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.3f, 1.2f, 1.4f, 1.3f, 1.2f, 1.3f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.1f, 1.2f, 1.2f, 1.2f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.2f, 1.3f, 1.4f,                     // Idols, Texts, Relics
-                0.5f, 0.9f, 1.0f, 1.1f,              // Slag, Lubricants, Coolant, SpareParts - cheap slag
-                1.2f, 1.3f, 1.4f                      // Slugs, Cells, Rockets - expensive
-            ],
-            // Hazard - everything expensive, low morale, desperate trades
-            [
-                1.5f, 1.8f, 3.0f, 0.6f, 1.4f, 1.5f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.5f, 1.4f, 2.0f,                     // Air, Water, Rations - life support premium
-                1.3f, 1.2f, 1.2f, 1.3f, 1.4f, 1.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.6f, 1.4f, 1.5f, 1.4f, 1.5f, 1.5f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.2f, 1.4f, 1.5f, 1.6f, 1.3f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.3f, 1.2f, 1.5f,                     // Idols, Texts, Relics
-                0.6f, 1.3f, 1.4f, 1.5f,              // Slag, Lubricants, Coolant, SpareParts - expensive maint
-                1.6f, 1.7f, 1.8f                      // Slugs, Cells, Rockets - high demand
-            ],
-        ];
-        public static EArray<TerrainType, EArray<Commodity, float>> TerrainCommodityMarkup = [
-            // Flat - baseline prices
-            [
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.0f, 1.0f, 1.0f,                     // Air, Water, Rations
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.0f, 1.0f, 1.0f, 1.0f, 1.0f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 1.0f, 1.0f,                     // Idols, Texts, Relics
-                1.0f, 1.0f, 1.0f, 1.0f,              // Slag, Lubricants, Coolant, SpareParts
-                1.0f, 1.0f, 1.0f                      // Slugs, Cells, Rockets
-            ],
-            // Rough - fuel premium, morale harder
-            [
-                1.1f, 1.2f, 1.1f, 0.9f, 1.1f, 1.1f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.1f, 1.1f, 1.1f,                     // Air, Water, Rations
-                1.1f, 1.0f, 1.0f, 1.1f, 1.1f, 1.1f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.1f, 1.1f, 1.1f, 1.1f, 1.1f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.1f, 1.0f, 1.0f, 1.0f, 1.1f, 1.1f, 1.0f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.0f, 1.0f, 1.0f, 1.0f, 1.1f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.0f, 1.0f, 1.0f,                     // Idols, Texts, Relics
-                1.0f, 1.1f, 1.1f, 1.1f,              // Slag, Lubricants, Coolant, SpareParts
-                1.1f, 1.1f, 1.1f                      // Slugs, Cells, Rockets
-            ],
-            // Broken - logistics costs
-            [
-                1.3f, 1.5f, 1.4f, 0.8f, 1.3f, 1.4f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.3f, 1.3f, 1.2f,                     // Air, Water, Rations
-                1.2f, 1.1f, 1.1f, 1.2f, 1.2f, 1.2f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.2f, 1.2f, 1.2f, 1.2f, 1.3f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.3f, 1.2f, 1.1f, 1.1f, 1.2f, 1.2f, 1.1f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.1f, 1.1f, 1.1f, 1.1f, 1.2f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.1f, 1.1f, 1.2f,                     // Idols, Texts, Relics
-                1.0f, 1.2f, 1.2f, 1.3f,              // Slag, Lubricants, Coolant, SpareParts
-                1.3f, 1.3f, 1.4f                      // Slugs, Cells, Rockets
-            ],
-            // Shattered - fuel very expensive, harsh conditions
-            [
-                1.5f, 2.0f, 1.8f, 0.7f, 1.6f, 1.8f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                1.6f, 1.5f, 1.4f,                     // Air, Water, Rations
-                1.3f, 1.2f, 1.2f, 1.3f, 1.4f, 1.3f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.3f, 1.3f, 1.3f, 1.4f, 1.5f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.5f, 1.4f, 1.2f, 1.3f, 1.4f, 1.4f, 1.3f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.2f, 1.3f, 1.3f, 1.3f, 1.4f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.2f, 1.2f, 1.3f,                     // Idols, Texts, Relics
-                1.0f, 1.4f, 1.4f, 1.5f,              // Slag, Lubricants, Coolant, SpareParts
-                1.5f, 1.5f, 1.6f                      // Slugs, Cells, Rockets
-            ],
-            // Ruined - extreme premiums on everything
-            [
-                2.0f, 2.5f, 2.2f, 0.5f, 2.0f, 2.3f,  // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials
-                2.0f, 1.8f, 1.6f,                     // Air, Water, Rations
-                1.5f, 1.4f, 1.4f, 1.5f, 1.6f, 1.5f,  // Biomass, Ore, Silicates, Metal, Chemicals, Glass
-                1.5f, 1.5f, 1.5f, 1.6f, 1.8f,        // Ceramics, Polymers, Alloys, Electronics, Explosives
-                1.8f, 1.6f, 1.4f, 1.5f, 1.6f, 1.7f, 1.5f, // Medicines, Textiles, Gems, Toys, Machines, AI, Media
-                1.4f, 1.5f, 1.5f, 1.6f, 1.7f,        // Liquor, Stims, Downers, Trips, SmallArms
-                1.4f, 1.3f, 1.5f,                     // Idols, Texts, Relics
-                1.0f, 1.6f, 1.7f, 1.8f,              // Slag, Lubricants, Coolant, SpareParts
-                1.8f, 1.9f, 2.0f                      // Slugs, Cells, Rockets
-            ],
-        ];
-
         public static EArray<EncounterType, EArray<SegmentKind, float>> EncounterSegmentKindMarkup = [
             // Power, Traction, Offense, Defense, Industry, Storage, Harvest, Habitat
             [1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f], // None
@@ -512,46 +388,81 @@ public static partial class Tuning {
             [1.3f, 1.7f, 1.2f, 1.3f, 1.3f, 1.3f, 0.8f, 1.3f], // Shattered
             [1.5f, 2.0f, 1.4f, 1.5f, 1.5f, 1.5f, 0.75f, 1.5f], // Ruined
         ];
-
-        /// <summary>
-        /// Scrap inflation factor normalizes prices relative to local scrap value.
-        /// </summary>
-        public static float ScrapInflation(Location location) {
-            float scrapMarkup = EncounterCommodityMarkup[location.Type][Commodity.Scrap]
-                              * TerrainCommodityMarkup[location.Terrain][Commodity.Scrap];
-            return 1 / scrapMarkup;
-        }
     }
 
     public static float EvilLimit = 10.0f;
     public static int MaxDelay = 5000; // Half decimal hour
 
     /// <summary>
-    /// Calculate commodity price at location with optional stock-aware pricing.
+    /// Get the best ask price (lowest selling price) for a commodity at a location.
+    /// Returns the price a buyer would pay. Aggregates offers from all actors at the location.
     /// </summary>
-    /// <param name="commodity">The commodity to price</param>
-    /// <param name="location">The location for terrain/encounter markup</param>
-    /// <param name="seller">Optional seller for stock-based pricing</param>
-    /// <param name="policy">Optional policy override (defaults to seller's faction policy)</param>
-    public static float CostAt(this Commodity commodity, Location location, IActor? seller = null, TradePolicy? policy = null) {
-        // Base price with terrain/encounter markup
-        float price = commodity.BaseCost()
-            * Economy.EncounterCommodityMarkup[location.Type][commodity]
-            * Economy.TerrainCommodityMarkup[location.Terrain][commodity]
-            * Economy.ScrapInflation(location);
+    public static float AskAt(this Commodity commodity, Location location) {
+        if (!location.HasEncounter) {
+            // No market - use base value with default spread
+            return Commodity.Scrap.Round(
+                CommodityEx.Data[commodity].InitialValue *
+                location.LocalMarkup[commodity] *
+                (1 + Trade.baseBidAskSpread / 2));
+        }
 
-        // Stock-based multiplier (0.5x to 2.0x)
-        if (seller?.Stock != null)
-            price *= seller.Stock.PriceMultiplier(commodity, seller.Cargo[commodity]);
+        var encounter = location.GetEncounter();
+        var bestAsk = encounter.AskOffers(commodity)
+            .Where(o => o.IsValid)
+            .OrderBy(o => o.Price)
+            .FirstOrDefault();
 
-        // Policy multiplier
-        if (policy.HasValue)
-            price *= Trade.PolicyMultiplier(policy.Value);
-        else if (seller != null)
-            price *= Trade.PolicyMultiplier(seller.Faction.GetPolicy(commodity));
+        if (bestAsk.IsValid)
+            return bestAsk.Price;
 
-        return Commodity.Scrap.Round(price);
+        // No sellers - use base value with spread
+        return Commodity.Scrap.Round(
+            CommodityEx.Data[commodity].InitialValue *
+            location.LocalMarkup[commodity] *
+            (1 + Trade.baseBidAskSpread / 2));
     }
+
+    /// <summary>
+    /// Get the best bid price (highest buying price) for a commodity at a location.
+    /// Returns the price a seller would receive. Aggregates offers from all actors at the location.
+    /// </summary>
+    public static float BidAt(this Commodity commodity, Location location) {
+        if (!location.HasEncounter) {
+            // No market - use base value with default spread (discounted)
+            return Commodity.Scrap.Round(
+                CommodityEx.Data[commodity].InitialValue *
+                location.LocalMarkup[commodity] *
+                (1 - Trade.baseBidAskSpread / 2));
+        }
+
+        var encounter = location.GetEncounter();
+        var bestBid = encounter.BidOffers(commodity)
+            .Where(o => o.IsValid)
+            .OrderByDescending(o => o.Price)
+            .FirstOrDefault();
+
+        if (bestBid.IsValid)
+            return bestBid.Price;
+
+        // No buyers - use base value with spread (discounted)
+        return Commodity.Scrap.Round(
+            CommodityEx.Data[commodity].InitialValue *
+            location.LocalMarkup[commodity] *
+            (1 - Trade.baseBidAskSpread / 2));
+    }
+
+    /// <summary>
+    /// Get the bid-ask spread at a location (Ask - Bid).
+    /// </summary>
+    public static float SpreadAt(this Commodity commodity, Location location) =>
+        commodity.AskAt(location) - commodity.BidAt(location);
+
+    /// <summary>
+    /// Get the mid-market price at a location (average of best bid and ask).
+    /// Use this for valuation and comparisons where direction doesn't matter.
+    /// </summary>
+    public static float MidAt(this Commodity commodity, Location location) =>
+        (commodity.AskAt(location) + commodity.BidAt(location)) / 2;
 
     /// <summary>
     /// Calculate segment price at location with optional policy pricing.
@@ -559,8 +470,7 @@ public static partial class Tuning {
     public static float CostAt(this Segment segment, Location location, IActor? seller = null, TradePolicy? policy = null) {
         float price = segment.Cost
             * Economy.EncounterSegmentKindMarkup[location.Type][segment.SegmentKind]
-            * Economy.LocationSegmentKindMarkup[location.Terrain][segment.SegmentKind]
-            * Economy.ScrapInflation(location);
+            * Economy.LocationSegmentKindMarkup[location.Terrain][segment.SegmentKind];
 
         if (policy.HasValue)
             price *= Trade.PolicyMultiplier(policy.Value);
@@ -569,6 +479,83 @@ public static partial class Tuning {
 
         return Commodity.Scrap.Round(price);
     }
+
+    /// <summary>
+    /// Calculate theoretical price for a segment kind at a given size.
+    /// Uses CostTiers with location-based markups but no actor/spread adjustments.
+    /// </summary>
+    public static float TheoreticalPrice(this SegmentKind kind, float size, Location location) {
+        float price = Segments.CostTiers.Value(size, 0);
+        price *= Economy.EncounterSegmentKindMarkup[location.Type][kind];
+        price *= Economy.LocationSegmentKindMarkup[location.Terrain][kind];
+        return Commodity.Scrap.Round(price);
+    }
+
+    /// <summary>
+    /// Get the best ask price (lowest selling price) for segments of a given kind and size range.
+    /// Returns the price a buyer would pay. Falls back to theoretical if no offers.
+    /// </summary>
+    public static float AskAt(this SegmentKind kind, Location location, float minSize, float maxSize) {
+        if (!location.HasEncounter) {
+            // No market - use theoretical price with default spread
+            float avgSize = (minSize + maxSize) / 2;
+            float theoretical = kind.TheoreticalPrice(avgSize, location);
+            return Commodity.Scrap.Round(theoretical * (1 + Trade.baseBidAskSpread / 2));
+        }
+
+        var encounter = location.GetEncounter();
+        var bestAsk = encounter.AskOffers(kind, minSize, maxSize)
+            .Where(o => o.IsValid)
+            .OrderBy(o => o.Price)
+            .FirstOrDefault();
+
+        if (bestAsk.IsValid)
+            return bestAsk.Price;
+
+        // Fallback to theoretical price
+        float fallbackSize = (minSize + maxSize) / 2;
+        float fallbackPrice = kind.TheoreticalPrice(fallbackSize, location);
+        return Commodity.Scrap.Round(fallbackPrice * (1 + Trade.baseBidAskSpread / 2));
+    }
+
+    /// <summary>
+    /// Get the best bid price (highest buying price) for segments of a given kind and size range.
+    /// Returns what a seller would receive. Falls back to theoretical if no offers.
+    /// </summary>
+    public static float BidAt(this SegmentKind kind, Location location, float minSize, float maxSize) {
+        if (!location.HasEncounter) {
+            float avgSize = (minSize + maxSize) / 2;
+            float theoretical = kind.TheoreticalPrice(avgSize, location);
+            return Commodity.Scrap.Round(theoretical * (1 - Trade.baseBidAskSpread / 2));
+        }
+
+        var encounter = location.GetEncounter();
+        var bestBid = encounter.BidOffers(kind, minSize, maxSize)
+            .Where(o => o.IsValid)
+            .OrderByDescending(o => o.Price)
+            .FirstOrDefault();
+
+        if (bestBid.IsValid)
+            return bestBid.Price;
+
+        // Fallback to theoretical price
+        float fallbackSize = (minSize + maxSize) / 2;
+        float fallbackPrice = kind.TheoreticalPrice(fallbackSize, location);
+        return Commodity.Scrap.Round(fallbackPrice * (1 - Trade.baseBidAskSpread / 2));
+    }
+
+    /// <summary>
+    /// Get the bid-ask spread for segments of a given kind and size range at a location.
+    /// </summary>
+    public static float SpreadAt(this SegmentKind kind, Location location, float minSize, float maxSize) =>
+        kind.AskAt(location, minSize, maxSize) - kind.BidAt(location, minSize, maxSize);
+
+    /// <summary>
+    /// Get the mid-market price for segments of a given kind and size range.
+    /// Use this for valuation and comparisons where direction doesn't matter.
+    /// </summary>
+    public static float MidAt(this SegmentKind kind, Location location, float minSize, float maxSize) =>
+        (kind.AskAt(location, minSize, maxSize) + kind.BidAt(location, minSize, maxSize)) / 2;
 
     public static TimePoint StartGameTime = new(3126, 0, 0, 0, 0, 0);
 

@@ -108,7 +108,7 @@ public class TradeRoleComponent : ActorComponentBase {
 
     ActorEvent? PlanNextTrade(Crawler crawler, PriceKnowledge knowledge, TimePoint time) {
         // Find best trade opportunity
-        var opportunities = knowledge.FindTradeOpportunities(time, Tuning.Trader.MaxPriceAge, 5).ToList();
+        var opportunities = knowledge.FindTradeOpportunities(time, Tuning.Trader.MaxPriceAge, 5);
 
         foreach (var (buyLoc, sellLoc, commodity, profit, margin) in opportunities) {
             if (margin < Tuning.Trader.MinProfitMargin) continue;
@@ -174,7 +174,7 @@ public class TradeRoleComponent : ActorComponentBase {
         float bestMargin = 0;
         float bestPrice = 0;
 
-        var buyPrice = knowledge.GetSnapshot(currentLocation)?.Prices[commodity] ?? commodity.BaseCost();
+        var buyPrice = knowledge.GetSnapshot(currentLocation)?.Prices[commodity] ?? commodity.MidAt(currentLocation);
 
         foreach (var (location, snapshot) in knowledge.Snapshots) {
             if (location == currentLocation) continue;
@@ -197,7 +197,7 @@ public class TradeRoleComponent : ActorComponentBase {
 
     bool TryBuy(Crawler crawler, Commodity commodity) {
         // Calculate how much we can buy (capped at 100 per trade)
-        float price = commodity.CostAt(crawler.Location);
+        float price = commodity.MidAt(crawler.Location);
         if (price <= 0) return false;
 
         float available = crawler.Supplies[Commodity.Scrap];

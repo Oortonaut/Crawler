@@ -1,4 +1,6 @@
-﻿namespace Crawler;
+﻿using Crawler.Economy;
+
+namespace Crawler;
 
 // Offers and Exchange Interactions
 //=========================================================================
@@ -66,15 +68,9 @@ public static class TradeEx {
                 continue;
             }
 
-            // CostAt now includes stock-based pricing and policy multiplier
-            float midPrice = commodity.CostAt(Location, Seller, policy);
-
-            float bidAskSpread = Tuning.Trade.baseBidAskSpread;
-            bidAskSpread *= tradeComponent?.Spread ?? 1.0f;
-            float spreadAmount = midPrice * bidAskSpread;
-
-            float askPrice = midPrice + spreadAmount / 2;
-            float bidPrice = midPrice - spreadAmount / 2;
+            // Use actor's market pricing (includes Markup and Spread)
+            float askPrice = Seller.GetAskPrice(commodity);
+            float bidPrice = Seller.GetBidPrice(commodity);
 
             var quantity = Inventory.QuantitySold(CFrac, commodity, Location);
             Seller.Cargo[commodity] += quantity;
@@ -169,8 +165,8 @@ public static class SettlementTrade {
         float qty = Math.Min(maxQty, available);
         if (qty <= 0) return false;
 
-        // Price includes settlement's stock-based pricing
-        float price = commodity.CostAt(buyer.Location, settlement);
+        // Buyer pays settlement's ask price
+        float price = settlement.GetAskPrice(commodity);
         float cost = qty * price;
 
         // Adjust quantity if buyer can't afford full amount
@@ -213,8 +209,8 @@ public static class SettlementTrade {
         float qty = Math.Min(maxQty, haveInCargo + haveInSupplies);
         if (qty <= 0) return false;
 
-        // Price includes settlement's stock-based pricing
-        float price = commodity.CostAt(seller.Location, settlement);
+        // Seller receives settlement's bid price
+        float price = settlement.GetBidPrice(commodity);
         float revenue = qty * price;
 
         // Check settlement can afford (settlements have limited scrap)

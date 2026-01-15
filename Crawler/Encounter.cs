@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Crawler.Economy;
 using Crawler.Logging;
 using Microsoft.Extensions.Logging;
 
@@ -290,6 +291,53 @@ public sealed class Encounter : IComparable<Encounter> {
     }
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
     public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(ActorFlags.Settlement));
+
+    /// <summary>
+    /// Get all ask offers (sell offers) for a commodity from actors at this location.
+    /// </summary>
+    public IEnumerable<MarketOffer> AskOffers(Commodity commodity) {
+        foreach (var actor in Actors) {
+            var offer = actor.GetAskOffer(commodity);
+            if (offer.IsValid)
+                yield return offer;
+        }
+    }
+
+    /// <summary>
+    /// Get all bid offers (buy offers) for a commodity from actors at this location.
+    /// </summary>
+    public IEnumerable<MarketOffer> BidOffers(Commodity commodity) {
+        foreach (var actor in Actors) {
+            var offer = actor.GetBidOffer(commodity);
+            if (offer.IsValid)
+                yield return offer;
+        }
+    }
+
+    /// <summary>
+    /// Get all ask offers (sell offers) for segments of a given kind and size range.
+    /// </summary>
+    public IEnumerable<SegmentMarketOffer> AskOffers(SegmentKind kind, float minSize, float maxSize) {
+        foreach (var actor in Actors) {
+            foreach (var offer in actor.GetSegmentAskOffers(kind, minSize, maxSize)) {
+                if (offer.IsValid)
+                    yield return offer;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get all bid offers (buy offers) for segments of a given kind and size range.
+    /// </summary>
+    public IEnumerable<SegmentMarketOffer> BidOffers(SegmentKind kind, float minSize, float maxSize) {
+        foreach (var actor in Actors) {
+            foreach (var offer in actor.GetSegmentBidOffers(kind, minSize, maxSize)) {
+                if (offer.IsValid)
+                    yield return offer;
+            }
+        }
+    }
+
     public Location Location => location;
     public Factions Faction { get; }
 
@@ -461,7 +509,9 @@ public sealed class Encounter : IComparable<Encounter> {
         // Initialize stock baseline for dynamic pricing using equilibrium
         settlement.Stock = Economy.SettlementStock.ForEquilibrium(
             Location.Population,
-            settlement.IndustrySegments);
+            settlement.IndustrySegments,
+            Location);
+        settlement.Stock.InitializePrices();
 
         // Add base components
         settlement.AddComponent(new LifeSupportComponent());
@@ -541,7 +591,7 @@ public sealed class Encounter : IComparable<Encounter> {
         float payoff = Location.Wealth * Tuning.Game.hazardWealthFraction;
         float risk = payoff * Tuning.Game.hazardNegativePayoffRatio;
         // Risk/reward mechanic: promised payoff + chance of negative payoff
-        var rewardType = rng.ChooseRandom(Enum.GetValues<Commodity>().Where(c => c.CostAt(location) < payoff * 2));
+        var rewardType = rng.ChooseRandom(Enum.GetValues<Commodity>().Where(c => c.MidAt(location) < payoff * 2));
         Name = $"{rewardType} Hazard";
 
         float rewardAmt = Inventory.QuantityBought(payoff, rewardType, Location);
@@ -550,7 +600,7 @@ public sealed class Encounter : IComparable<Encounter> {
         Commodity penaltyType = rewardType;
         float penaltyAmt = 0;
         while (penaltyType == rewardType) {
-            penaltyType = rng.ChooseRandom(Enum.GetValues<Commodity>().Where(c => c.CostAt(location) < risk * 2));
+            penaltyType = rng.ChooseRandom(Enum.GetValues<Commodity>().Where(c => c.MidAt(location) < risk * 2));
         }
         penaltyAmt = Inventory.QuantityBought(risk, penaltyType, Location);
 

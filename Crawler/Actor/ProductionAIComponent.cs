@@ -158,7 +158,7 @@ public class ProductionAIComponent : ActorComponentBase {
         // 3. Downstream Demand (0-1): Is there demand from production chain?
         float downstreamDemand = 0;
         if (_hasDownstreamDemand) {
-            downstreamDemand = ProductionChain.GetRecipeDownstreamDemand(recipe, _downstreamDemand);
+            downstreamDemand = ProductionChain.GetRecipeDownstreamDemand(recipe, _downstreamDemand, location);
         }
 
         // 4. Profit Margin (normalized 0-1): Tiebreaker
@@ -229,7 +229,7 @@ public class ProductionAIComponent : ActorComponentBase {
 
             // Essential goods get boosted urgency (output scaled by batch size)
             float boost = commodity.IsEssential() ? 1.5f : 1.0f;
-            float weight = commodity.BaseCost() * amount * batchSize * boost;
+            float weight = commodity.MidAt(crawler.Location) * amount * batchSize * boost;
 
             totalUrgency += deficitRatio * weight;
             totalWeight += weight;
@@ -242,13 +242,13 @@ public class ProductionAIComponent : ActorComponentBase {
     /// Calculate normalized profit margin (0-1).
     /// </summary>
     float CalculateNormalizedProfit(ProductionRecipe recipe, IndustrySegment segment, Crawler crawler, Location location, float batchSize) {
-        float inputCost = recipe.Inputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
-        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
-        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
+        float inputCost = recipe.Inputs.Sum(kv => kv.Key.MidAt(location) * kv.Value * batchSize);
+        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.MidAt(location) * kv.Value * batchSize);
+        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.MidAt(location) * kv.Value * batchSize);
         float chargeCost = (segment.ActivateCharge + recipe.ActivateCharge) * Tuning.Production.ChargeValue;
         float totalCost = inputCost + consumableCost + maintenanceCost + chargeCost;
 
-        float outputValue = recipe.Outputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * segment.Efficiency * batchSize);
+        float outputValue = recipe.Outputs.Sum(kv => kv.Key.MidAt(location) * kv.Value * segment.Efficiency * batchSize);
 
         if (totalCost <= 0) return 1.0f;
 
@@ -279,15 +279,15 @@ public class ProductionAIComponent : ActorComponentBase {
         if (crawler.CrewInv < recipe.CrewRequired) return null;
 
         // Calculate costs (scaled by batch size)
-        float inputCost = recipe.Inputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
-        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
-        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.CostAt(location) * kv.Value * batchSize);
+        float inputCost = recipe.Inputs.Sum(kv => kv.Key.MidAt(location) * kv.Value * batchSize);
+        float consumableCost = recipe.Consumables.Sum(kv => kv.Key.MidAt(location) * kv.Value * batchSize);
+        float maintenanceCost = recipe.Maintenance.Sum(kv => kv.Key.MidAt(location) * kv.Value * batchSize);
         float chargeCost = (segment.ActivateCharge + recipe.ActivateCharge) * Tuning.Production.ChargeValue;
 
         float totalCost = inputCost + consumableCost + maintenanceCost + chargeCost;
 
         // Calculate output value (scaled by batch size and efficiency)
-        float outputValue = recipe.Outputs.Sum(kv => kv.Key.CostAt(location) * kv.Value * segment.Efficiency * batchSize);
+        float outputValue = recipe.Outputs.Sum(kv => kv.Key.MidAt(location) * kv.Value * segment.Efficiency * batchSize);
 
         // Calculate profit
         float profitPerCycle = outputValue - totalCost;
@@ -301,7 +301,7 @@ public class ProductionAIComponent : ActorComponentBase {
             if (stockTargets.IsBelowTarget(commodity, currentStock)) {
                 float deficit = stockTargets.Deficit(commodity, currentStock);
                 // Weight by commodity value and deficit severity
-                stockBonus += deficit * commodity.BaseCost() * Tuning.Production.StockDeficitWeight;
+                stockBonus += deficit * commodity.MidAt(location) * Tuning.Production.StockDeficitWeight;
             }
         }
 
