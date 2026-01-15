@@ -125,13 +125,14 @@ public static class ProductionChain {
     /// </summary>
     public static float GetRecipeDownstreamDemand(
         ProductionRecipe recipe,
-        EArray<Commodity, float> demandScores) {
+        EArray<Commodity, float> demandScores,
+        Location location) {
 
         float totalDemand = 0;
         float totalWeight = 0;
 
         foreach (var (output, amount) in recipe.Outputs) {
-            float weight = output.BaseCost() * amount;
+            float weight = output.MidAt(location) * amount;
             totalDemand += demandScores[output] * weight;
             totalWeight += weight;
         }

@@ -96,7 +96,7 @@ public enum CommodityCategory {
     Waste,       // Production byproducts (slag)
 }
 
-public record struct CommodityData(float BaseValue, float Volume, float Mass, CommodityFlag Flag, GameTier Tier, CommodityCategory Cat);
+public record struct CommodityData(float InitialValue, float Volume, float Mass, CommodityFlag Flag, GameTier Tier, CommodityCategory Cat);
 public static class CommodityEx {
     // Volume in cubic meters per unit, Weight in tons per unit, Flags, Tier
     public static EArray<Commodity, CommodityData> Data = [
@@ -171,7 +171,6 @@ public static class CommodityEx {
     public static bool IsAmmunition(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Ammunition);
     public static bool IsIndustrial(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Industrial);
     public static bool IsWaste(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Waste);
-    public static float BaseCost(this Commodity commodity) => Data[commodity].BaseValue;
     public static GameTier Tier(this Commodity commodity) => Data[commodity].Tier;
     public static float Mass(this Commodity commodity) => Data[commodity].Mass;
     public static float Volume(this Commodity commodity) => Data[commodity].Volume;

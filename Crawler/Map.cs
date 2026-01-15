@@ -345,6 +345,16 @@ public class Map {
         CreateFactionCapitals();
         AssignLocationFactions();
         GenerateTradeNetwork();
+        CreateAllEncounters();
+    }
+
+    void CreateAllEncounters() {
+        using var activity = LogCat.Game.StartActivity($"{nameof(CreateAllEncounters)}");
+        foreach (var location in _locations) {
+            if (!location.HasEncounter) {
+                location.GetEncounter();
+            }
+        }
     }
 
     void GenerateTradeNetwork() {

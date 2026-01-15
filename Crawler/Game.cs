@@ -859,7 +859,7 @@ public class Game {
         const float chargeValue = 1.0f; // 1 scrap per charge unit
 
         var report = Style.MenuTitle.Format("[Production Recipes Report]") + "\n\n";
-        report += RecipeEx.AllRecipes.FormatReport(chargeValue);
+        report += RecipeEx.AllRecipes.FormatReport(Player.Location, chargeValue);
         report += "\nDelta: + = profitable (current > suggested), - = needs price increase\n";
 
         Player.Message(report);
@@ -870,7 +870,7 @@ public class Game {
         const float chargeValue = 1.0f;
 
         var report = Style.MenuTitle.Format("[Production Recipe Details]") + "\n\n";
-        report += RecipeEx.AllRecipes.FormatDetailReport(chargeValue);
+        report += RecipeEx.AllRecipes.FormatDetailReport(Player.Location, chargeValue);
 
         Player.Message(report);
         return false;
@@ -1798,7 +1798,7 @@ public class Game {
         foreach (var commodity in Enum.GetValues<Commodity>()) {
             buyPrices[commodity] = new List<float>();
             sellPrices[commodity] = new List<float>();
-            baseValues[commodity] = commodity.BaseCost();
+            baseValues[commodity] = commodity.MidAt(Player.Location);
             tradeTraders[commodity] = 0;
             banditTraders[commodity] = 0;
         }

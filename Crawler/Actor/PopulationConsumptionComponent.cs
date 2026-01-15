@@ -24,6 +24,9 @@ public class PopulationConsumptionComponent : ActorComponentBase {
         // Calculate consumption for this tick
         ConsumeEssentials(crawler, population, hours);
         ConsumeGoods(crawler, population, hours);
+
+        // Update prices based on new stock levels
+        crawler.Stock?.UpdatePrices(crawler.Cargo);
     }
 
     /// <summary>

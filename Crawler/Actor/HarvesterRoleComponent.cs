@@ -155,7 +155,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
         }
 
         // Schedule next extraction cycle - use trade priority based on resource value
-        float resourceValue = resource.ResourceType.BaseCost() * extracted;
+        float resourceValue = resource.ResourceType.MidAt(crawler.Location) * extracted;
         int extractPriority = EventPriority.ForTrade(crawler, resourceValue);
         return crawler.NewEventFor("Extracting", extractPriority,
             Tuning.Resource.ExtractionTime, Post: () => { });

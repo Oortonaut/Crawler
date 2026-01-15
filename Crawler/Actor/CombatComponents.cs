@@ -487,26 +487,18 @@ public abstract class CombatComponentBase : ActorComponentBase {
     }
 
     public override void Enter(Encounter encounter) {
-        encounter.ActorArrived += OnActorArrived;
         encounter.ActorLeft += OnActorLeft;
     }
 
     public override void Leave(Encounter encounter) {
-        encounter.ActorArrived -= OnActorArrived;
         encounter.ActorLeft -= OnActorLeft;
     }
 
-    protected virtual void OnActorArrived(IActor actor, TimePoint time) {
-        if (Owner is not Crawler bandit) return;
-        if (actor == Owner) return;
-    }
-
     protected virtual void OnActorLeft(IActor actor, TimePoint time) {
-        if (Owner is not Crawler bandit) return;
         if (actor == Owner) return;
 
         // Clear ultimatum when target leaves
-        bandit.To(actor).Ultimatum = null;
+        Owner.To(actor).Ultimatum = null;
     }
 
     protected IActor? ChooseTarget() {

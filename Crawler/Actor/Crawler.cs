@@ -575,7 +575,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         // * Cycle == 0: Ready (keep track of segments)
         // * Smallest delay with Cycle > 0 (with count)
 
-        var cycling = _activeSegments.Where(seg => seg.CycleLength.IsPositive);
+        var cycling = _activeSegments.Where(seg => seg.CycleLength.IsPositive).ToArray();
         var ready = cycling.Where(seg => !seg.Cycle.IsPositive);
         var waiting = cycling.Where(seg => seg.Cycle.IsPositive).OrderBy(seg => seg.Cycle);
         return (ready.ToArray(), waiting.ToArray());
@@ -941,7 +941,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         );
 
         foreach (var (commodity, amount) in inv.Commodities.Select((amt, idx) => ((Commodity)idx, amt)).Where(pair => pair.amt > 0)) {
-            var value = amount * commodity.CostAt(Location);
+            var value = amount * commodity.MidAt(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
                 "Supplies",

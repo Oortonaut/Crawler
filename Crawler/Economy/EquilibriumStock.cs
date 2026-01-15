@@ -52,7 +52,7 @@ public static class EquilibriumStock {
     /// based on available industry segments.
     /// Assumes one recipe per segment type, running at full capacity.
     /// </summary>
-    public static EArray<Commodity, float> ProductionCapacity(IEnumerable<IndustrySegment> segments) {
+    public static EArray<Commodity, float> ProductionCapacity(IEnumerable<IndustrySegment> segments, Location location) {
         var capacity = new EArray<Commodity, float>();
 
         foreach (var segment in segments.Where(s => s.IsActive || !s.Packaged)) {
@@ -61,7 +61,7 @@ public static class EquilibriumStock {
 
             // Find highest-value recipe for capacity estimation
             var bestRecipe = recipes
-                .OrderByDescending(r => r.Outputs.Sum(kv => kv.Key.BaseCost() * kv.Value))
+                .OrderByDescending(r => r.Outputs.Sum(kv => kv.Key.MidAt(location) * kv.Value))
                 .FirstOrDefault();
 
             if (bestRecipe == null) continue;
@@ -83,10 +83,11 @@ public static class EquilibriumStock {
     /// </summary>
     public static EArray<Commodity, float> Calculate(
         int population,
-        IEnumerable<IndustrySegment> industrySegments) {
+        IEnumerable<IndustrySegment> industrySegments,
+        Location location) {
 
         var consumption = ConsumptionRates(population);
-        var production = ProductionCapacity(industrySegments);
+        var production = ProductionCapacity(industrySegments, location);
         var equilibrium = new EArray<Commodity, float>();
 
         // Hours per day in game time (10 hours per day)
@@ -130,7 +131,8 @@ public static class EquilibriumStock {
     public static void InitializeCargo(Crawler settlement) {
         var equilibrium = Calculate(
             settlement.Location.Population,
-            settlement.IndustrySegments);
+            settlement.IndustrySegments,
+            settlement.Location);
 
         foreach (var commodity in Enum.GetValues<Commodity>()) {
             if (commodity == Commodity.Scrap) {
@@ -152,10 +154,11 @@ public static class EquilibriumStock {
     /// </summary>
     public static EArray<Commodity, float> CalculateBaselines(
         int population,
-        IEnumerable<IndustrySegment> industrySegments) {
+        IEnumerable<IndustrySegment> industrySegments,
+        Location location) {
 
         // Baselines are the equilibrium targets - price multiplier = 1.0
         // when current stock equals baseline
-        return Calculate(population, industrySegments);
+        return Calculate(population, industrySegments, location);
     }
 }
