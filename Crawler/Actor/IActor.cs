@@ -614,6 +614,9 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         // to the arrival time so Elapsed = 0 (no time has passed for a newly spawned actor)
         if (Time == TimePoint.Zero) {
             (LastTime, Time) = (time, time);
+        } else if (time < Time) {
+            // Never run backward: a negative elapsed would refund fuel and supplies
+            LastTime = Time;
         } else {
             (LastTime, Time) = (Time, time);
         }

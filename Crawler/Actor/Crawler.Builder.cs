@@ -92,13 +92,17 @@ public partial class Crawler {
             return this;
         }
 
+        // Segments added here are working segments, so they're installed (unpackaged); new segments start packaged
         public Builder AddSegment(Segment segment) {
+            segment.Packaged = false;
             _workingSegments.Add(segment);
             return this;
         }
 
         public Builder WithSegments(IEnumerable<Segment> segments) {
-            _workingSegments.AddRange(segments);
+            foreach (var segment in segments) {
+                AddSegment(segment);
+            }
             return this;
         }
 

@@ -3,6 +3,7 @@ using FluentAssertions;
 
 namespace Crawler.Tests.Simulation;
 
+[Collection(SimulationCollection.Name)]
 public class TraderCargoOfferTests
 {
     [Fact]

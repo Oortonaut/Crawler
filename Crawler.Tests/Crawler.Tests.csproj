@@ -24,4 +24,12 @@
     <ProjectReference Include="..\Crawler\Crawler.csproj" />
   </ItemGroup>
 
+  <!-- Link Data folder from main project for simulation tests -->
+  <ItemGroup>
+    <None Include="..\Crawler\Data\**\*">
+      <Link>Data\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

@@ -1240,9 +1240,12 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             } else {
                 SetEndState(EEndState.Killed, "The crew have been killed.");
             }
+            // A crew-less crawler has no morale either; only one end state may be set
+            return;
         }
         if (MoraleInv == 0) {
             SetEndState(EEndState.Revolt, "The crew has revolted.");
+            return;
         }
         if (!UndestroyedSegments.Any()) {
             SetEndState(EEndState.Destroyed, "Your crawler has been utterly destroyed.");
