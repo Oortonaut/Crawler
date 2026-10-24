@@ -169,7 +169,8 @@ public static class RecipeEx {
         new ProductionRecipe(
             Name: "Manufacture Cells",
             RequiredIndustry: IndustryType.Assembler,
-            Inputs: D((Commodity.Electronics, 0.5f), (Commodity.Chemicals, 0.3f)),
+            // Inputs cut when Cells were repriced by expected damage (80 -> 28.9); see ECONOMY.md
+            Inputs: D((Commodity.Electronics, 0.2f), (Commodity.Chemicals, 0.3f)),
             Consumables: D((Commodity.Fuel, 0.2f), (Commodity.Coolant, 0.05f)),
             Maintenance: D((Commodity.SpareParts, 0.05f)),
             Outputs: D((Commodity.Cells, 5.0f)),
@@ -183,10 +184,11 @@ public static class RecipeEx {
         new ProductionRecipe(
             Name: "Manufacture Rockets",
             RequiredIndustry: IndustryType.Assembler,
-            Inputs: D((Commodity.Alloys, 0.5f), (Commodity.Explosives, 1.0f), (Commodity.Electronics, 0.2f)),
+            // Fewer components per rocket since Rockets were repriced by expected damage (250 -> 35.4); see ECONOMY.md
+            Inputs: D((Commodity.Alloys, 0.3f), (Commodity.Explosives, 0.7f), (Commodity.Electronics, 0.12f)),
             Consumables: D((Commodity.Fuel, 0.3f)),
             Maintenance: D((Commodity.SpareParts, 0.08f), (Commodity.Lubricants, 0.03f)),
-            Outputs: D((Commodity.Rockets, 3.0f)),
+            Outputs: D((Commodity.Rockets, 12.0f)),
             Waste: D((Commodity.Slag, 0.2f)),
             CrewRequired: 3,
             ActivateCharge: 20,

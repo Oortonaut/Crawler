@@ -605,6 +605,11 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         // Assert that all working segments are not packaged
         Debug.Assert(_allSegments.All(s => !s.IsPackaged), "Working segments should not be packaged");
 
+        // Working segments built by the constructors never had Owner set, so ammo weapons couldn't fire
+        foreach (var segment in _allSegments) {
+            segment.Owner = this;
+        }
+
         _activeSegments.Clear();
         _disabledSegments.Clear();
         _destroyedSegments.Clear();
@@ -1091,7 +1096,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         var rng = new XorShift(Rng.Seed());
         List<HitRecord> fire = new();
         float availablePower = TotalCharge;
-        var weapons = OffenseSegments.OfType<WeaponSegment>().ToList();
+        // Don't draw power for weapons that can't fire this volley
+        var weapons = OffenseSegments.OfType<WeaponSegment>().Where(w => w.IsReadyToFire && w.HasAmmo).ToList();
         var nonWeapons = OffenseSegments.Where(s => s is not WeaponSegment).ToList();
         var selectedWeapons = new List<WeaponSegment>();
         var selectedNonWeapons = new List<OffenseSegment>();

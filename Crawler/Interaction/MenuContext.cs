@@ -126,6 +126,9 @@ public class InteractionGroupEx {
     /// <summary>Trade offers from this subject (if any)</summary>
     public List<TradeOffer>? TradeOffers { get; init; }
 
+    /// <summary>Opens the market screen for commodity trading, if this subject trades goods</summary>
+    public MenuAction? MarketAction { get; init; }
+
     /// <summary>True if this group has any enabled interactions</summary>
     public bool HasEnabledActions => Actions.Any(a => a.IsEnabled);
 

@@ -65,7 +65,7 @@ public class CustomsComponent : ActorComponentBase {
             // CRITICAL: Event handlers receive historical time but owner may have advanced
             // Use owner's current time for ultimatum expiration
             var effectiveTime = time > Owner.Time ? time : Owner.Time;
-            var expirationTime = effectiveTime + Tuning.Crawler.UltimatumTimeout;
+            var expirationTime = effectiveTime + Tuning.Crawler.CustomsTimeout;
 
             var timeDelta = Owner.Time - time;
             if (timeDelta.TotalSeconds > 60) {
@@ -1089,10 +1089,15 @@ public class AutoRepairComponent : ActorComponentBase {
                 --segment.Hits;
             }
         } else if (_repairMode is RepairMode.RepairLowest) {
-            var damagedSegments = candidates.OrderBy(s => s.Health).ToList();
-            while (repairHits > 0 && damagedSegments.Count > 0) {
-                int health = damagedSegments[0].Health;
-                foreach (var segment in damagedSegments.TakeWhile(s => s.Health <= health).Where(s => s.Hits > 0)) {
+            var damagedSegments = candidates.ToList();
+            while (repairHits > 0) {
+                // Drop fully repaired segments each pass; leaving them in spun forever once the lowest was fixed
+                damagedSegments.RemoveAll(s => s.Hits <= 0);
+                if (damagedSegments.Count == 0) {
+                    break;
+                }
+                int health = damagedSegments.Min(s => s.Health);
+                foreach (var segment in damagedSegments.Where(s => s.Health <= health)) {
                     if (repairHits <= 0) {
                         break;
                     }

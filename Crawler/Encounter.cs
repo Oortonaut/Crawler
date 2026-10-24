@@ -248,7 +248,11 @@ public sealed class Encounter : IComparable<Encounter> {
         if (simulateAll) {
             foreach (var other in actors.Keys) {
                 other.SimulateTo(arrivalTime);
-                Game.Instance!.Preempt(other, 0); // tick anything with 0 priority
+                // Tick anything with 0 priority. Preempting drops the actor's event; the player
+                // must be rescheduled or a waiting player is never woken again.
+                if (Game.Instance!.Preempt(other, 0) && other.Flags.HasFlag(ActorFlags.Player)) {
+                    Game.Instance.Schedule(other.NewEventFor("Arrival", 0, TimeDuration.Zero));
+                }
             }
         } else {
             actor.SimulateTo(arrivalTime);
@@ -371,6 +375,15 @@ public sealed class Encounter : IComparable<Encounter> {
         player.Flags |= ActorFlags.Player;
         player.Faction = Factions.Player;
         player.Role = Roles.Player;
+
+        player.ScrapInv += Tuning.Crawler.StartingScrap;
+
+        // Start with ammunition for the starting weapons; without it they can't fire.
+        // Each weapon gets the same expected damage budget (accounting for hit chance), rounded up to whole volleys.
+        foreach (var weapon in player.OffenseSegments.OfType<WeaponSegment>().Where(w => w.RequiresAmmo)) {
+            var volleys = MathF.Ceiling(Tuning.Crawler.StartingAmmoDamage / (weapon.ExpectedDamagePerShot * weapon.Shots));
+            player.Supplies[weapon.AmmoType!.Value] += weapon.AmmoPerCycle * volleys;
+        }
 
         // Add player-specific components
         var actorRng = new XorShift(seed);

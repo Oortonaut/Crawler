@@ -113,7 +113,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
         var encounter = crawler.Location.GetEncounter();
 
         // Find resource actor at this location
-        var resource = encounter.Actors.OfType<ResourceActor>().FirstOrDefault(r => !r.IsExhausted);
+        var resource = encounter.Actors.OfType<ResourceActor>().FirstOrDefault(r => !r.IsExhausted && r.EndState == null);
         if (resource == null) {
             // Resource exhausted or not here, find another
             _currentAction = HarvesterAction.Idle;

@@ -22,6 +22,11 @@ Feel free to also modify this file as needed.
 - Contains: Proposal/interaction system, trading prices, combat phases, movement calculations, power system, tick
   hierarchy
 
+**Crawler/Docs/ECONOMY.md** - Economy overview and balance log
+
+- Update when: Changing prices, starting kit, availability, or any balance/tuning decision worth explaining
+- Contains: Where economy code lives, balance principles, dated log of balance changes and their reasoning
+
 **Crawler/Docs/DATA-MODEL.md** - Class and interface reference
 
 - Update when: Changing IActor, ActorToActor, segments, inventory, commodities, enums
@@ -48,7 +53,7 @@ Feel free to also modify this file as needed.
 
 **Added new system?** → Crawler/Docs/ARCHITECTURE.md (add to system map) + Crawler/Docs/SYSTEMS.md (detailed description)
 
-**Changed tuning parameters?** → Usually just code comments, not docs (unless pattern changes)
+**Changed tuning parameters?** → Code comments; if it's a balance decision, add an entry to the Crawler/Docs/ECONOMY.md balance log
 
 ### Quick Orientation
 

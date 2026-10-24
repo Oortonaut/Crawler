@@ -404,6 +404,9 @@ public abstract class CombatComponentBase : ActorComponentBase {
         if (attacker.IsDisarmed) return null;
 
         var (ready, waiting) = attacker.CycleDelays();
+        // Weapons out of ammo never fire or cycle, so they would schedule empty volleys forever
+        ready = ready.Where(s => s is not WeaponSegment { HasAmmo: false }).ToArray();
+        waiting = waiting.Where(s => s is not WeaponSegment { HasAmmo: false }).ToArray();
         bool preFire = ready.Length > 0;
         bool postFire = waiting.Length > 0;
         TimeDuration duration = TimeDuration.Zero;

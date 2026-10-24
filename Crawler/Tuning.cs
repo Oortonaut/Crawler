@@ -235,6 +235,9 @@ public static partial class Tuning {
         public static TimeDuration RepairDuration = TimeDuration.FromHours(3);        // Repair interaction duration
         public static TimeDuration AttackTime = TimeDuration.FromSeconds(10);              // Combat attack action
         public static TimeDuration UltimatumTimeout = TimeDuration.FromSeconds(300);       // Default ultimatum timeout
+        public static TimeDuration CustomsTimeout = TimeDuration.FromSeconds(3000);        // Customs inspection deadline (30 game minutes)
+        public static float StartingScrap = 500;                                           // Extra scrap the player starts with, on top of generated goods
+        public static float StartingAmmoDamage = 200;                                      // Player starts with enough ammo per weapon to deal this much damage
         public static TimeDuration FleeTime = TimeDuration.FromSeconds(25);                // Time to attempt fleeing
         public static EArray<Commodity, float> DefaultCommodityWeights => [
             1.0f, 1.0f, 1.0f, 1.0f, 0.4f, 0.6f, // Scrap, Fuel, Crew, Morale, Isotopes, Nanomaterials

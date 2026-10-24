@@ -54,10 +54,14 @@ public static class TradeEx {
         var tradeComponent = (Seller as ActorBase)?.Components.OfType<TradeOfferComponent>().FirstOrDefault();
         float merchantMarkup = tradeComponent?.Markup ?? 1.0f;
 
-        var commodities = Enum.GetValues<Commodity>()
-            .Where(s => s != Commodity.Scrap)
-            .Where(s => rng.NextSingle() < s.AvailabilityAt(Location))
-            .ToList();
+        var allCommodities = Enum.GetValues<Commodity>().Where(s => s != Commodity.Scrap).ToList();
+        // Goods the trader already carries are always offered, whatever the location produces
+        var carried = allCommodities.Where(s => Seller.Cargo[s] > 0).ToHashSet();
+        // Small settlements roll almost nothing, so essentials are always traded (the draw is kept for RNG stability)
+        var stocked = allCommodities
+            .Where(s => rng.NextSingle() < s.AvailabilityAt(Location) | s.IsEssential())
+            .ToHashSet();
+        var commodities = allCommodities.Where(s => stocked.Contains(s) || carried.Contains(s)).ToList();
 
         float CFrac = wealth;
 
@@ -72,8 +76,11 @@ public static class TradeEx {
             float askPrice = Seller.GetAskPrice(commodity);
             float bidPrice = Seller.GetBidPrice(commodity);
 
-            var quantity = Inventory.QuantitySold(CFrac, commodity, Location);
-            Seller.Cargo[commodity] += quantity;
+            // Only locally available goods are restocked; carried goods sell from what's on hand
+            if (stocked.Contains(commodity)) {
+                var quantity = Inventory.QuantitySold(CFrac, commodity, Location);
+                Seller.Cargo[commodity] += quantity;
+            }
 
             var saleQuantity = 1f;
 
@@ -91,6 +98,20 @@ public static class TradeEx {
                 Direction = TradeDirection.Buy,
                 PricePerUnit = bidPrice,
                 Quantity = (float)Math.Ceiling(saleQuantity)
+            });
+        }
+
+        // Traders buy goods they neither stock nor carry, so goods hauled in from elsewhere can be sold.
+        // No RNG draws here, which keeps the segment rolls below stable.
+        foreach (var commodity in allCommodities.Except(commodities)) {
+            if (faction.GetPolicy(commodity) == TradePolicy.Prohibited) {
+                continue;
+            }
+            offers.Add(new TradeOffer {
+                Commodity = commodity,
+                Direction = TradeDirection.Buy,
+                PricePerUnit = Seller.GetBidPrice(commodity),
+                Quantity = 1
             });
         }
 

@@ -158,8 +158,9 @@ public static class CommodityEx {
 
         // Ammunition
         new CommodityData(15f, 0.01f, 0.02f, CommodityFlag.Ammunition, GameTier.Early, CommodityCategory.Ammunition), // Slugs
-        new CommodityData(80f, 0.02f, 0.015f, CommodityFlag.Ammunition, GameTier.Mid, CommodityCategory.Ammunition), // Cells
-        new CommodityData(250f, 0.1f, 0.08f, CommodityFlag.Ammunition, GameTier.Mid, CommodityCategory.Ammunition), // Rockets
+        // Ammo is priced at an equal cost per expected damage (6¢¢, anchored on Slugs); see AmmoPricingTests
+        new CommodityData(28.9f, 0.02f, 0.015f, CommodityFlag.Ammunition, GameTier.Mid, CommodityCategory.Ammunition), // Cells
+        new CommodityData(35.4f, 0.1f, 0.08f, CommodityFlag.Ammunition, GameTier.Mid, CommodityCategory.Ammunition), // Rockets
     ];
 
     public static CommodityFlag Flags(this Commodity commodity) => Data[commodity].Flag;

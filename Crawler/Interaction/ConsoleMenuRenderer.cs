@@ -75,6 +75,10 @@ public class ConsoleMenuRenderer : IMenuRenderer {
                         ShowArg.Show
                     ));
                 }
+                if (group.MarketAction is { } market) {
+                    var code = ReferenceEquals(context.Lookup("T"), market) ? "T" : market.OptionCode;
+                    menuItems.Add(new ActionMenuItem(code, market.Description, args => market.Perform(args)));
+                }
 
                 menuItems.Add(MenuItem.Sep);
 

@@ -828,6 +828,13 @@ Goods with Prohibited policy have 50% chance to be skipped in trade offers
 - Procedurally generated based on location wealth
 - Local markup applied to base cost
 
+**Availability:** Commodities roll against `AvailabilityAt(location)` (scales with population), but essentials (fuel, crew, air, water, rations...) are always traded so small settlements still have a market.
+Goods a trader already carries are always offered for sale (without restocking), and traders post a bid on every non-prohibited commodity they don't list, so goods hauled from elsewhere can be sold. The market screen hides bid-only rows unless the player holds that good.
+
+### Market Screen
+
+Commodity trades are not listed as individual menu entries. `BuildInteractionGroups` removes commodity `TradeInteraction`s and adds a `[T]` / `[CxT]` action that opens `MarketScreen` (key-driven table: arrows to select and adjust a basket, Enter to confirm). The basket executes sells before buys and consumes `TradeTime` once per commodity traded. With redirected input (scripted runs) the old per-offer entries are kept.
+
 ---
 
 ## Combat System

@@ -186,8 +186,9 @@ public class Game {
         scheduler.Unschedule(Actor);
     }
 
-    public void Preempt(IActor Actor, int Priority) {
-        scheduler.Preempt(Actor, Priority);
+    /// <summary>Removes Actor's pending event if its priority is at most Priority. Returns true only if an event was removed.</summary>
+    public bool Preempt(IActor Actor, int Priority) {
+        return scheduler.Any(Actor) && scheduler.Preempt(Actor, Priority);
     }
 
     /// <summary>
@@ -251,6 +252,7 @@ public class Game {
         // Track which encounters we've already updated this tick to avoid redundant updates
         // Note: This dictionary is cleared when the player gets control (start of their turn)
 
+        bool playerTurnPending = false;
         while (!quit && scheduler.Peek(out var evt, out var time)) {
             if (time!.Value > currentTime) {
                 break;
@@ -272,27 +274,27 @@ public class Game {
                 // Then tick the crawler to the current game time
                 actor.HandleEvent(nextEvent);
 
-                // If this is the player in non-simulation mode, check if all pending events are processed before giving control
+                // Defer the player's turn until every event at or before current time is processed
+                // (e.g., dynamic crawlers spawned by UpdateTo with past arrival times). Rescheduling the
+                // player with an idle event here instead pushed its turn back indefinitely.
                 if (actor == Player && !IsSimulation) {
-                    // Continue processing any events that are scheduled at or before current time
-                    // (e.g., dynamic crawlers spawned by UpdateTo with past arrival times)
-                    if (scheduler.Peek(out var nextEvt, out var nextTime) && nextTime!.Value <= currentTime) {
-                        // Don't give player control yet - continue processing past events
-                        if (!actor.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(actor)) {
-                            Schedule(actor.NewIdleEvent());
-                        }
-                        continue;
-                    }
-
-                    // All past events processed - give player control
-                    updatedEncounters.Clear();
-                    //while (!ShowGameMenu()) { }
-                    while (!ShowGameMenuWithContext()) { }
+                    playerTurnPending = true;
+                    continue;
                 }
 
                 if (!actor.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(actor)) {
                     Schedule(actor.NewIdleEvent());
                 }
+            }
+        }
+
+        // All events up to current time are processed - give the player control, unless an
+        // interaction during this tick has already committed the player to a scheduled action
+        if (playerTurnPending && !quit && Player is { } player && !scheduler.Any(player)) {
+            updatedEncounters.Clear();
+            while (!ShowGameMenuWithContext()) { }
+            if (!player.HasFlag(ActorFlags.Destroyed) && !scheduler.Any(player)) {
+                Schedule(player.NewIdleEvent());
             }
         }
     }
@@ -610,6 +612,7 @@ public class Game {
             .Take(8)
             .ToList();
 
+        int distantIndex = 0;
         foreach (var location in distantLocations) {
             var (fuel, time) = Player.FuelTimeTo(location);
 
@@ -628,9 +631,11 @@ public class Game {
                 $"{dir} to {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU" :
                 $"{dir} to {locationName} {dist:F0}km";
 
-            var action = new MenuAction(dir, desc, _ => GoTo(location), enabled, false);
+            // Direction codes collide and were padded ("E "), so they couldn't be typed; number them instead
+            var code = $"G{++distantIndex}";
+            var action = new MenuAction(code, desc, _ => GoTo(location), enabled, false);
             distantGroup.Destinations.Add(action);
-            context.RegisterAction(dir, action);
+            context.RegisterAction(code, action);
         }
         context.NavigationGroups.Add(distantGroup);
     }
@@ -672,6 +677,22 @@ public class Game {
                 tradeOffers = tradeComponent?.GetOrCreateOffers();
             }
 
+            // Commodity buy/sell lines are traded through the market screen instead of one menu entry each
+            MenuAction? marketAction = null;
+            bool isCommodityTrade(Interaction i) => i is TradeOfferComponent.TradeInteraction {
+                AgentOffer: CommodityOffer, SubjectOffer: CommodityOffer
+            };
+            if (tradeOffers != null && !Console.IsInputRedirected && interactions.Any(isCommodityTrade)) {
+                interactions.RemoveAll(isCommodityTrade);
+                var offers = tradeOffers;
+                marketAction = new MenuAction($"{prefix}T", $"Trade goods with {subject.Name}",
+                    _ => new MarketScreen(Player, subject, offers).Run());
+                context.RegisterAction(marketAction.OptionCode, marketAction);
+                if (context.Lookup("T") == null) {
+                    context.RegisterAction("T", marketAction);
+                }
+            }
+
             // Create interaction actions
             var actions = new List<InteractionAction>();
             int counter = 1;
@@ -691,7 +712,8 @@ public class Game {
                 Prefix = prefix,
                 Actions = actions,
                 RawInteractions = interactions,
-                TradeOffers = tradeOffers
+                TradeOffers = tradeOffers,
+                MarketAction = marketAction
             };
 
             context.InteractionGroups.Add(group);
@@ -933,6 +955,7 @@ public class Game {
             .Take(16)
             .ToList();
 
+        int index = 0;
         foreach (var location in distantLocations) {
             var (fuel, time) = Player.FuelTimeTo(location);
             float dist = PlayerLocation.Distance(location);
@@ -947,10 +970,12 @@ public class Game {
 
             bool enabled = !isPinned && fuel > 0 && fuel < Player.FuelInv;
             var enableArg = enabled ? EnableArg.Enabled : EnableArg.Disabled;
+            // Direction codes collide and were padded ("E "), so they couldn't be typed; number them instead
+            var code = $"G{++index}";
             if (fuel > 0) {
-                yield return new ActionMenuItem(dir, $"to {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
+                yield return new ActionMenuItem(code, $"{dir} to {locationName} {dist:F0}km {time:F0}h {fuel:F1}FU", _ => GoTo(location), enableArg, showOption);
             } else {
-                yield return new ActionMenuItem(dir, $"to {locationName} {dist:F0}km", _ => GoTo(location), enableArg, showOption);
+                yield return new ActionMenuItem(code, $"{dir} to {locationName} {dist:F0}km", _ => GoTo(location), enableArg, showOption);
             }
         }
     }
@@ -1033,7 +1058,7 @@ public class Game {
         return ap;
     }
     string _LocalMapName() {
-        var nearbyCount = Map.FindLocationsInRadiusKm(PlayerLocation.Position, Tuning.Map.LocalRange).Count();
+        var nearbyCount = Map.FindLocationsInRadiusKm(PlayerLocation.Position, Tuning.Map.LocalRange).Count(loc => loc != PlayerLocation);
         return $"Local Map ({nearbyCount} nearby)";
     }
     IEnumerable<MenuItem> GameMenuItems() => [
