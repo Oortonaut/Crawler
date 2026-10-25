@@ -359,7 +359,7 @@ public class CrawlerArena {
             .WithSeed((ulong)(name.GetHashCode() + faction.GetHashCode()))
             .WithFaction(faction)
             .WithLocation(arenaLocation)
-            .WithSupplies(inventory)
+            .WithInventory(inventory)
             .WithName(name)
             .WithComponentInitialization(false)
             .WithSegments(workingSegments)

@@ -84,11 +84,8 @@ public interface IActor: IComparable, IComparable<IActor> {
     void RemoveComponent(IActorComponent component);
 
     // ===== Resources =====
-    /// <summary>Commodities and segments this actor is willing to trade</summary>
-    Inventory Cargo { get; }
-
-    /// <summary>Commodities and segments owned by this actor</summary>
-    Inventory Supplies { get; }
+    /// <summary>Commodities and segments owned by this actor, split into accounts</summary>
+    Inventory Inventory { get; }
 
     // ===== Lifetime State =====
     void Begin();
@@ -304,7 +301,7 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
             float batchSize = Segment.BatchSize;
 
             // Verify and consume inputs
-            if (!Recipe.HasInputs(Crawler.Supplies, batchSize)) {
+            if (!Recipe.HasInputs(Crawler.Inventory, batchSize)) {
                 Segment.IsStalled = true;
                 return;
             }
@@ -317,8 +314,8 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
             }
 
             // Consume all inputs upfront
-            Recipe.ConsumeInputs(Crawler.Supplies, 1.0f, batchSize);
-            Recipe.ConsumeConsumables(Crawler.Supplies, 1.0f, batchSize);
+            Recipe.ConsumeInputs(Crawler.Inventory, 1.0f, batchSize);
+            Recipe.ConsumeConsumables(Crawler.Inventory, 1.0f, batchSize);
 
             Segment.IsStalled = false;
 
@@ -331,11 +328,12 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
             float batchSize = Segment.BatchSize;
 
             // Produce outputs with efficiency bonus
-            Recipe.ProduceOutputs(Crawler.Cargo, Segment.Efficiency, batchSize);
-            Recipe.ProduceWaste(Crawler.Cargo, batchSize);
+            // Outputs can be sold or fed into the next recipe
+            Recipe.ProduceOutputs(Crawler.Inventory, Segment.Efficiency, batchSize, Account.Supplies | Account.Trade);
+            Recipe.ProduceWaste(Crawler.Inventory, batchSize, Account.Supplies | Account.Trade);
 
             // Handle maintenance - if not satisfied, accumulate wear
-            float maintenanceSatisfied = Recipe.ConsumeMaintenance(Crawler.Supplies, 1.0f, batchSize);
+            float maintenanceSatisfied = Recipe.ConsumeMaintenance(Crawler.Inventory, 1.0f, batchSize);
             if (maintenanceSatisfied < 1.0f) {
                 Segment.WearAccumulator += Recipe.Wear;
                 while (Segment.WearAccumulator >= 1.0f) {
@@ -355,15 +353,14 @@ public record ActorEvent(IActor Tag, TimePoint Time, int Priority = ActorEvent.D
     }
 }
 
-public class ActorBase(ulong seed, string name, string brief, Factions faction, Inventory supplies, Inventory cargo, Location Location): IActor {
+public class ActorBase(ulong seed, string name, string brief, Factions faction, Inventory inventory, Location Location): IActor {
     public record class Init {
         public required ulong Seed { get; set; }
         public string Name { get; set; } = "";
         public string Brief { get; set; } = "";
         public Factions Faction { get; set; }
         public Location Location { get; set; } = null!;
-        public Inventory Supplies { get; set; } = new();
-        public Inventory Cargo { get; set; } = new();
+        public Inventory Inventory { get; set; } = new();
     }
 
     public record class Data {
@@ -384,8 +381,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         protected string _brief = "";
         protected Factions _faction = Factions.Independent;
         protected Location _location = null!;
-        protected Inventory _supplies = new();
-        protected Inventory _cargo = new();
+        protected Inventory _inventory = new();
 
         public Builder() { }
 
@@ -414,23 +410,13 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
             return this;
         }
 
-        public Builder WithSupplies(Inventory supplies) {
-            _supplies = supplies;
+        public Builder WithInventory(Inventory inventory) {
+            _inventory = inventory;
             return this;
         }
 
-        public Builder WithCargo(Inventory cargo) {
-            _cargo = cargo;
-            return this;
-        }
-
-        public Builder AddSupplies(Commodity commodity, float amount) {
-            _supplies.Add(commodity, amount);
-            return this;
-        }
-
-        public Builder AddCargo(Commodity commodity, float amount) {
-            _cargo.Add(commodity, amount);
+        public Builder AddCommodity(Commodity commodity, float amount, Account into = Account.Supplies) {
+            _inventory.Add(commodity, amount, into);
             return this;
         }
 
@@ -441,8 +427,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
                 Brief = _brief,
                 Faction = _faction,
                 Location = _location,
-                Supplies = _supplies,
-                Cargo = _cargo
+                Inventory = _inventory
             };
         }
 
@@ -453,13 +438,12 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
                 .WithBrief(init.Brief)
                 .WithFaction(init.Faction)
                 .WithLocation(init.Location)
-                .WithSupplies(init.Supplies)
-                .WithCargo(init.Cargo);
+                .WithInventory(init.Inventory);
         }
     }
 
     // Init-based constructor
-    public ActorBase(Init init) : this(init.Seed, init.Name, init.Brief, init.Faction, init.Supplies, init.Cargo, init.Location) { }
+    public ActorBase(Init init) : this(init.Seed, init.Name, init.Brief, init.Faction, init.Inventory, init.Location) { }
 
     // Init + Data constructor (for loading from save)
     public ActorBase(Init init, Data data) : this(init) {
@@ -469,8 +453,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
     public ulong Seed { get; set; } = seed;
     public string Name { get; set; } = name;
     public Factions Faction { get; set; } = faction;
-    public Inventory Supplies { get; } = supplies;
-    public Inventory Cargo { get; } = cargo;
+    public Inventory Inventory { get; } = inventory;
     public ActorFlags Flags { get; set; } = ActorFlags.Loading;
     public Location Location { get; set; } = Location;
     public bool HasEncounter => Location.HasEncounter;
@@ -493,7 +476,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
         _ => $" [{EndState}]",
     };
     public virtual string Report() {
-        return $"{Name}\n{Brief(this)}\n{Supplies}";
+        return $"{Name}\n{Brief(this)}\n{Inventory}";
     }
     public ILogger Log => LogCat.Log;
 
@@ -721,8 +704,7 @@ public class ActorBase(ulong seed, string name, string brief, Factions faction, 
             Brief = this.Brief(this),
             Faction = this.Faction,
             Location = this.Location,
-            Supplies = this.Supplies,
-            Cargo = this.Cargo
+            Inventory = this.Inventory
         };
 
         // Serialize actor relations by name (will need to be resolved on load)

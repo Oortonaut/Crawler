@@ -121,27 +121,19 @@ public class CustomsComponent : ActorComponentBase {
 
         var targetToFaction = targetCrawler.To(Owner.Faction);
         // Check each commodity
-        foreach (var commodityAmount in targetCrawler.Supplies.Pairs) {
-            var (commodity, amount) = commodityAmount;
-            amount += targetCrawler.Cargo[commodity];
+        // Every account is searched, reserve included; contraband keeps the stack it was found in
+        foreach (var (stack, commodity, amount) in targetCrawler.Inventory.Stacks) {
             var policy = Owner.Faction.GetPolicy(commodity);
             var licensed = targetToFaction.CanTrade(commodity);
-            if (!licensed && amount > 0) {
-                contraband.Add(commodity, amount);
+            if (!licensed) {
+                contraband.Add(commodity, amount, stack);
             }
         }
-        foreach (var segment in targetCrawler.Cargo.Segments) {
+        foreach (var segment in targetCrawler.Inventory.Segments) {
             var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
             var licensed = targetToFaction.CanTrade(segment.SegmentDef);
             if (!licensed) {
-                contraband.Add(segment);
-            }
-        }
-        foreach (var segment in targetCrawler.Supplies.Segments.Where(s => s.IsPackaged)) {
-            var policy = Owner.Faction.GetPolicy(segment.SegmentKind);
-            var licensed = targetToFaction.CanTrade(segment.SegmentDef);
-            if (!licensed) {
-                contraband.Add(segment);
+                contraband.Segments.Add(segment);
             }
         }
         return contraband;
@@ -195,10 +187,10 @@ public class CustomsComponent : ActorComponentBase {
             Owner.Message($"{Target.Name} allows search and surrenders {Contraband}");
             Target.Message($"You allow {Owner.Name} to search and seize {Contraband}");
 
-            Target.Supplies.Remove(Contraband);
+            Target.Inventory.RemoveStacks(Contraband);
             // TODO: Generalize different inventories into components
             // TODO: Move to evidence inventory
-            Owner.Cargo.Add(Contraband);
+            Owner.Inventory.Add(Contraband, Account.Supplies | Account.Trade);
 
             // One search satisfies the whole faction
             var customs = Target.To(Owner.Faction).Customs;
@@ -213,7 +205,7 @@ public class CustomsComponent : ActorComponentBase {
         }
 
         public override Immediacy GetImmediacy(string args = "") {
-            var inventoryOffer = new InventoryOffer(false, Contraband);
+            var inventoryOffer = new InventoryOffer(Contraband);
             if (inventoryOffer.DisabledFor(Target, Owner) != null) return Immediacy.Failed;
             return Immediacy.Menu;
         }
@@ -334,7 +326,7 @@ public class TradeOfferComponent : ActorComponentBase {
 
                 if (offer.Direction == TradeDirection.Sell) {
                     // Owner sells to subject (subject buys)
-                    var sellOffer = new CommodityOffer(commodity, offer.Quantity);
+                    var sellOffer = new GoodsOffer(commodity, offer.Quantity);
                     yield return new TradeInteraction(
                         subject,  // buyer
                         new ScrapOffer(totalPrice),
@@ -345,7 +337,7 @@ public class TradeOfferComponent : ActorComponentBase {
                     );
                 } else {
                     // Owner buys from subject (subject sells)
-                    var buyOffer = new CommodityOffer(commodity, offer.Quantity);
+                    var buyOffer = new GoodsOffer(commodity, offer.Quantity);
                     yield return new TradeInteraction(
                         subject,  // seller
                         buyOffer,
@@ -525,7 +517,7 @@ public class RepairComponent : ActorComponentBase {
 
             if (segmentBeingRepaired) return Immediacy.Failed;
             if (!IsRepairable(SegmentToRepair)) return Immediacy.Failed;
-            if (Subject.Supplies[Commodity.Scrap] < Price) return Immediacy.Failed;
+            if (Subject.Inventory[Commodity.Scrap] < Price) return Immediacy.Failed;
             return Immediacy.Menu;
         }
 
@@ -628,7 +620,7 @@ public class LicenseComponent : ActorComponentBase {
         }
 
         public override Immediacy GetImmediacy(string args = "") {
-            if (Subject.Supplies[Commodity.Scrap] < Price) return Immediacy.Failed;
+            if (Subject.Inventory[Commodity.Scrap] < Price) return Immediacy.Failed;
             return Immediacy.Menu;
         }
 
@@ -669,7 +661,7 @@ public class HarvestComponent : ActorComponentBase {
         public override string Description => Verb;
 
         public override bool Perform(string args = "") {
-            var inventoryOffer = new InventoryOffer(false, Amount);
+            var inventoryOffer = new InventoryOffer(Amount);
 
             Resource.Message($"{Harvester.Name} harvests you");
             Harvester.Message($"You harvest {Resource.Name} and take {Amount}");
@@ -685,7 +677,7 @@ public class HarvestComponent : ActorComponentBase {
 
         public override Immediacy GetImmediacy(string args = "") {
             if (Resource.EndState == EEndState.Looted) return Immediacy.Failed;
-            var inventoryOffer = new InventoryOffer(false, Amount);
+            var inventoryOffer = new InventoryOffer(Amount);
             if (inventoryOffer.DisabledFor(Resource, Harvester) != null) return Immediacy.Failed;
             return Immediacy.Menu;
         }
@@ -740,16 +732,16 @@ public class HazardComponent : ActorComponentBase {
             Hazard.Message($"{Explorer.Name} explores the hazard");
 
             // Check if Explorer can afford the full loss (has >= risked amount)
-            bool canAfford = Explorer.Supplies.Contains(risked) != FromInventory.None;
+            bool canAfford = Explorer.Inventory.Contains(risked);
 
             // Always lose min(risked, current inventory)
             var actualLoss = new Inventory();
             foreach (var commodity in Enum.GetValues<Commodity>()) {
                 if (risked[commodity] > 0) {
-                    float loss = Math.Min(risked[commodity], Explorer.Supplies[commodity]);
+                    float loss = Math.Min(risked[commodity], Explorer.Inventory[commodity]);
                     if (loss > 0) {
                         actualLoss.Add(commodity, loss);
-                        Explorer.Supplies[commodity] -= loss;
+                        Explorer.Inventory[commodity] -= loss;
                     }
                 }
             }
@@ -760,7 +752,7 @@ public class HazardComponent : ActorComponentBase {
 
             // Only give reward if could afford the full risked amount
             if (canAfford) {
-                var rewardOffer = Hazard.CargoOffer();
+                var rewardOffer = Hazard.InventoryOffer();
                 Explorer.Message($"You gain {rewardOffer.Description} from {Hazard.Name}");
                 rewardOffer.PerformOn(Hazard, Explorer);
             } else {
@@ -781,7 +773,7 @@ public class HazardComponent : ActorComponentBase {
             // Check if Explorer has > 0 of any risked resource (allows attempting the hazard)
             bool hasAnyRiskedResource = false;
             foreach (var commodity in Enum.GetValues<Commodity>()) {
-                if (Risk[commodity] > 0 && Explorer.Supplies[commodity] > 0) {
+                if (Risk[commodity] > 0 && Explorer.Inventory[commodity] > 0) {
                     hasAnyRiskedResource = true;
                     break;
                 }

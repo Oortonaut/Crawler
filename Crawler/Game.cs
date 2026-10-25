@@ -434,7 +434,7 @@ public class Game {
         // Add submenu actions for power and packaging
         context.PlayerActions.Insert(0, new MenuAction("PP", "Seg Power", _ => PowerMenu()));
         context.PlayerActions.Insert(1, new MenuAction("PK", "Seg Packaging", _ => PackagingMenu()));
-        context.PlayerActions.Insert(2, new MenuAction("PT", "Supplies<->Cargo", _ => TradeInventoryMenu()));
+        context.PlayerActions.Insert(2, new MenuAction("PT", "Inventory Accounts", _ => TradeInventoryMenu()));
         context.PlayerActions.Insert(3, new MenuAction("PR", "Repair", _ => RepairMenu()));
 
         context.RegisterAction("PP", context.PlayerActions[0]);
@@ -1082,7 +1082,7 @@ public class Game {
         yield return new MenuItem("", Style.MenuTitle.Format("Player Menu"));
         yield return new ActionMenuItem("PP", "Seg Power", _ => PowerMenu());
         yield return new ActionMenuItem("PK", "Seg Packaging", _ => PackagingMenu());
-        yield return new ActionMenuItem("PT", "Supplies<->Cargo", _ => TradeInventoryMenu());
+        yield return new ActionMenuItem("PT", "Inventory Accounts", _ => TradeInventoryMenu());
         yield return new ActionMenuItem("PR", "Repair", _ => RepairMenu());
 
         foreach (var item in PowerMenuItems(ShowArg.Hide)) {
@@ -1188,26 +1188,29 @@ public class Game {
         return true;
     }
 
+    // Stacks the player can file goods under: use only, use or trade, trade only, reserve
+    static readonly Account[] InventoryTargets = [
+        Account.Supplies,
+        Account.Supplies | Account.Trade,
+        Account.Trade,
+        Account.Cargo,
+    ];
+
     bool TradeInventoryMenu() {
-        var (selected, ap) = CrawlerEx.MenuRun("Trade Cargo Menu", [
+        var (selected, ap) = CrawlerEx.MenuRun("Inventory Accounts", [
             MenuItem.Cancel,
             .. TradeInventoryMenuItems(),
         ]);
         return ap;
     }
 
+    // Codes end in stack flag values: PC513 moves the fifth commodity from Supplies (1) to Supplies|Trade (3)
     IEnumerable<MenuItem> TradeInventoryMenuItems(ShowArg showOption = ShowArg.Show) {
         // Commodities
-        foreach (var pair in Player.Supplies.Pairs) {
-            var commodity = pair.Item1;
+        foreach (var (stack, commodity, _) in Player.Inventory.Stacks.OrderBy(entry => entry.Commodity).ToList()) {
             int i = ( int ) commodity;
-            var amt = pair.Item2;
-            if (amt > 0) {
-                yield return new ActionMenuItem($"PC{i + 1}C", $"{commodity} to Cargo", args => MoveToCargo(commodity, args), EnableArg.Enabled, showOption);
-            }
-            var amt2 = Player.Cargo[commodity];
-            if (amt2 > 0) {
-                yield return new ActionMenuItem($"PC{i + 1}S", $"{commodity} to Supplies", args => MoveFromCargo(commodity, args), EnableArg.Enabled, showOption);
+            foreach (var target in InventoryTargets.Where(target => target != stack)) {
+                yield return new ActionMenuItem($"PC{i + 1}{(int)stack}{(int)target}", $"{commodity} {stack.Label()} to {target.Label()}", args => MoveCommodity(commodity, stack, target, args), EnableArg.Enabled, showOption);
             }
         }
 
@@ -1215,73 +1218,35 @@ public class Game {
         var workingSegments = Player.Segments.ToList();
         for (int i = 0; i < workingSegments.Count; i++) {
             var segment = workingSegments[i];
-            yield return new ActionMenuItem($"PW{i + 1}S", $"Package {segment.StateName} to Supplies", _ => PackageToSupplies(segment), EnableArg.Enabled, showOption);
-            yield return new ActionMenuItem($"PW{i + 1}C", $"Package {segment.StateName} to Cargo", _ => PackageToCargo(segment), EnableArg.Enabled, showOption);
+            foreach (var target in InventoryTargets) {
+                yield return new ActionMenuItem($"PW{i + 1}{(int)target}", $"Package {segment.StateName} to {target.Label()}", _ => PackageTo(segment, target), EnableArg.Enabled, showOption);
+            }
         }
 
-        // Packaged segments in supplies (all should be packaged now)
-        var suppliesSegments = Player.Supplies.Segments.ToList();
-        for (int i = 0; i < suppliesSegments.Count; i++) {
-            var segment = suppliesSegments[i];
+        // Packaged segments that can be installed or refiled
+        var packagedSegments = Player.Inventory.Segments.ToList();
+        for (int i = 0; i < packagedSegments.Count; i++) {
+            var segment = packagedSegments[i];
             yield return new ActionMenuItem($"PS{i + 1}I", $"Install {segment.StateName}", _ => InstallSegment(segment), EnableArg.Enabled, showOption);
-            yield return new ActionMenuItem($"PS{i + 1}C", $"{segment.StateName} to Cargo", _ => MoveToCargo(segment), EnableArg.Enabled, showOption);
-        }
-
-        // Packaged segments in cargo that can be moved or installed
-        var cargoSegments = Player.Cargo.Segments.ToList();
-        for (int i = 0; i < cargoSegments.Count; i++) {
-            var segment = cargoSegments[i];
-            yield return new ActionMenuItem($"PC{i + 1}I", $"Install {segment.StateName}", _ => InstallSegment(segment), EnableArg.Enabled, showOption);
-            yield return new ActionMenuItem($"PC{i + 1}S", $"{segment.StateName} to Supplies", _ => MoveFromCargo(segment), EnableArg.Enabled, showOption);
+            foreach (var target in InventoryTargets.Where(target => target != segment.Account)) {
+                yield return new ActionMenuItem($"PS{i + 1}{(int)target}", $"{segment.StateName} {segment.Account.Label()} to {target.Label()}", _ => MoveSegment(segment, target), EnableArg.Enabled, showOption);
+            }
         }
     }
 
-    bool MoveToCargo(Segment segment) {
-        Player.Supplies.Remove(segment);
-        Player.Cargo.Add(segment);
-        Player.Message($"{segment.Name} moved to cargo");
-        Player.UpdateSegmentCache();
+    bool MoveSegment(Segment segment, Account target) {
+        segment.Account = target;
+        Player.Message($"{segment.Name} moved to {target.Label()}");
         return true;
     }
 
-    bool MoveToCargo(Commodity commodity, string amount) {
-        var amt = Player.Cargo[commodity];
-
+    bool MoveCommodity(Commodity commodity, Account from, Account to, string amount) {
+        var amt = Player.Inventory.Stack(commodity, from);
         if (float.TryParse(amount, out float parsed)) {
             amt = Math.Min(parsed, amt);
         }
-
-        return MoveToCargo(commodity, amt);
-    }
-
-    bool MoveToCargo(Commodity commodity, float amount) {
-        Player.Supplies[commodity] -= amount;
-        Player.Cargo[commodity] += amount;
-        Player.Message($"{amount} {commodity} moved to cargo");
-        return true;
-    }
-
-    bool MoveFromCargo(Segment segment) {
-        Player.Cargo.Remove(segment);
-        Player.Supplies.Add(segment);
-        Player.Message($"{segment.Name} returned from cargo");
-        Player.UpdateSegmentCache();
-        return true;
-    }
-
-    bool MoveFromCargo(Commodity commodity, string amount) {
-        var amt = Player.Cargo[commodity];
-        if (float.TryParse(amount, out float parsed)) {
-            amt = Math.Min(parsed, amt);
-        }
-
-        return MoveFromCargo(commodity, amt);
-    }
-
-    bool MoveFromCargo(Commodity commodity, float amount) {
-        Player.Cargo[commodity] -= amount;
-        Player.Supplies[commodity] += amount;
-        Player.Message($"{amount} {commodity} moved to cargo");
+        amt = Player.Inventory.Move(commodity, amt, from, to);
+        Player.Message($"{amt} {commodity} moved from {from.Label()} to {to.Label()}");
         return true;
     }
 
@@ -1291,15 +1256,9 @@ public class Game {
         return true;
     }
 
-    bool PackageToSupplies(Segment segment) {
-        Player.PackageToSupplies(segment);
-        Player.Message($"{segment.Name} packaged to supplies");
-        return true;
-    }
-
-    bool PackageToCargo(Segment segment) {
-        Player.PackageToCargo(segment);
-        Player.Message($"{segment.Name} packaged to cargo");
+    bool PackageTo(Segment segment, Account target) {
+        Player.PackageTo(segment, target);
+        Player.Message($"{segment.Name} packaged to {target.Label()}");
         return true;
     }
 
@@ -1353,7 +1312,7 @@ public class Game {
             return false;
         }
 
-        Player.Supplies[matchingCommodity] += amount;
+        Player.Inventory[matchingCommodity] += amount;
         Player.Message($"Added {amount} {matchingCommodity}");
         return true;
     }

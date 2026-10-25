@@ -39,8 +39,7 @@ public static class EventPriority {
 
     /// <summary>Calculate normalized cargo value (0-1 scale based on typical cargo range)</summary>
     public static float NormalizedCargoValue(Crawler crawler) {
-        float value = crawler.Supplies.ValueAt(crawler.Location) +
-                      crawler.Cargo.ValueAt(crawler.Location);
+        float value = crawler.Inventory.ValueAt(crawler.Location, Account.Supplies | Account.Trade);
         return Math.Clamp(value / Tuning.EventPriority.CargoValueCap, 0, 1);
     }
 
@@ -89,7 +88,7 @@ public static class EventPriority {
     /// <summary>Calculate priority for extorting a target (range: 200-500)</summary>
     public static int ForExtortion(Crawler bandit, IActor target) {
         float relativeStrength = RelativeStrength(bandit, target);
-        float targetCargoValue = target.Supplies.ValueAt(bandit.Location);
+        float targetCargoValue = target.Inventory.ValueAt(bandit.Location, Account.Supplies);
         float normalizedValue = Math.Clamp(targetCargoValue / Tuning.EventPriority.CargoValueCap, 0, 1);
 
         // Higher priority if target has valuable cargo and we're stronger
@@ -103,8 +102,8 @@ public static class EventPriority {
     /// <summary>Calculate priority for trading (range: 100-300)</summary>
     public static int ForTrade(Crawler trader, float transactionValue) {
         float normalizedValue = Math.Clamp(transactionValue / Tuning.EventPriority.TransactionValueCap, 0, 1);
-        float cargoFullness = trader.Cargo.MaxVolume > 0
-            ? 1 - (trader.Cargo.AvailableVolume / trader.Cargo.MaxVolume)
+        float cargoFullness = trader.Inventory.MaxVolume > 0
+            ? 1 - (trader.Inventory.AvailableVolume / trader.Inventory.MaxVolume)
             : 0;
 
         // Higher priority for valuable trades or when cargo is getting full

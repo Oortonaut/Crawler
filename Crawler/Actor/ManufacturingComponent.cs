@@ -108,7 +108,7 @@ public class ManufacturingComponent : ActorComponentBase {
             // Lock both actors for the duration
             Subject.ConsumeTime("Manufacturing", 300, ExpectedDuration, post: () => {
                 // Deliver the manufactured segment to cargo
-                crawler.Cargo.Add(segment);
+                crawler.Inventory.Add(segment, Account.Supplies | Account.Trade);
                 Game.Instance?.TrackSegmentProduction(segment.NameSize);
                 Subject.Message($"Manufacturing of {segment.NameSize} completed");
                 // Clear the Ultimatums
@@ -137,7 +137,7 @@ public class ManufacturingComponent : ActorComponentBase {
 
             if (subjectToAgent?.Type == "ManufactureCustomer") return Immediacy.Failed;
             if (agentToSubject?.Type == "ManufactureMechanic") return Immediacy.Failed;
-            if (Subject.Supplies[Commodity.Scrap] < Price) return Immediacy.Failed;
+            if (Subject.Inventory[Commodity.Scrap] < Price) return Immediacy.Failed;
 
             return Immediacy.Menu;
         }

@@ -139,12 +139,12 @@ public static class EquilibriumStock {
                 // Scrap (cash) scales with population and wealth
                 float scrap = settlement.Location.Wealth *
                     (1 + settlement.Location.Population * 0.01f);
-                settlement.Cargo.Add(Commodity.Scrap, scrap);
+                settlement.Inventory.Add(Commodity.Scrap, scrap, Account.Supplies | Account.Trade);
             } else if (commodity == Commodity.Crew || commodity == Commodity.Morale) {
                 // Crew/Morale handled separately
                 continue;
             } else if (equilibrium[commodity] > 0) {
-                settlement.Cargo.Add(commodity, equilibrium[commodity]);
+                settlement.Inventory.Add(commodity, equilibrium[commodity], Account.Supplies | Account.Trade);
             }
         }
     }

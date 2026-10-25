@@ -67,7 +67,7 @@ public class ConvoyComponent : ActorComponentBase {
                 // Priority based on convoy's combined cargo value
                 float convoyCargoValue = convoy.AllParticipants
                     .Where(p => p is Crawler c)
-                    .Sum(p => ((Crawler)p).Cargo.ValueAt(leader.Location));
+                    .Sum(p => ((Crawler)p).Inventory.ValueAt(leader.Location, Account.Trade));
                 int priority = EventPriority.ForConvoy(leader, routeRisk: 0, convoyCargoValue);
                 return leader.NewEventFor(
                     "Waiting for convoy",

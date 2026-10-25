@@ -74,11 +74,11 @@ public static class MarketOfferEx {
 
     /// <summary>
     /// Get the ask offer (sell order) this actor provides for a commodity.
-    /// Quantity is how much they have available in Cargo.
+    /// Quantity is how much they hold in stacks marked for trade.
     /// </summary>
     public static MarketOffer GetAskOffer(this IActor actor, Commodity commodity) {
         float price = actor.GetAskPrice(commodity);
-        float quantity = actor.Cargo[commodity];
+        float quantity = actor.Inventory[commodity, Account.Trade];
         return new MarketOffer(actor, price, quantity);
     }
 
@@ -90,7 +90,7 @@ public static class MarketOfferEx {
         float price = actor.GetBidPrice(commodity);
         if (price <= 0) return default;
 
-        float scrap = actor.Supplies[Commodity.Scrap];
+        float scrap = actor.Inventory[Commodity.Scrap];
         float maxQuantity = scrap / price;
 
         return new MarketOffer(actor, price, maxQuantity);
@@ -143,7 +143,7 @@ public static class MarketOfferEx {
 
     /// <summary>
     /// Enumerate segment sell offers from this actor matching kind and size range.
-    /// Searches both Cargo and Supplies for packaged segments.
+    /// Searches packaged segments in every account but the reserve.
     /// </summary>
     public static IEnumerable<SegmentMarketOffer> GetSegmentAskOffers(
         this IActor actor,
@@ -151,8 +151,7 @@ public static class MarketOfferEx {
         float minSize,
         float maxSize) {
 
-        var segments = actor.Cargo.Segments
-            .Concat(actor.Supplies.Segments)
+        var segments = actor.Inventory.SegmentsIn(Account.Supplies | Account.Trade)
             .Where(s => s.SegmentKind == kind)
             .Where(s => s.SegmentDef.Size.Size >= minSize && s.SegmentDef.Size.Size <= maxSize);
 
@@ -190,7 +189,7 @@ public static class MarketOfferEx {
         price = Commodity.Scrap.Round(price * (1 - spread / 2));
 
         // Check if actor can afford anything
-        float scrap = actor.Supplies[Commodity.Scrap];
+        float scrap = actor.Inventory[Commodity.Scrap];
         if (price > 0 && scrap >= price) {
             // Return a single theoretical bid offer (null segment indicates "wanting to buy")
             yield return new SegmentMarketOffer(actor, price, null!);

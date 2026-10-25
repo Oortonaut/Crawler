@@ -103,7 +103,7 @@ public class ProductionAIComponent : ActorComponentBase {
             .SelectMany(segment => {
                 var availableRecipes = IndustryComponent.GetAvailableRecipes(segment, maxTier);
                 return availableRecipes
-                    .Where(recipe => reservation.CanStart(recipe, crawler.Supplies, segment.BatchSize))
+                    .Where(recipe => reservation.CanStart(recipe, crawler.Inventory, segment.BatchSize))
                     .Select(recipe => isSettlement
                         ? EvaluateRecipeForSettlement(recipe, segment, crawler, reservation, location)
                         : EvaluateRecipe(recipe, segment, crawler, stockTargets, reservation, location))
@@ -126,7 +126,7 @@ public class ProductionAIComponent : ActorComponentBase {
         if (crawler.Stock == null) return 0;
         float baseline = crawler.Stock.Baseline(c);
         if (baseline <= 0) return 0;
-        float current = crawler.Supplies[c] + crawler.Cargo[c];
+        float current = crawler.Inventory[c, Account.Supplies | Account.Trade];
         return Math.Clamp((baseline - current) / baseline, 0, 1);
     }
 
@@ -184,13 +184,13 @@ public class ProductionAIComponent : ActorComponentBase {
     /// 1.0 = all inputs fully available, 0 = missing critical inputs.
     /// </summary>
     float CalculateInputAvailability(ProductionRecipe recipe, Crawler crawler, ResourceReservation reservation, float batchSize) {
-        if (!reservation.CanStart(recipe, crawler.Supplies, batchSize)) return 0;
+        if (!reservation.CanStart(recipe, crawler.Inventory, batchSize)) return 0;
 
         float minRatio = 1.0f;
 
         // Check inputs (scaled by batch size)
         foreach (var (commodity, required) in recipe.Inputs) {
-            float available = crawler.Supplies[commodity] + crawler.Cargo[commodity];
+            float available = crawler.Inventory[commodity, Account.Supplies | Account.Trade];
             float scaledRequired = required * batchSize;
             float ratio = scaledRequired > 0 ? Math.Min(available / scaledRequired, 2.0f) / 2.0f : 1.0f;
             minRatio = Math.Min(minRatio, ratio);
@@ -198,7 +198,7 @@ public class ProductionAIComponent : ActorComponentBase {
 
         // Check consumables (less strict - can run with partial, scaled by batch size)
         foreach (var (commodity, required) in recipe.Consumables) {
-            float available = crawler.Supplies[commodity];
+            float available = crawler.Inventory[commodity];
             float scaledRequired = required * batchSize;
             if (scaledRequired > 0) {
                 float ratio = Math.Clamp(available / (scaledRequired * 5), 0, 1); // 5 cycles buffer
@@ -224,7 +224,7 @@ public class ProductionAIComponent : ActorComponentBase {
             float baseline = crawler.Stock.Baseline(commodity);
             if (baseline <= 0) continue;
 
-            float current = crawler.Supplies[commodity] + crawler.Cargo[commodity];
+            float current = crawler.Inventory[commodity, Account.Supplies | Account.Trade];
             float deficitRatio = Math.Clamp((baseline - current) / baseline, 0, 1);
 
             // Essential goods get boosted urgency (output scaled by batch size)
@@ -273,8 +273,8 @@ public class ProductionAIComponent : ActorComponentBase {
         float batchSize = segment.BatchSize;
 
         // Check basic requirements
-        if (!reservation.CanStart(recipe, crawler.Supplies, batchSize)) return null;
-        if (!recipe.HasConsumables(crawler.Supplies, batchSize)) return null;
+        if (!reservation.CanStart(recipe, crawler.Inventory, batchSize)) return null;
+        if (!recipe.HasConsumables(crawler.Inventory, batchSize)) return null;
         if (crawler.PowerBalance < segment.Drain) return null;
         if (crawler.CrewInv < recipe.CrewRequired) return null;
 
@@ -297,7 +297,7 @@ public class ProductionAIComponent : ActorComponentBase {
         // Calculate stock priority bonus (output amounts scaled by batch size)
         float stockBonus = 0;
         foreach (var (commodity, amount) in recipe.Outputs) {
-            float currentStock = crawler.Supplies[commodity] + crawler.Cargo[commodity];
+            float currentStock = crawler.Inventory[commodity, Account.Supplies | Account.Trade];
             if (stockTargets.IsBelowTarget(commodity, currentStock)) {
                 float deficit = stockTargets.Deficit(commodity, currentStock);
                 // Weight by commodity value and deficit severity

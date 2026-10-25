@@ -441,12 +441,16 @@ public static partial class CrawlerEx {
 
         return MenuRun($"{Name}", interactionsMenu.ToArray());
     }
-    public static Inventory Loot(this Inventory from, XorShift rng, float lootReturn) {
+    // A random share of the stacks serving `accounts` (and not `except`), kept under the same stack keys
+    public static Inventory Loot(this Inventory from, XorShift rng, float lootReturn, Account accounts = Account.All, Account except = Account.None) {
         var loot = new Inventory();
+        var stacks = AccountEx.Stacks.Where(s => s.Serves(accounts) && !s.Serves(except)).ToList();
         foreach (var commodity in Enum.GetValues<Commodity>()) {
             float t = (float)(Math.Sqrt(rng.NextDouble()) * lootReturn * 1.5);
             t = Math.Clamp(t, 0, 1);
-            loot[commodity] += from[commodity] * t;
+            foreach (var stack in stacks) {
+                loot.Add(commodity, from.Stack(commodity, stack) * t, stack);
+            }
         }
         var lootableSegments = from.Segments
             .Where(s => s.Health > 0)

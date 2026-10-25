@@ -145,6 +145,9 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         }
     }
 
+    /// <summary>Which inventory account this segment sits in while packaged.</summary>
+    public Account Account { get; set; } = Account.Supplies;
+
     bool _activated = true;
     public bool Activated {
         get => _activated;
@@ -270,6 +273,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         target.Cycle = this.Cycle;
         target.Packaged = this.Packaged;
         target.Activated = this.Activated;
+        target.Account = this.Account;
     }
 
     // Data structure for serialization
@@ -279,6 +283,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         public int Hits { get; set; }
         public bool Packaged { get; set; }
         public bool Activated { get; set; }
+        public Account Account { get; set; } = Account.Supplies;
     }
 
     public virtual Data ToData() {
@@ -287,7 +292,8 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
             DefName = this.SegmentDef.Name,
             Hits = this.Hits,
             Packaged = this.Packaged,
-            Activated = this.Activated
+            Activated = this.Activated,
+            Account = this.Account
         };
     }
 
@@ -295,6 +301,7 @@ public class Segment(ulong seed, SegmentDef segmentDef, IActor? Owner) {
         Hits = data.Hits;
         Packaged = data.Packaged;
         Activated = data.Activated;
+        Account = data.Account;
     }
 }
 
@@ -358,7 +365,7 @@ public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? owner): Offe
             if (!RequiresAmmo) return true;
             if (Owner is not Crawler crawler) return false;
             float ammoNeeded = Shots * AmmoPerShot;
-            return crawler.Supplies[AmmoType!.Value] >= ammoNeeded;
+            return crawler.Inventory[AmmoType!.Value] >= ammoNeeded;
         }
     }
 
@@ -372,8 +379,8 @@ public class WeaponSegment(ulong seed, WeaponDef weaponDef, IActor? owner): Offe
         if (RequiresAmmo) {
             if (Owner is not Crawler crawler) yield break;
             float ammoNeeded = Shots * AmmoPerShot;
-            if (crawler.Supplies[AmmoType!.Value] < ammoNeeded) yield break;
-            crawler.Supplies.Remove(AmmoType!.Value, ammoNeeded);
+            if (crawler.Inventory[AmmoType!.Value] < ammoNeeded) yield break;
+            crawler.Inventory.Remove(AmmoType!.Value, ammoNeeded);
             Game.Instance?.TrackAmmoConsumption(AmmoType!.Value.ToString(), (int)Math.Ceiling(ammoNeeded));
         }
 
@@ -515,6 +522,7 @@ public class ReactorSegment(ulong seed, ReactorDef reactorDef, IActor? owner): P
             Hits = this.Hits,
             Packaged = this.Packaged,
             Activated = this.Activated,
+            Account = this.Account,
             Charge = this.Charge
         };
     }
@@ -763,6 +771,7 @@ public class ShieldSegment(ulong seed, ShieldDef shieldDef, IActor? owner): Defe
             Hits = this.Hits,
             Packaged = this.Packaged,
             Activated = this.Activated,
+            Account = this.Account,
             ShieldLeft = this.ShieldLeft
         };
     }
@@ -871,6 +880,7 @@ public class IndustrySegment(ulong seed, IndustryDef industryDef, IActor? owner)
             Hits = this.Hits,
             Packaged = this.Packaged,
             Activated = this.Activated,
+            Account = this.Account,
             RecipeName = this.CurrentRecipe?.Name,
             ProductionStartTime = this.ProductionStartTime.Elapsed,
             CycleDuration = this.CycleDuration.TotalSeconds,
@@ -954,6 +964,7 @@ public class StorageSegment(ulong seed, StorageDef storageDef, IActor? owner) : 
             Hits = this.Hits,
             Packaged = this.Packaged,
             Activated = this.Activated,
+            Account = this.Account,
             UsedCapacity = this.UsedCapacity,
         };
     }

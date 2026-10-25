@@ -53,7 +53,7 @@ public record RepairOffer(
     public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
         Agent.Ended() ? "Dead Mechanic" :
         Subject.Ended() ? "Dead Client" :
-        !Subject.Supplies.Segments.Contains(SubjectSegment) ? "Not owned" :
+        !Subject.Inventory.Segments.Contains(SubjectSegment) ? "Not owned" :
         SubjectSegment.Hits <= 0 ? "Undamaged" :
         null;
     public virtual void PerformOn(IActor Agent, IActor Subject) =>
@@ -91,21 +91,24 @@ public record EmptyOffer(): IOffer {
     public float ValueFor(IActor Agent) => 0;
 }
 
-// Give commodities from agent to subject
-public record CommodityOffer(Commodity commodity, float amount): IOffer {
+// Give commodities from the agent's stacks serving From to the subject's Into stack
+public record CommodityOffer(Commodity commodity, float amount, Account From = Account.Supplies, Account Into = Account.Supplies): IOffer {
     public readonly float Amount = commodity.Round(amount);
     public virtual string Description => commodity.CommodityText(Amount);
     public override string ToString() => Description;
     public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
         Subject.Ended() ? "Taker Dead" :
-        Agent.Supplies.Contains(commodity, amount) == FromInventory.None ? $"lacks {commodity}" :
+        !Agent.Inventory.Contains(commodity, amount, From) ? $"lacks {commodity}" :
         null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
-        Agent.Supplies[commodity] -= Amount;
-        Subject.Supplies[commodity] += Amount;
+        Agent.Inventory.Remove(commodity, Amount, From);
+        Subject.Inventory.Add(commodity, Amount, Into);
     }
     public float ValueFor(IActor Agent) => commodity.MidAt(Agent.Location);
 }
+
+// Trade goods: drawn from stacks marked for trade, received where they can be resold or used
+public record GoodsOffer(Commodity commodity, float amount): CommodityOffer(commodity, amount, Account.Trade, Account.Supplies | Account.Trade);
 
 // A cash-only offer, for convenience
 public record ScrapOffer(float Scrap): CommodityOffer(Commodity.Scrap, Scrap);
@@ -116,12 +119,12 @@ public record SegmentOffer(Segment Segment): IOffer {
     public override string ToString() => Description;
     public string? DisabledFor(IActor Agent, IActor Subject) =>
         Subject.Ended() ? "Taker Dead" :
-        Agent.Cargo.Contains(Segment) == FromInventory.None ? "No cargo" :
+        !Agent.Inventory.Segments.Contains(Segment) ? "Not owned" :
         null;
     public void PerformOn(IActor Agent, IActor Subject) {
-        Agent.Cargo.Remove(Segment);
+        Agent.Inventory.Remove(Segment);
         Segment.Packaged = true;
-        Subject.Supplies.Add(Segment);
+        Subject.Inventory.Add(Segment);
     }
     public float ValueFor(IActor Agent) => Segment.CostAt(Agent.Location);
 }
@@ -139,14 +142,14 @@ public record HostilityOffer(string Reason): IOffer {
         Subject.SetHostileTo(Agent, true);
         Agent.Message($"{Subject.Name} {Reason}. You are now hostile.");
         Subject.Message($"{Agent.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
-        Subject.Supplies[Commodity.Morale] -= 2;
+        Subject.Inventory[Commodity.Morale] -= 2;
     }
     public float ValueFor(IActor Agent) => 0;
 }
 
-// This offer moves the Delivered inventory from the agent's trade inventory to the subjects main inventory.
+// This offer moves the Delivered goods, stack for stack, out of the agent's inventory and into
+// the subject's Supplies|Trade stack. Build Delivered with Subset or Loot so its stacks match the agent's.
 public record InventoryOffer(
-    bool cargo,
     Inventory Delivered,
     Inventory? _promised = null) : IOffer {
 
@@ -155,24 +158,25 @@ public record InventoryOffer(
     public Inventory Promised => _promised ?? Delivered;
     public virtual string? DisabledFor(IActor Agent, IActor Subject) =>
         Subject.Ended() ? "Taker Dead" :
-        GetInv(Agent).Contains(Delivered) == FromInventory.None ? "No inventory" :
+        !Agent.Inventory.ContainsStacks(Delivered) ? "No inventory" :
         null;
     public virtual void PerformOn(IActor Agent, IActor Subject) {
-        Subject.Cargo.Add(Delivered);
-        GetInv(Agent).Remove(Delivered);
         foreach (var segment in Delivered.Segments) {
             segment.Packaged = true;
         }
+        Agent.Inventory.RemoveStacks(Delivered);
+        Subject.Inventory.Add(Delivered, Account.Supplies | Account.Trade);
     }
     public float ValueFor(IActor Agent) => Promised.ValueAt(Agent.Location);
-    Inventory GetInv(IActor Agent) => cargo ? Agent.Cargo : Agent.Supplies;
 }
 
 public static partial class OfferEx {
-    public static IOffer CargoOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo));
-    public static IOffer SupplyOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies));
-    public static IOffer CargoOffer(this IActor actor, XorShift rng, float fraction) => new LootOfferWrapper(new InventoryOffer(true, actor.Cargo.Loot(rng, fraction)));
-    public static IOffer SupplyOffer(this IActor actor, XorShift rng, float fraction) => new LootOfferWrapper(new InventoryOffer(false, actor.Supplies.Loot(rng, fraction)));
+    /// <summary>Everything the actor holds.</summary>
+    public static IOffer InventoryOffer(this IActor actor) => new LootOfferWrapper(new InventoryOffer(actor.Inventory.Subset(Account.All)));
+    /// <summary>A random share of the actor's trade goods.</summary>
+    public static IOffer TradeOffer(this IActor actor, XorShift rng, float fraction) => new LootOfferWrapper(new InventoryOffer(actor.Inventory.Loot(rng, fraction, Account.Trade)));
+    /// <summary>A random share of the actor's supplies that aren't also trade goods, so it never overlaps <see cref="TradeOffer"/>.</summary>
+    public static IOffer SupplyOffer(this IActor actor, XorShift rng, float fraction) => new LootOfferWrapper(new InventoryOffer(actor.Inventory.Loot(rng, fraction, Account.Supplies, except: Account.Trade)));
     public static bool EnabledFor(this IOffer Offer, IActor Agent, IActor Subject) => Offer.DisabledFor(Agent, Subject) == null;
     public static bool HostileTo(this IActor from, IActor to) => from.To(to).Hostile;
     public static bool Warring(this IActor from, IActor to) => from.HostileTo(to) && to.HostileTo(from);

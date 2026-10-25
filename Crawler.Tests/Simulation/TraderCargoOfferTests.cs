@@ -12,7 +12,7 @@ public class TraderCargoOfferTests
         var game = Game.NewSimulation(42, 2);
         var location = game.Map.AllLocations.First(l => l.HasEncounter);
         var trader = location.GetEncounter().GeneratePlayerActor(7);
-        trader.Cargo[Commodity.Relics] += 3;
+        trader.Inventory[Commodity.Relics, Account.Trade] += 3;
 
         var offers = trader.MakeTradeOffers(11, 1.0f);
 

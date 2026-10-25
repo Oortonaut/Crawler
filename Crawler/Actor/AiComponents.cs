@@ -99,7 +99,7 @@ public class BanditComponent : ActorComponentBase {
         // Don't extort targets we're friendly with
         if (standing >= 0) return;
 
-        float cargoValue = target.Supplies.ValueAt(bandit.Location);
+        float cargoValue = target.Inventory.ValueAt(bandit.Location, Account.Supplies);
         if (cargoValue >= Tuning.Bandit.minValueThreshold &&
             _rng.NextSingle() < Tuning.Bandit.demandChance &&
             !bandit.To(target).Hostile &&

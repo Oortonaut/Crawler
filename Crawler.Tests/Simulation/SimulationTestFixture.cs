@@ -43,9 +43,9 @@ public class SimulationTestFixture : IDisposable
             .WithLocation(location)
             .WithRole(role)
             .WithComponentInitialization(initializeComponents)
-            .AddSupplies(Commodity.Fuel, 100)
-            .AddSupplies(Commodity.Rations, 50)
-            .AddSupplies(Commodity.Water, 50)
+            .AddCommodity(Commodity.Fuel, 100)
+            .AddCommodity(Commodity.Rations, 50)
+            .AddCommodity(Commodity.Water, 50)
             .Build();
     }
 
@@ -72,10 +72,10 @@ public class SimulationTestFixture : IDisposable
             .AddSegment(reactor)
             .AddSegment(traction)
             .AddSegment(weapon)
-            .AddSupplies(Commodity.Fuel, 100)
-            .AddSupplies(Commodity.Rations, 50)
-            .AddSupplies(Commodity.Water, 50)
-            .AddSupplies(Commodity.Slugs, 100) // Ammo for gun
+            .AddCommodity(Commodity.Fuel, 100)
+            .AddCommodity(Commodity.Rations, 50)
+            .AddCommodity(Commodity.Water, 50)
+            .AddCommodity(Commodity.Slugs, 100) // Ammo for gun
             .Build();
     }
 
@@ -99,11 +99,11 @@ public class SimulationTestFixture : IDisposable
             .WithComponentInitialization(true)
             .AddSegment(reactor)
             .AddSegment(traction)
-            .AddSupplies(Commodity.Fuel, 200)
-            .AddSupplies(Commodity.Rations, 100)
-            .AddSupplies(Commodity.Water, 100)
-            .AddCargo(Commodity.Metal, 50)
-            .AddCargo(Commodity.Alloys, 25)
+            .AddCommodity(Commodity.Fuel, 200)
+            .AddCommodity(Commodity.Rations, 100)
+            .AddCommodity(Commodity.Water, 100)
+            .AddCommodity(Commodity.Metal, 50, Account.Supplies | Account.Trade)
+            .AddCommodity(Commodity.Alloys, 25, Account.Supplies | Account.Trade)
             .Build();
     }
 

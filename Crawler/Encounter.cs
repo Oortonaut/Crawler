@@ -356,9 +356,9 @@ public sealed class Encounter : IComparable<Encounter> {
         trader.Faction = Factions.Independent;
         trader.Role = Roles.Trader;
 
-        // Traders should have cargo segments to sell
-        var cargoSegments = Inventory.GenerateCargoSegments(actorRng.Seed(), Location, goodsWealth, null);
-        trader.Supplies.AddSegments(cargoSegments);
+        // Traders should have packaged segments to sell
+        var cargoSegments = Inventory.GenerateTradeSegments(actorRng.Seed(), Location, goodsWealth, null);
+        trader.Inventory.AddSegments(cargoSegments);
 
         // Initialize role-specific components
         trader.InitializeComponents(actorRng.Seed());
@@ -382,7 +382,7 @@ public sealed class Encounter : IComparable<Encounter> {
         // Each weapon gets the same expected damage budget (accounting for hit chance), rounded up to whole volleys.
         foreach (var weapon in player.OffenseSegments.OfType<WeaponSegment>().Where(w => w.RequiresAmmo)) {
             var volleys = MathF.Ceiling(Tuning.Crawler.StartingAmmoDamage / (weapon.ExpectedDamagePerShot * weapon.Shots));
-            player.Supplies[weapon.AmmoType!.Value] += weapon.AmmoPerCycle * volleys;
+            player.Inventory[weapon.AmmoType!.Value] += weapon.AmmoPerCycle * volleys;
         }
 
         // Add player-specific components
@@ -435,8 +435,8 @@ public sealed class Encounter : IComparable<Encounter> {
         // Generate inventory with essentials and cargo
         var newInv = new Inventory();
         newInv.AddEssentials(actorRng.Seed(), Location, crew, 10);
-        newInv.AddCargo(actorRng.Seed(), Location, goodsWealth, civilianFaction);
-        var cargoSegments = Inventory.GenerateCargoSegments(actorRng.Seed(), Location, goodsWealth, null);
+        newInv.AddTradeGoods(actorRng.Seed(), Location, goodsWealth, civilianFaction);
+        var cargoSegments = Inventory.GenerateTradeSegments(actorRng.Seed(), Location, goodsWealth, null);
         newInv.AddSegments(cargoSegments);
 
         // Build crawler with role and component initialization set BEFORE Begin() is called
@@ -445,7 +445,7 @@ public sealed class Encounter : IComparable<Encounter> {
             .WithName(Names.HumanName(actorRng.Seed()))
             .WithFaction(civilianFaction)
             .WithLocation(Location)
-            .WithSupplies(newInv)
+            .WithInventory(newInv)
             .WithSegments(workingSegments)
             .WithRole(role)
             .WithComponentInitialization(true)  // Initialize components before Begin()
@@ -513,7 +513,7 @@ public sealed class Encounter : IComparable<Encounter> {
         // Clear the random cargo added by NewRandom, keep only essentials
         foreach (var c in Enum.GetValues<Commodity>()) {
             if (!c.IsEssential() && c != Commodity.Scrap) {
-                settlement.Cargo.Remove(c, settlement.Cargo[c]);
+                settlement.Inventory.Remove(c, settlement.Inventory[c, Account.Trade], Account.Trade);
             }
         }
         // Initialize cargo with equilibrium stock levels
@@ -677,7 +677,7 @@ public sealed class Encounter : IComparable<Encounter> {
         var Risked = new Inventory();
         Risked.Add(penaltyType, penaltyAmt);
 
-        var hazardActor = new ActorBase(rng.Seed(), Name, hazardDesc, Factions.Independent, Promised, new(), Location);
+        var hazardActor = new ActorBase(rng.Seed(), Name, hazardDesc, Factions.Independent, Promised, Location);
         hazardActor.AddComponent(new HazardComponent(
             Rng.Seed(),
             Risked,

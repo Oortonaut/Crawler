@@ -62,23 +62,13 @@ public partial class Crawler {
             return this;
         }
 
-        public new Builder WithSupplies(Inventory supplies) {
-            base.WithSupplies(supplies);
+        public new Builder WithInventory(Inventory inventory) {
+            base.WithInventory(inventory);
             return this;
         }
 
-        public new Builder WithCargo(Inventory cargo) {
-            base.WithCargo(cargo);
-            return this;
-        }
-
-        public new Builder AddSupplies(Commodity commodity, float amount) {
-            base.AddSupplies(commodity, amount);
-            return this;
-        }
-
-        public new Builder AddCargo(Commodity commodity, float amount) {
-            base.AddCargo(commodity, amount);
+        public new Builder AddCommodity(Commodity commodity, float amount, Account into = Account.Supplies) {
+            base.AddCommodity(commodity, amount, into);
             return this;
         }
 
@@ -114,8 +104,7 @@ public partial class Crawler {
                 Brief = scheduledInit.Brief,
                 Faction = scheduledInit.Faction,
                 Location = scheduledInit.Location,
-                Supplies = scheduledInit.Supplies,
-                Cargo = scheduledInit.Cargo,
+                Inventory = scheduledInit.Inventory,
                 Role = _role,
                 InitializeComponents = _initializeComponents,
                 WorkingSegments = _workingSegments
@@ -129,8 +118,7 @@ public partial class Crawler {
                 .WithBrief(init.Brief)
                 .WithFaction(init.Faction)
                 .WithLocation(init.Location)
-                .WithSupplies(init.Supplies)
-                .WithCargo(init.Cargo)
+                .WithInventory(init.Inventory)
                 .WithRole(init.Role)
                 .WithComponentInitialization(init.InitializeComponents)
                 .LoadWorkingSegments(init.WorkingSegments);
@@ -147,8 +135,7 @@ public partial class Crawler {
         internal string GetBrief() => _brief;
         internal Factions GetFaction() => _faction;
         internal Location GetLocation() => _location;
-        internal Inventory GetSupplies() => _supplies;
-        internal Inventory GetCargo() => _cargo;
+        internal Inventory GetInventory() => _inventory;
         internal Roles GetRole() => _role;
         internal bool GetInitializeComponents() => _initializeComponents;
         internal List<Segment> GetWorkingSegments() => _workingSegments;

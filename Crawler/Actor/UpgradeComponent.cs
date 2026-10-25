@@ -144,7 +144,7 @@ public class UpgradeComponent : ActorComponentBase {
             if (subjectToAgent?.Type == "UpgradeCustomer") return Immediacy.Failed;
             if (agentToSubject?.Type == "UpgradeMechanic") return Immediacy.Failed;
             if (!Recipe.CanApplyTo(TargetSegment)) return Immediacy.Failed;
-            if (Subject.Supplies[Commodity.Scrap] < Price) return Immediacy.Failed;
+            if (Subject.Inventory[Commodity.Scrap] < Price) return Immediacy.Failed;
 
             return Immediacy.Menu;
         }

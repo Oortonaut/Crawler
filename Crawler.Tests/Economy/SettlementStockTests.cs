@@ -65,14 +65,14 @@ public class SettlementStockTests
     }
 
     [Fact]
-    public void FromCargo_CopiesCargoAsBaseline()
+    public void FromTrade_CopiesTradeStockAsBaseline()
     {
         var cargo = new Inventory();
-        cargo.Add(Commodity.Fuel, 100);
-        cargo.Add(Commodity.Scrap, 500);
-        cargo.Add(Commodity.Water, 25);
+        cargo.Add(Commodity.Fuel, 100, Account.Supplies | Account.Trade);
+        cargo.Add(Commodity.Scrap, 500, Account.Supplies | Account.Trade);
+        cargo.Add(Commodity.Water, 25, Account.Supplies | Account.Trade);
 
-        var stock = SettlementStock.FromCargo(cargo);
+        var stock = SettlementStock.FromTrade(cargo);
 
         stock.Baseline(Commodity.Fuel).Should().Be(100);
         stock.Baseline(Commodity.Scrap).Should().Be(500);
@@ -102,10 +102,10 @@ public class SettlementStockTests
     }
 
     [Fact]
-    public void ForPopulation_UsesCargoIfHigher()
+    public void ForPopulation_UsesTradeStockIfHigher()
     {
         var cargo = new Inventory();
-        cargo.Add(Commodity.Rations, 1000); // Higher than scaled value
+        cargo.Add(Commodity.Rations, 1000, Account.Supplies | Account.Trade); // Higher than scaled value
 
         var stock = SettlementStock.ForPopulation(100, cargo);
 
@@ -132,7 +132,7 @@ public class SettlementStockTests
         stock.SetBaseline(Commodity.Fuel, 100);
 
         var cargo = new Inventory();
-        cargo.Add(Commodity.Fuel, 50); // Half stock
+        cargo.Add(Commodity.Fuel, 50, Account.Supplies | Account.Trade); // Half stock
 
         stock.UpdatePrices(cargo);
 
@@ -148,7 +148,7 @@ public class SettlementStockTests
         stock.SetBaseline(Commodity.Fuel, 100);
 
         var cargo = new Inventory();
-        cargo.Add(Commodity.Fuel, 200); // Double stock
+        cargo.Add(Commodity.Fuel, 200, Account.Supplies | Account.Trade); // Double stock
 
         stock.UpdatePrices(cargo);
 

@@ -137,21 +137,21 @@ public class GuardHireComponent : ActorComponentBase {
 
         // Check employer can afford deposit (half upfront)
         float deposit = cost / 2;
-        if (employer.Supplies[Commodity.Scrap] < deposit) {
+        if (employer.Inventory[Commodity.Scrap] < deposit) {
             employer.Message("Not enough scrap to hire this guard.");
             return false;
         }
 
         // Pay deposit
-        employer.Supplies[Commodity.Scrap] -= deposit;
-        guard.Supplies[Commodity.Scrap] += deposit;
+        employer.Inventory[Commodity.Scrap] -= deposit;
+        guard.Inventory[Commodity.Scrap] += deposit;
 
         // Get guard component and accept contract
         var guardComponent = guard.Components.OfType<GuardComponent>().FirstOrDefault();
         if (guardComponent == null) {
             // Refund if guard doesn't have component
-            employer.Supplies[Commodity.Scrap] += deposit;
-            guard.Supplies[Commodity.Scrap] -= deposit;
+            employer.Inventory[Commodity.Scrap] += deposit;
+            guard.Inventory[Commodity.Scrap] -= deposit;
             return false;
         }
 

@@ -28,8 +28,7 @@ public class ActorScheduled : ActorBase, IComparable<ActorScheduled> {
                 Brief = baseInit.Brief,
                 Faction = baseInit.Faction,
                 Location = baseInit.Location,
-                Supplies = baseInit.Supplies,
-                Cargo = baseInit.Cargo
+                Inventory = baseInit.Inventory
             };
         }
 
@@ -40,8 +39,7 @@ public class ActorScheduled : ActorBase, IComparable<ActorScheduled> {
                 .WithBrief(init.Brief)
                 .WithFaction(init.Faction)
                 .WithLocation(init.Location)
-                .WithSupplies(init.Supplies)
-                .WithCargo(init.Cargo);
+                .WithInventory(init.Inventory);
         }
     }
 
@@ -53,8 +51,8 @@ public class ActorScheduled : ActorBase, IComparable<ActorScheduled> {
         FromData(data);
     }
 
-    public ActorScheduled(ulong seed, string name, string brief, Factions faction, Inventory supplies, Inventory cargo, Location location)
-        : base(seed, name, brief, faction, supplies, cargo, location) {
+    public ActorScheduled(ulong seed, string name, string brief, Factions faction, Inventory inventory, Location location)
+        : base(seed, name, brief, faction, inventory, location) {
     }
 
     /// <summary>

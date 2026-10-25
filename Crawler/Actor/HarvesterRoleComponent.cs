@@ -74,7 +74,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
 
     ActorEvent? PlanNextAction(Crawler crawler, TimePoint time) {
         // Check if we should sell (cargo getting full)
-        float cargoFullness = 1 - (crawler.Cargo.AvailableVolume / crawler.Cargo.MaxVolume);
+        float cargoFullness = 1 - (crawler.Inventory.AvailableVolume / crawler.Inventory.MaxVolume);
         if (cargoFullness >= Tuning.Harvester.SellThreshold) {
             var settlement = FindNearestSettlement(crawler);
             if (settlement != null) {
@@ -103,7 +103,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
         }
 
         // Wait and retry later - priority based on cargo value
-        float cargoValue = crawler.Cargo.ValueAt(crawler.Location);
+        float cargoValue = crawler.Inventory.ValueAt(crawler.Location, Account.Trade);
         int priority = EventPriority.ForTrade(crawler, cargoValue);
         return crawler.NewEventFor("Waiting for resources", priority,
             Tuning.Harvester.IdleWaitDuration, Post: () => { });
@@ -133,7 +133,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
 
         // Check cargo space
         float volume = resource.ResourceType.Volume();
-        if (crawler.Cargo.AvailableVolume < volume) {
+        if (crawler.Inventory.AvailableVolume < volume) {
             // Cargo full, go sell
             _currentAction = HarvesterAction.Idle;
             return GetNextEvent();
@@ -144,7 +144,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
         float extracted = resource.Extract(totalYield, harvestSegments.Count);
 
         if (extracted > 0) {
-            crawler.Supplies.Add(resource.ResourceType, extracted);
+            crawler.Inventory.Add(resource.ResourceType, extracted);
             crawler.Message($"{crawler.Name} extracted {extracted:F1} {resource.ResourceType}");
         }
 
@@ -172,7 +172,7 @@ public class HarvesterRoleComponent : ActorComponentBase {
         ];
 
         foreach (var commodity in sellable) {
-            float quantity = crawler.Supplies[commodity];
+            float quantity = crawler.Inventory[commodity];
             if (quantity <= 0) continue;
 
             // Sell through settlement (affects settlement inventory)

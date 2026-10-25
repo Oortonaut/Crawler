@@ -35,7 +35,7 @@ public class CustomsSearchTests
             .WithComponentInitialization(true)
             .AddSegment(reactor)
             .AddSegment(traction)
-            .AddSupplies(Commodity.Fuel, 100)
+            .AddCommodity(Commodity.Fuel, 100)
             .Build();
         _encounter.AddActor(officer);
         return officer;

@@ -166,9 +166,7 @@ public class InventoryTests
         var inventory = new Inventory();
         inventory.Add(Commodity.Scrap, 100);
 
-        var result = inventory.Contains(Commodity.Scrap, 50);
-
-        result.Should().Be(FromInventory.Primary);
+        inventory.Contains(Commodity.Scrap, 50).Should().BeTrue();
     }
 
     [Fact]
@@ -177,9 +175,7 @@ public class InventoryTests
         var inventory = new Inventory();
         inventory.Add(Commodity.Scrap, 25);
 
-        var result = inventory.Contains(Commodity.Scrap, 50);
-
-        result.Should().Be(FromInventory.None);
+        inventory.Contains(Commodity.Scrap, 50).Should().BeFalse();
     }
 
     [Fact]
@@ -193,7 +189,7 @@ public class InventoryTests
         required.Add(Commodity.Scrap, 50);
         required.Add(Commodity.Fuel, 25);
 
-        inventory.Contains(required).Should().Be(FromInventory.Primary);
+        inventory.Contains(required).Should().BeTrue();
     }
 
     [Fact]
@@ -207,98 +203,141 @@ public class InventoryTests
         required.Add(Commodity.Scrap, 50);
         required.Add(Commodity.Fuel, 25); // More than available
 
-        inventory.Contains(required).Should().Be(FromInventory.None);
+        inventory.Contains(required).Should().BeFalse();
     }
 
-    // Overdraft tests
+    // Account tests
     [Fact]
-    public void Overdraft_FulfillsDeficit()
+    public void Read_SumsEveryStackServingTheMask()
     {
-        var primary = new Inventory();
-        primary.Add(Commodity.Scrap, 30);
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Fuel, 10, Account.Supplies | Account.Trade);
+        inventory.Add(Commodity.Fuel, 20, Account.Trade);
+        inventory.Add(Commodity.Fuel, 40, Account.Cargo);
 
-        var overdraft = new Inventory();
-        overdraft.Add(Commodity.Scrap, 100);
-
-        primary.Overdraft = overdraft;
-
-        // Remove more than primary has
-        primary.Remove(Commodity.Scrap, 50);
-
-        primary[Commodity.Scrap].Should().Be(0);
-        overdraft[Commodity.Scrap].Should().Be(80); // 100 - 20 (deficit)
+        inventory[Commodity.Fuel, Account.Supplies].Should().Be(10);
+        inventory[Commodity.Fuel, Account.Trade].Should().Be(30);
+        inventory[Commodity.Fuel, Account.Cargo].Should().Be(40);
+        inventory[Commodity.Fuel, Account.All].Should().Be(70);
     }
 
     [Fact]
-    public void Overdraft_Contains_ReturnsOverdraft()
+    public void Remove_DrawsDedicatedStacksBeforeSharedOnes()
     {
-        var primary = new Inventory();
-        primary.Add(Commodity.Scrap, 30);
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Fuel, 30, Account.Supplies);
+        inventory.Add(Commodity.Fuel, 100, Account.Supplies | Account.Trade);
 
-        var overdraft = new Inventory();
-        overdraft.Add(Commodity.Scrap, 100);
+        inventory.Remove(Commodity.Fuel, 50);
 
-        primary.Overdraft = overdraft;
-
-        var result = primary.Contains(Commodity.Scrap, 50);
-
-        result.Should().Be(FromInventory.Overdraft);
+        inventory.Stack(Commodity.Fuel, Account.Supplies).Should().Be(0);
+        inventory.Stack(Commodity.Fuel, Account.Supplies | Account.Trade).Should().Be(80);
     }
 
     [Fact]
-    public void Overdraft_Chain_WorksRecursively()
+    public void Remove_NeverTouchesStacksOutsideTheMask()
     {
-        var primary = new Inventory();
-        primary.Add(Commodity.Scrap, 10);
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Fuel, 30, Account.Trade);
+        inventory.Add(Commodity.Fuel, 30, Account.Cargo);
 
-        var secondary = new Inventory();
-        secondary.Add(Commodity.Scrap, 20);
+        inventory.Remove(Commodity.Fuel, 50, Account.Supplies);
+        inventory[Commodity.Fuel, Account.All].Should().Be(60);
 
-        var tertiary = new Inventory();
-        tertiary.Add(Commodity.Scrap, 100);
-
-        primary.Overdraft = secondary;
-        secondary.Overdraft = tertiary;
-
-        // Need 50, have 10+20+100 available
-        var result = primary.Contains(Commodity.Scrap, 50);
-
-        result.Should().Be(FromInventory.Overdraft);
+        inventory.Remove(Commodity.Fuel, 50, Account.Trade);
+        inventory.Stack(Commodity.Fuel, Account.Trade).Should().Be(0);
+        inventory.Stack(Commodity.Fuel, Account.Cargo).Should().Be(30);
     }
 
     [Fact]
-    public void Remove_Inventory_UsesPrimaryFirst_ThenOverdraft()
+    public void Indexer_DepositsIntoExactStack_WithdrawsByMask()
     {
-        var primary = new Inventory();
-        primary.Add(Commodity.Scrap, 30);
-        primary.Add(Commodity.Fuel, 50);
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Scrap, 30, Account.Supplies | Account.Trade);
 
-        var overdraft = new Inventory();
-        overdraft.Add(Commodity.Scrap, 100);
+        inventory[Commodity.Scrap] += 10;
+        inventory.Stack(Commodity.Scrap, Account.Supplies).Should().Be(10);
 
-        primary.Overdraft = overdraft;
+        inventory[Commodity.Scrap] -= 25;
+        inventory.Stack(Commodity.Scrap, Account.Supplies).Should().Be(0);
+        inventory.Stack(Commodity.Scrap, Account.Supplies | Account.Trade).Should().Be(15);
+    }
+
+    [Fact]
+    public void Move_TransfersBetweenExactStacks_CappedAtWhatIsThere()
+    {
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Fuel, 30, Account.Supplies);
+
+        var moved = inventory.Move(Commodity.Fuel, 50, Account.Supplies, Account.Cargo);
+
+        moved.Should().Be(30);
+        inventory.Stack(Commodity.Fuel, Account.Supplies).Should().Be(0);
+        inventory.Stack(Commodity.Fuel, Account.Cargo).Should().Be(30);
+    }
+
+    [Fact]
+    public void Contains_Inventory_OnlyCountsStacksServingTheMask()
+    {
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Scrap, 30);
+        inventory.Add(Commodity.Scrap, 100, Account.Cargo);
+
+        var required = new Inventory();
+        required.Add(Commodity.Scrap, 50);
+
+        inventory.Contains(required).Should().BeFalse();
+        inventory.Contains(required, Account.All).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Remove_Inventory_DrawsAcrossStacksServingTheMask()
+    {
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Scrap, 30);
+        inventory.Add(Commodity.Scrap, 100, Account.Supplies | Account.Trade);
+        inventory.Add(Commodity.Fuel, 50);
 
         var toRemove = new Inventory();
-        toRemove.Add(Commodity.Scrap, 50); // 30 from primary, 20 from overdraft
-        toRemove.Add(Commodity.Fuel, 25);  // all from primary
+        toRemove.Add(Commodity.Scrap, 50); // 30 from Supplies, 20 from Supplies|Trade
+        toRemove.Add(Commodity.Fuel, 25);
 
-        primary.Remove(toRemove);
+        inventory.Remove(toRemove);
 
-        primary[Commodity.Scrap].Should().Be(0);
-        primary[Commodity.Fuel].Should().Be(25);
-        overdraft[Commodity.Scrap].Should().Be(80);
+        inventory.Stack(Commodity.Scrap, Account.Supplies).Should().Be(0);
+        inventory.Stack(Commodity.Scrap, Account.Supplies | Account.Trade).Should().Be(80);
+        inventory[Commodity.Fuel].Should().Be(25);
     }
 
     [Fact]
-    public void SetOverdraft_ReturnsSelf_ForChaining()
+    public void Subset_And_RemoveStacks_RoundTrip()
     {
-        var primary = new Inventory();
-        var overdraft = new Inventory();
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Fuel, 10, Account.Supplies);
+        inventory.Add(Commodity.Fuel, 20, Account.Trade);
 
-        var result = primary.SetOverdraft(overdraft);
+        var trade = inventory.Subset(Account.Trade);
+        trade.Stack(Commodity.Fuel, Account.Trade).Should().Be(20);
+        trade[Commodity.Fuel, Account.Supplies].Should().Be(0);
 
-        result.Should().BeSameAs(primary);
-        primary.Overdraft.Should().BeSameAs(overdraft);
+        inventory.ContainsStacks(trade).Should().BeTrue();
+        inventory.RemoveStacks(trade);
+        inventory.Stack(Commodity.Fuel, Account.Trade).Should().Be(0);
+        inventory.Stack(Commodity.Fuel, Account.Supplies).Should().Be(10);
+    }
+
+    [Fact]
+    public void Data_RoundTripsStacks()
+    {
+        var inventory = new Inventory();
+        inventory.Add(Commodity.Fuel, 10, Account.Supplies | Account.Trade);
+        inventory.Add(Commodity.Fuel, 5, Account.Cargo);
+
+        var restored = new Inventory();
+        restored.FromData(inventory.ToData());
+
+        restored.Stack(Commodity.Fuel, Account.Supplies | Account.Trade).Should().Be(10);
+        restored.Stack(Commodity.Fuel, Account.Cargo).Should().Be(5);
     }
 
     // Capacity tests

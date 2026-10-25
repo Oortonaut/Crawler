@@ -27,7 +27,7 @@ public class ResourceActor : ActorBase {
         ResourceParams p,
         string name,
         string description
-    ) : base(seed, name, description, Factions.Independent, new Inventory(), new Inventory(), location) {
+    ) : base(seed, name, description, Factions.Independent, new Inventory(), location) {
         _rng = new XorShift(seed);
         ResourceType = type;
 
@@ -160,7 +160,7 @@ public record ExtractInteraction(
         float extracted = Resource.Extract(TotalYield, HarvestSegments.Count);
 
         if (Harvester is Crawler c) {
-            c.Supplies.Add(Resource.ResourceType, extracted);
+            c.Inventory.Add(Resource.ResourceType, extracted);
         }
 
         // Show extraction result

@@ -103,7 +103,7 @@ public class CombatBasicsTests : IDisposable
             .WithName("Gunner")
             .WithLocation(location)
             .AddSegment(weapon)
-            .AddSupplies(Commodity.Slugs, 100)
+            .AddCommodity(Commodity.Slugs, 100)
             .Build();
 
         var hits = weapon.GenerateFire(99999UL, 0).ToList();
@@ -339,7 +339,7 @@ public class VulnerabilityTests : IDisposable
         crawler.IsDepowered.Should().BeFalse();
 
         // Out of fuel means depowered (reactor charge alone doesn't count)
-        crawler.Supplies[Commodity.Fuel] = 0;
+        crawler.Inventory[Commodity.Fuel] = 0;
 
         crawler.IsDepowered.Should().BeTrue();
     }

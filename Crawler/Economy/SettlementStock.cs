@@ -2,7 +2,7 @@ namespace Crawler.Economy;
 
 /// <summary>
 /// Tracks baseline stock levels for settlements and calculates price multipliers.
-/// The actual stock is in Cargo - this just tracks what the "normal" level is
+/// The actual stock is in the Trade account - this just tracks what the "normal" level is
 /// so prices can respond to supply/demand changes.
 /// </summary>
 public class SettlementStock {
@@ -51,30 +51,30 @@ public class SettlementStock {
     /// Update prices based on current stock vs baseline.
     /// Prices adjust within 0.5x-2.0x of InitialValue based on supply pressure.
     /// </summary>
-    public void UpdatePrices(Inventory cargo) {
+    public void UpdatePrices(Inventory inventory) {
         foreach (var c in Enum.GetValues<Commodity>()) {
-            float multiplier = PriceMultiplier(c, cargo[c]);
+            float multiplier = PriceMultiplier(c, inventory[c, Account.Trade]);
             _prices[c] = CommodityEx.Data[c].InitialValue * multiplier;
         }
     }
 
     /// <summary>
-    /// Initialize baseline from current cargo inventory.
+    /// Initialize baseline from current trade stock.
     /// </summary>
-    public static SettlementStock FromCargo(Inventory cargo) {
+    public static SettlementStock FromTrade(Inventory inventory) {
         var stock = new SettlementStock();
         foreach (var c in Enum.GetValues<Commodity>()) {
-            stock._baseline[c] = cargo[c];
+            stock._baseline[c] = inventory[c, Account.Trade];
         }
         return stock;
     }
 
     /// <summary>
     /// Create stock with population-scaled baseline for essential commodities.
-    /// Uses cargo amounts as minimums but scales up essentials for larger populations.
+    /// Uses trade stock as minimums but scales up essentials for larger populations.
     /// </summary>
-    public static SettlementStock ForPopulation(int population, Inventory cargo) {
-        var stock = FromCargo(cargo);
+    public static SettlementStock ForPopulation(int population, Inventory inventory) {
+        var stock = FromTrade(inventory);
 
         // Scale baseline for essentials based on population
         float popFactor = population / 100f;
@@ -94,7 +94,7 @@ public class SettlementStock {
     /// <summary>
     /// Create stock with equilibrium-based baselines.
     /// Baselines are calculated from consumption rates and production capacity,
-    /// so prices start at 1.0x when cargo matches equilibrium.
+    /// so prices start at 1.0x when trade stock matches equilibrium.
     /// </summary>
     public static SettlementStock ForEquilibrium(
         int population,

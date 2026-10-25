@@ -27,8 +27,13 @@ public class SavedCrawler {
     public string Name { get; set; } = "";
     public Factions Faction { get; set; }
     public Vector2 LocationPos { get; set; }
-    public SavedInventory Supplies { get; set; } = new();
-    public SavedInventory Cargo { get; set; } = new();
+    /// <summary>One saved inventory per non-empty account stack.</summary>
+    public Dictionary<Account, SavedInventory> Inventory { get; set; } = new();
+    // Saves from before accounts: Supplies loads as the Supplies stack, Cargo as Supplies|Trade
+    [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
+    public SavedInventory? Supplies { get; set; }
+    [YamlMember(DefaultValuesHandling = DefaultValuesHandling.OmitNull)]
+    public SavedInventory? Cargo { get; set; }
     public float Markup { get; set; } = 1.0f;
     public float Spread { get; set; } = 1.0f;
     public Dictionary<string, SavedActorRelation> Relations { get; set; } = new();
@@ -197,8 +202,7 @@ public static class SaveLoadExtensions {
             Name = data.Init.Name,
             Faction = data.Init.Faction,
             LocationPos = data.Init.Location.Position,
-            Supplies = data.Init.Supplies.ToSaveData(),
-            Cargo = data.Init.Cargo.ToSaveData(),
+            Inventory = data.Init.Inventory.ToSaveData(),
             Markup = tradeComponent?.Markup ?? 1.0f,
             Spread = tradeComponent?.Spread ?? 1.0f,
             Relations = data.ActorRelations.ToDictionary(
@@ -225,61 +229,66 @@ public static class SaveLoadExtensions {
         };
     }
 
-    public static SavedInventory ToSaveData(this Inventory inventory) {
+    public static Dictionary<Account, SavedInventory> ToSaveData(this Inventory inventory) =>
+        AccountEx.Stacks
+            .Where(stack => inventory.Stacks.Any(entry => entry.Stack == stack) || inventory.Segments.Any(s => s.Account == stack))
+            .ToDictionary(stack => stack, stack => inventory.ToSaveData(stack));
+
+    public static SavedInventory ToSaveData(this Inventory inventory, Account stack) {
         return new SavedInventory {
             // Essential/Currency
-            Scrap = inventory[Commodity.Scrap],
-            Fuel = inventory[Commodity.Fuel],
-            Crew = inventory[Commodity.Crew],
-            Morale = inventory[Commodity.Morale],
-            Isotopes = inventory[Commodity.Isotopes],
-            Nanomaterials = inventory[Commodity.Nanomaterials],
+            Scrap = inventory.Stack(Commodity.Scrap, stack),
+            Fuel = inventory.Stack(Commodity.Fuel, stack),
+            Crew = inventory.Stack(Commodity.Crew, stack),
+            Morale = inventory.Stack(Commodity.Morale, stack),
+            Isotopes = inventory.Stack(Commodity.Isotopes, stack),
+            Nanomaterials = inventory.Stack(Commodity.Nanomaterials, stack),
 
             // Life support
-            Air = inventory[Commodity.Air],
-            Water = inventory[Commodity.Water],
-            Rations = inventory[Commodity.Rations],
+            Air = inventory.Stack(Commodity.Air, stack),
+            Water = inventory.Stack(Commodity.Water, stack),
+            Rations = inventory.Stack(Commodity.Rations, stack),
 
             // Raw materials
-            Biomass = inventory[Commodity.Biomass],
-            Ore = inventory[Commodity.Ore],
-            Silicates = inventory[Commodity.Silicates],
+            Biomass = inventory.Stack(Commodity.Biomass, stack),
+            Ore = inventory.Stack(Commodity.Ore, stack),
+            Silicates = inventory.Stack(Commodity.Silicates, stack),
 
             // Refined materials
-            Metal = inventory[Commodity.Metal],
-            Chemicals = inventory[Commodity.Chemicals],
-            Glass = inventory[Commodity.Glass],
+            Metal = inventory.Stack(Commodity.Metal, stack),
+            Chemicals = inventory.Stack(Commodity.Chemicals, stack),
+            Glass = inventory.Stack(Commodity.Glass, stack),
 
             // Parts
-            Ceramics = inventory[Commodity.Ceramics],
-            Polymers = inventory[Commodity.Polymers],
-            Alloys = inventory[Commodity.Alloys],
-            Electronics = inventory[Commodity.Electronics],
-            Explosives = inventory[Commodity.Explosives],
+            Ceramics = inventory.Stack(Commodity.Ceramics, stack),
+            Polymers = inventory.Stack(Commodity.Polymers, stack),
+            Alloys = inventory.Stack(Commodity.Alloys, stack),
+            Electronics = inventory.Stack(Commodity.Electronics, stack),
+            Explosives = inventory.Stack(Commodity.Explosives, stack),
 
             // Consumer Goods
-            Medicines = inventory[Commodity.Medicines],
-            Textiles = inventory[Commodity.Textiles],
-            Gems = inventory[Commodity.Gems],
-            Toys = inventory[Commodity.Toys],
-            Machines = inventory[Commodity.Machines],
-            AiCores = inventory[Commodity.AiCores],
-            Media = inventory[Commodity.Media],
+            Medicines = inventory.Stack(Commodity.Medicines, stack),
+            Textiles = inventory.Stack(Commodity.Textiles, stack),
+            Gems = inventory.Stack(Commodity.Gems, stack),
+            Toys = inventory.Stack(Commodity.Toys, stack),
+            Machines = inventory.Stack(Commodity.Machines, stack),
+            AiCores = inventory.Stack(Commodity.AiCores, stack),
+            Media = inventory.Stack(Commodity.Media, stack),
 
             // Vice & Contraband
-            Liquor = inventory[Commodity.Liquor],
-            Stims = inventory[Commodity.Stims],
-            Downers = inventory[Commodity.Downers],
-            Trips = inventory[Commodity.Trips],
-            SmallArms = inventory[Commodity.SmallArms],
+            Liquor = inventory.Stack(Commodity.Liquor, stack),
+            Stims = inventory.Stack(Commodity.Stims, stack),
+            Downers = inventory.Stack(Commodity.Downers, stack),
+            Trips = inventory.Stack(Commodity.Trips, stack),
+            SmallArms = inventory.Stack(Commodity.SmallArms, stack),
 
             // Religious items
-            Idols = inventory[Commodity.Idols],
-            Texts = inventory[Commodity.Texts],
-            Relics = inventory[Commodity.Relics],
+            Idols = inventory.Stack(Commodity.Idols, stack),
+            Texts = inventory.Stack(Commodity.Texts, stack),
+            Relics = inventory.Stack(Commodity.Relics, stack),
 
             // Segments
-            Segments = inventory.Segments.Select(s => s.ToSaveData()).ToList()
+            Segments = inventory.Segments.Where(s => s.Account == stack).Select(s => s.ToSaveData()).ToList()
         };
     }
 
@@ -474,8 +483,12 @@ public static class SaveLoadExtensions {
 
     public static Crawler ToGameCrawler(this SavedCrawler savedCrawler, Map map) {
         var location = map.FindLocationByPosition(savedCrawler.LocationPos);
-        var supplies = savedCrawler.Supplies.ToGameInventory();
-        var cargo = savedCrawler.Cargo.ToGameInventory();
+        var inventory = new Inventory();
+        foreach (var (stack, savedInv) in savedCrawler.Inventory) {
+            savedInv.AddTo(inventory, stack);
+        }
+        savedCrawler.Supplies?.AddTo(inventory, Account.Supplies);
+        savedCrawler.Cargo?.AddTo(inventory, Account.Supplies | Account.Trade);
 
         // Create Init structure
         var init = new Crawler.Init {
@@ -484,8 +497,7 @@ public static class SaveLoadExtensions {
             Brief = "",
             Faction = savedCrawler.Faction,
             Location = location,
-            Supplies = supplies,
-            Cargo = cargo,
+            Inventory = inventory,
             Role = Roles.None, // TODO: Save/restore role
             InitializeComponents = false,
             WorkingSegments = new List<Segment>() // Will be restored from segments in supplies
@@ -545,66 +557,63 @@ public static class SaveLoadExtensions {
         return crawler;
     }
 
-    public static Inventory ToGameInventory(this SavedInventory savedInv) {
-        var inventory = new Inventory();
+    public static void AddTo(this SavedInventory savedInv, Inventory inventory, Account stack) {
         // Essential/Currency
-        inventory[Commodity.Scrap] = savedInv.Scrap;
-        inventory[Commodity.Fuel] = savedInv.Fuel;
-        inventory[Commodity.Crew] = savedInv.Crew;
-        inventory[Commodity.Morale] = savedInv.Morale;
-        inventory[Commodity.Isotopes] = savedInv.Isotopes;
-        inventory[Commodity.Nanomaterials] = savedInv.Nanomaterials;
+        inventory.Add(Commodity.Scrap, savedInv.Scrap, stack);
+        inventory.Add(Commodity.Fuel, savedInv.Fuel, stack);
+        inventory.Add(Commodity.Crew, savedInv.Crew, stack);
+        inventory.Add(Commodity.Morale, savedInv.Morale, stack);
+        inventory.Add(Commodity.Isotopes, savedInv.Isotopes, stack);
+        inventory.Add(Commodity.Nanomaterials, savedInv.Nanomaterials, stack);
 
         // Life support
-        inventory[Commodity.Air] = savedInv.Air;
-        inventory[Commodity.Water] = savedInv.Water;
-        inventory[Commodity.Rations] = savedInv.Rations;
+        inventory.Add(Commodity.Air, savedInv.Air, stack);
+        inventory.Add(Commodity.Water, savedInv.Water, stack);
+        inventory.Add(Commodity.Rations, savedInv.Rations, stack);
 
         // Raw materials
-        inventory[Commodity.Biomass] = savedInv.Biomass;
-        inventory[Commodity.Ore] = savedInv.Ore;
-        inventory[Commodity.Silicates] = savedInv.Silicates;
+        inventory.Add(Commodity.Biomass, savedInv.Biomass, stack);
+        inventory.Add(Commodity.Ore, savedInv.Ore, stack);
+        inventory.Add(Commodity.Silicates, savedInv.Silicates, stack);
 
         // Refined materials
-        inventory[Commodity.Metal] = savedInv.Metal;
-        inventory[Commodity.Chemicals] = savedInv.Chemicals;
-        inventory[Commodity.Glass] = savedInv.Glass;
+        inventory.Add(Commodity.Metal, savedInv.Metal, stack);
+        inventory.Add(Commodity.Chemicals, savedInv.Chemicals, stack);
+        inventory.Add(Commodity.Glass, savedInv.Glass, stack);
 
         // Parts
-        inventory[Commodity.Ceramics] = savedInv.Ceramics;
-        inventory[Commodity.Polymers] = savedInv.Polymers;
-        inventory[Commodity.Alloys] = savedInv.Alloys;
-        inventory[Commodity.Electronics] = savedInv.Electronics;
-        inventory[Commodity.Explosives] = savedInv.Explosives;
+        inventory.Add(Commodity.Ceramics, savedInv.Ceramics, stack);
+        inventory.Add(Commodity.Polymers, savedInv.Polymers, stack);
+        inventory.Add(Commodity.Alloys, savedInv.Alloys, stack);
+        inventory.Add(Commodity.Electronics, savedInv.Electronics, stack);
+        inventory.Add(Commodity.Explosives, savedInv.Explosives, stack);
 
         // Consumer Goods
-        inventory[Commodity.Medicines] = savedInv.Medicines;
-        inventory[Commodity.Textiles] = savedInv.Textiles;
-        inventory[Commodity.Gems] = savedInv.Gems;
-        inventory[Commodity.Toys] = savedInv.Toys;
-        inventory[Commodity.Machines] = savedInv.Machines;
-        inventory[Commodity.AiCores] = savedInv.AiCores;
-        inventory[Commodity.Media] = savedInv.Media;
+        inventory.Add(Commodity.Medicines, savedInv.Medicines, stack);
+        inventory.Add(Commodity.Textiles, savedInv.Textiles, stack);
+        inventory.Add(Commodity.Gems, savedInv.Gems, stack);
+        inventory.Add(Commodity.Toys, savedInv.Toys, stack);
+        inventory.Add(Commodity.Machines, savedInv.Machines, stack);
+        inventory.Add(Commodity.AiCores, savedInv.AiCores, stack);
+        inventory.Add(Commodity.Media, savedInv.Media, stack);
 
         // Vice & Contraband
-        inventory[Commodity.Liquor] = savedInv.Liquor;
-        inventory[Commodity.Stims] = savedInv.Stims;
-        inventory[Commodity.Downers] = savedInv.Downers;
-        inventory[Commodity.Trips] = savedInv.Trips;
-        inventory[Commodity.SmallArms] = savedInv.SmallArms;
+        inventory.Add(Commodity.Liquor, savedInv.Liquor, stack);
+        inventory.Add(Commodity.Stims, savedInv.Stims, stack);
+        inventory.Add(Commodity.Downers, savedInv.Downers, stack);
+        inventory.Add(Commodity.Trips, savedInv.Trips, stack);
+        inventory.Add(Commodity.SmallArms, savedInv.SmallArms, stack);
 
         // Religious items
-        inventory[Commodity.Idols] = savedInv.Idols;
-        inventory[Commodity.Texts] = savedInv.Texts;
-        inventory[Commodity.Relics] = savedInv.Relics;
+        inventory.Add(Commodity.Idols, savedInv.Idols, stack);
+        inventory.Add(Commodity.Texts, savedInv.Texts, stack);
+        inventory.Add(Commodity.Relics, savedInv.Relics, stack);
 
         // Segments
         foreach (var savedSegment in savedInv.Segments) {
             var segment = savedSegment.ToGameSegment();
-            inventory.Add(segment);
+            inventory.Add(segment, stack);
         }
-
-        return inventory;
     }
 
     public static Segment ToGameSegment(this SavedSegment savedSegment) {

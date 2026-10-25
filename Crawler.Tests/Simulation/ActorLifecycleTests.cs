@@ -33,9 +33,8 @@ public class ActorLifecycleTests : IDisposable
         var location = _fixture.GetLocation();
         var crawler = _fixture.CreateCrawler("Test Crawler", location);
 
-        crawler.Supplies.Should().NotBeNull();
-        crawler.Cargo.Should().NotBeNull();
-        crawler.Supplies[Commodity.Fuel].Should().BeGreaterThan(0);
+        crawler.Inventory.Should().NotBeNull();
+        crawler.Inventory[Commodity.Fuel].Should().BeGreaterThan(0);
     }
 
     [Fact]
@@ -138,7 +137,7 @@ public class ActorLifecycleTests : IDisposable
     }
 
     [Fact]
-    public void Crawler_SuppliesOverdraft_ChainsToCargo()
+    public void Crawler_SuppliesDrawDown_BeforeSharedTradeStack()
     {
         var location = _fixture.GetLocation();
 
@@ -146,16 +145,16 @@ public class ActorLifecycleTests : IDisposable
             .WithSeed(12345)
             .WithName("Test")
             .WithLocation(location)
-            .AddSupplies(Commodity.Fuel, 10)
-            .AddCargo(Commodity.Fuel, 50)
+            .AddCommodity(Commodity.Fuel, 10)
+            .AddCommodity(Commodity.Fuel, 50, Account.Supplies | Account.Trade)
             .Build();
 
-        // Remove more than supplies has - should pull from cargo
-        crawler.Supplies.Remove(Commodity.Fuel, 15);
+        // Remove more than the Supplies stack has - the rest comes from Supplies|Trade
+        crawler.Inventory.Remove(Commodity.Fuel, 15);
 
-        // After removing 15: supplies had 10, so 5 should come from cargo
-        crawler.Supplies[Commodity.Fuel].Should().Be(0);
-        crawler.Cargo[Commodity.Fuel].Should().Be(45); // 50 - 5
+        // After removing 15: Supplies had 10, so 5 should come from Supplies|Trade
+        crawler.Inventory.Stack(Commodity.Fuel, Account.Supplies).Should().Be(0);
+        crawler.Inventory.Stack(Commodity.Fuel, Account.Supplies | Account.Trade).Should().Be(45); // 50 - 5
     }
 
     [Fact]

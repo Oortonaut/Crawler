@@ -100,10 +100,10 @@ public record ProductionRecipe(
     /// <summary>
     /// Produce outputs into the inventory.
     /// </summary>
-    public void ProduceOutputs(Inventory inventory, float efficiency = 1.0f, float batchSize = 1.0f) {
+    public void ProduceOutputs(Inventory inventory, float efficiency = 1.0f, float batchSize = 1.0f, Account into = Account.Supplies) {
         foreach (var (commodity, amount) in Outputs) {
             var produced = amount * efficiency * batchSize;
-            inventory.Add(commodity, produced);
+            inventory.Add(commodity, produced, into);
             Game.Instance?.TrackProduction(commodity, produced);
         }
     }
@@ -111,10 +111,10 @@ public record ProductionRecipe(
     /// <summary>
     /// Produce waste into the inventory.
     /// </summary>
-    public void ProduceWaste(Inventory inventory, float batchSize = 1.0f) {
+    public void ProduceWaste(Inventory inventory, float batchSize = 1.0f, Account into = Account.Supplies) {
         foreach (var (commodity, amount) in Waste) {
             var produced = amount * batchSize;
-            inventory.Add(commodity, produced);
+            inventory.Add(commodity, produced, into);
             Game.Instance?.TrackProduction(commodity, produced);
         }
     }

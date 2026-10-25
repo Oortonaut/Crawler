@@ -14,6 +14,7 @@
 - [Enums](#key-enums)
 
 ## Recent Changes
+- **2026-10-24**: Merged Supplies and Cargo into one `Inventory` per actor with `[Flags] Account { Supplies, Trade, Cargo }` stacks; removed `Overdraft` and `FromInventory`; packaged segments carry `Segment.Account`
 - **2026-01-06**: Changed Crawler to inherit from ActorScheduled instead of ActorBase; Crawler now has scheduling capabilities (ConsumeTime, IdleUntil) for time advancement; fixed SimulateTo to handle first-tick case where Time == TimePoint.Zero
 - **2025-01-28**: Implemented Init/Cfg/Data pattern for save/load system; added ActorBase.Data, ActorScheduled.Data, and Crawler.Data structures forming inheritance hierarchy; all Data structures contain Init as first field with ToData()/FromData() methods
 - **2025-11-08**: Added XorShift RNG and GaussianSampler to Crawler class for deterministic randomness; all crawlers now maintain their own RNG state with seed-based initialization
@@ -38,7 +39,7 @@ interface IActor {
     EActorFlags Flags;              // Type flags (Mobile, Settlement, etc.)
 
     // ===== State =====
-    Inventory Supplies;             // Commodities and segments
+    Inventory Inventory;            // Commodities and segments, split into Account stacks
     string EndMessage;              // Game over message (if applicable)
     EEndState? EndState;            // End condition (Destroyed, Revolt, etc.)
 
@@ -269,8 +270,7 @@ var init = new Crawler.Init {
     Name = savedCrawler.Name,
     Faction = savedCrawler.Faction,
     Location = location,
-    Supplies = supplies,
-    Cargo = cargo,
+    Inventory = inventory,  // built from savedCrawler.Inventory stacks
     Role = Roles.None,
     InitializeComponents = false,
     WorkingSegments = new List<Segment>()
@@ -669,108 +669,85 @@ crawler.UpdateSegments();  // Rebuild caches after inventory changes
 ## Inventory
 
 **File:** `Inventory.cs`
-**Purpose:** Container for commodities and segments
+**Purpose:** One container per actor for commodities and packaged segments, split into stacks by `Account`
+
+### Account Flags
+
+```csharp
+[Flags]
+enum Account {
+    None = 0,
+    Supplies = 1,   // Consumed by the owner: fuel, rations, recipe inputs, cash
+    Trade = 2,      // Offered for sale and exposed to demands
+    Cargo = 4,      // Held in reserve
+    All = Supplies | Trade | Cargo,
+}
+```
+
+Every stack is keyed by a combination of flags, so one commodity can sit in several stacks:
+
+| Stack | Meaning | Example |
+|---|---|---|
+| `Supplies` | Use only | Crew, morale, the fuel you won't sell |
+| `Supplies \| Trade` | Use or trade | Bought goods, production output, NPC trade stock |
+| `Trade` | Trade only | Fuel set aside for sale, never burned |
+| `Cargo` | Reserve | Touched only when asked for by name |
+
+Packaged segments carry the same indicator in `Segment.Account`.
+
+### API
 
 ```csharp
 class Inventory {
-    // ===== Commodities =====
-    EArray<Commodity, float> Commodities;  // Indexed by enum
+    // Reads and withdrawals take a mask and see every stack serving it (default Supplies)
+    float this[Commodity c, Account from = Account.Supplies] { get; set; }
+    void Remove(Commodity c, float amount, Account from = Account.Supplies);
+    bool Contains(Commodity c, float amount, Account from = Account.Supplies);
+    bool Contains(Inventory other, Account from = Account.Supplies);
+    void Remove(Inventory other, Account from = Account.Supplies);
 
-    // Accessor
-    float this[Commodity c] {
-        get => Commodities[c];
-        set => Commodities[c] = value;  // Supports overdraft on withdrawal
-    }
+    // Deposits take the exact stack
+    void Add(Commodity c, float amount, Account into = Account.Supplies);
+    void Add(Segment segment, Account into = Account.Supplies);   // sets segment.Account
+    void Add(Inventory other);                // keeps other's stacks
+    void Add(Inventory other, Account into);  // merges everything into one stack
 
-    // ===== Segments =====
+    // Exact-stack operations
+    float Stack(Commodity c, Account stack);
+    float Move(Commodity c, float amount, Account fromStack, Account intoStack);
+    IEnumerable<(Account Stack, Commodity Commodity, float Amount)> Stacks;  // non-empty stacks
+    Inventory Subset(Account from, Account except = Account.None);  // bag mirroring those stacks
+    bool ContainsStacks(Inventory other);
+    void RemoveStacks(Inventory other);
+
     List<Segment> Segments;
-
-    // ===== Overdraft =====
-    Inventory? Overdraft { get; set; }  // Linked inventory for withdrawals
-
-    // ===== Operations =====
-    void Add(Commodity c, float amount);
-    void Remove(Commodity c, float amount);  // Pulls from Overdraft if needed
-    void Add(Segment segment);
-    void Remove(Segment segment);
-    ContainsResult Contains(Inventory other);  // Returns True/False/Overdraft
-    bool IsEmpty { get; }
-
-    // ===== Value Calculations =====
-    float ValueAt(Location location);  // Total scrap value
-    float Mass { get; }                // Total weight
-    float Volume { get; }              // Total volume
+    IEnumerable<Segment> SegmentsIn(Account from);
+    IEnumerable<(Commodity, float)> Pairs(Account from);
+    float ValueAt(Location loc, Account from = Account.All);
+    float Mass { get; }    // all stacks
+    float Volume { get; }  // all stacks
 }
 ```
 
-### ContainsResult Enum
+**Draw order:** a withdrawal against a mask drains the stacks dedicated to the mask first and multi-purpose stacks last (`AccountEx.DrawOrder`). Spending Supplies eats the `Supplies` stack before `Supplies|Trade`; selling eats `Trade` before `Supplies|Trade`. A withdrawal never touches a stack outside the mask, so a `Cargo` reserve is safe from consumption and sales.
 
-**File:** `Inventory.cs:176-180`
-**Purpose:** Indicates whether an inventory can fulfill a request
+**Indexer setter:** raising `inv[c, mask]` deposits the difference into the stack keyed exactly by `mask`; lowering it withdraws in draw order.
 
-```csharp
-enum ContainsResult {
-    False,      // Cannot fulfill (even with overdraft)
-    True,       // Can fulfill from current inventory alone
-    Overdraft   // Can fulfill, but requires pulling from overdraft
-}
-```
+**Bags:** a bare `Inventory` used as a bag of goods (recipe inputs, contraband, an offer) keeps everything in its Supplies stack. Offers that move goods between actors (`InventoryOffer`) take bags built with `Subset` or `Loot`, which mirror the source's stacks, and move them stack for stack into the receiver's `Supplies|Trade` stack.
 
-**Usage:**
-```csharp
-var result = supplies.Contains(requestedItems);
-switch (result) {
-    case ContainsResult.True:
-        // Have everything locally
-        break;
-    case ContainsResult.Overdraft:
-        // Need to pull from cargo
-        break;
-    case ContainsResult.False:
-        // Can't fulfill request
-        break;
-}
-```
+### Who Uses Which Account
 
-### Trade Inventory
+- Consumption, ammo, recipe inputs, cash: `Supplies`
+- Market screen and trade interactions (`GoodsOffer`): sell from `Trade`, receive into `Supplies|Trade`
+- Production output, purchased goods, trader restock, starting trade goods: `Supplies|Trade`
+- Settlement prices (`SettlementStock`): `Trade`
+- Extortion: `SupplyOffer` takes stacks serving Supplies but not Trade, `TradeOffer` takes stacks serving Trade, so the two never overlap; the `Cargo` reserve is not demanded
+- Surrender loot and customs searches: every account
+- Player menu "Inventory Accounts" (`PT`): move any stack to Supplies, Supplies|Trade, Trade, or Cargo
 
-**Crawler has separate Cargo:**
-```csharp
-class Crawler {
-    Inventory Supplies;   // Main inventory (installed + stored)
-    Inventory Cargo;      // Trade-specific items (visible to NPCs)
-}
-```
+### Persistence
 
-**Purpose:**
-- Segments in Cargo are visible for sale
-- Keeps packaged segments separate from installed
-- NPCs only offer items from Cargo
-
-### Overdraft System
-
-**Setup:**
-```csharp
-// In Crawler.cs:90 and IActor.cs:164
-Supplies.Overdraft = Cargo;
-```
-
-**Behavior:**
-- Withdrawals from `Supplies` automatically pull from `Cargo` if needed
-- **One-way flow**: Supplies → Cargo only (not Cargo → Supplies)
-- Indexer setter, `Remove(Commodity)`, and `Remove(Inventory)` all support overdraft
-- `Contains()` checks both current inventory and overdraft availability
-
-**Example:**
-```csharp
-// Player has 10 Fuel in Supplies, 50 Fuel in Cargo
-Supplies[Commodity.Fuel] = 5;  // Reduces Supplies to 5
-Supplies[Commodity.Fuel] = 0;  // Drains Supplies to 0
-
-Supplies.Remove(Commodity.Fuel, 30);
-// Drains all 0 from Supplies, then removes 30 from Cargo
-// Result: Supplies.Fuel = 0, Cargo.Fuel = 20
-```
+`SavedCrawler.Inventory` maps each non-empty stack to a `SavedInventory` holding its commodities and the segments filed under it. Saves from before accounts load their `Supplies` into the Supplies stack and their `Cargo` into `Supplies|Trade`.
 
 ---
 

@@ -250,7 +250,7 @@ public class SimulationMode {
         };
 
         foreach (var commodity in commodities) {
-            var stocks = settlements.Select(s => s.Supplies[commodity]).ToList();
+            var stocks = settlements.Select(s => s.Inventory[commodity]).ToList();
             var total = stocks.Sum();
             var stats = ComputeStats(stocks);
             Console.WriteLine($"  {commodity,-12}: {total,10:N0} (per-settlement: med {stats.Median:N0}, σ {stats.StdDev:N0})");
@@ -271,7 +271,7 @@ public class SimulationMode {
 
         // === POPULATION ===
         Console.WriteLine("\n--- Population ---");
-        var populations = settlements.Select(s => s.Supplies[Commodity.Crew]).ToList();
+        var populations = settlements.Select(s => s.Inventory[Commodity.Crew]).ToList();
         var popStats = ComputeStats(populations);
         Console.WriteLine($"Total Population: {popStats.Sum:N0}");
         Console.WriteLine($"Per Settlement: min {popStats.Min:N0}, max {popStats.Max:N0}, median {popStats.Median:N0}");
@@ -312,9 +312,9 @@ public class SimulationMode {
             Console.WriteLine($"    Has ProductionAI: {sample.Components.Any(c => c.GetType().Name == "ProductionAIComponent")}");
 
             // Show key commodities
-            Console.WriteLine($"    Key supplies: Ore={sample.Supplies[Commodity.Ore]:F0}, Biomass={sample.Supplies[Commodity.Biomass]:F0}, Silicates={sample.Supplies[Commodity.Silicates]:F0}");
-            Console.WriteLine($"    Refined: Metal={sample.Supplies[Commodity.Metal]:F0}+{sample.Cargo[Commodity.Metal]:F0}, Chemicals={sample.Supplies[Commodity.Chemicals]:F0}+{sample.Cargo[Commodity.Chemicals]:F0}");
-            Console.WriteLine($"    Fuel={sample.Supplies[Commodity.Fuel]:F0}, Scrap={sample.Supplies[Commodity.Scrap]:F0}+{sample.Cargo[Commodity.Scrap]:F0}");
+            Console.WriteLine($"    Key supplies: Ore={sample.Inventory[Commodity.Ore]:F0}, Biomass={sample.Inventory[Commodity.Biomass]:F0}, Silicates={sample.Inventory[Commodity.Silicates]:F0}");
+            Console.WriteLine($"    Refined: Metal={sample.Inventory[Commodity.Metal]:F0}+{sample.Inventory[Commodity.Metal, Account.Trade]:F0}, Chemicals={sample.Inventory[Commodity.Chemicals]:F0}+{sample.Inventory[Commodity.Chemicals, Account.Trade]:F0}");
+            Console.WriteLine($"    Fuel={sample.Inventory[Commodity.Fuel]:F0}, Scrap={sample.Inventory[Commodity.Scrap]:F0}+{sample.Inventory[Commodity.Scrap, Account.Trade]:F0}");
 
             // Check all industry segments for runnable recipes
             var sampleIndustry = sample.IndustrySegments.ToList();
@@ -330,12 +330,12 @@ public class SimulationMode {
 
                 foreach (var recipe in recipes) {
                     var missingInputs = recipe.Inputs
-                        .Where(kv => sample.Supplies[kv.Key] + sample.Cargo[kv.Key] < kv.Value * segment.BatchSize)
-                        .Select(kv => $"{kv.Key}({sample.Supplies[kv.Key] + sample.Cargo[kv.Key]:F0}/{kv.Value * segment.BatchSize:F0})")
+                        .Where(kv => sample.Inventory[kv.Key, Account.Supplies | Account.Trade] < kv.Value * segment.BatchSize)
+                        .Select(kv => $"{kv.Key}({sample.Inventory[kv.Key, Account.Supplies | Account.Trade]:F0}/{kv.Value * segment.BatchSize:F0})")
                         .ToList();
                     var missingConsumables = recipe.Consumables
-                        .Where(kv => sample.Supplies[kv.Key] < kv.Value * segment.BatchSize)
-                        .Select(kv => $"{kv.Key}({sample.Supplies[kv.Key]:F0}/{kv.Value * segment.BatchSize:F1})")
+                        .Where(kv => sample.Inventory[kv.Key] < kv.Value * segment.BatchSize)
+                        .Select(kv => $"{kv.Key}({sample.Inventory[kv.Key]:F0}/{kv.Value * segment.BatchSize:F1})")
                         .ToList();
 
                     bool canPower = sample.PowerBalance >= segment.Drain;
@@ -449,7 +449,7 @@ public class SimulationMode {
     }
 
     float GetWealth(Crawler actor) {
-        return actor.Supplies.ValueAt(actor.Location) + actor.Cargo.ValueAt(actor.Location);
+        return actor.Inventory.ValueAt(actor.Location, Account.Supplies) + actor.Inventory.ValueAt(actor.Location, Account.Trade);
     }
 
     int CountActors() => GetAllActors().Count();

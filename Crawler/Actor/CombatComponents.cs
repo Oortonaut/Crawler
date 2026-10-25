@@ -109,10 +109,7 @@ public class SurrenderComponent : ActorComponentBase {
                 float totalMaxHits = loser.Segments.Sum(s => s.MaxHealth);
                 ratio = totalHits / (totalMaxHits + 1e-8f);
             }
-            surrenderInv.Add(Loser.Supplies.Loot(Rng/1, ratio));
-            if (Loser.Supplies != Loser.Cargo) {
-                surrenderInv.Add(Loser.Cargo.Loot(Rng/2, ratio));
-            }
+            surrenderInv.Add(Loser.Inventory.Loot(Rng/1, ratio));
             return surrenderInv;
         }
 
@@ -125,8 +122,8 @@ public class SurrenderComponent : ActorComponentBase {
             Winner.To(Loser).Spared = true;
             Loser.SetHostileTo(Winner, false);
             Winner.SetHostileTo(Loser, false);
-            Winner.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
-            Loser.Supplies[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
+            Winner.Inventory[Commodity.Morale] += Tuning.Crawler.MoraleSurrenderedTo;
+            Loser.Inventory[Commodity.Morale] += Tuning.Crawler.MoraleSurrendered;
 
             Winner.Message($"{Loser.Name} surrenders and gives you {surrenderInv}");
             Loser.Message($"You surrender to {Winner.Name} and give {surrenderInv}");
@@ -346,7 +343,7 @@ public class PlayerDemandComponent : ActorComponentBase {
         // Use shared extortion interaction
         IOffer MakeDemand() => new CompoundOffer(
             subject.SupplyOffer(_rng/1, _demandFraction),
-            subject.CargoOffer(_rng/2, (_demandFraction + 1) / 2)
+            subject.TradeOffer(_rng/2, (_demandFraction + 1) / 2)
         );
 
         yield return new ExtortionInteractions.AcceptExtortionInteraction(

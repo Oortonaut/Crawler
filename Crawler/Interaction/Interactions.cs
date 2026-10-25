@@ -52,7 +52,7 @@ public record HostilityInteraction(IActor Attacker, IActor Subject, string Reaso
         Subject.SetHostileTo(Mechanic, true);
         Mechanic.Message($"{Subject.Name} {Reason}. You are now hostile.");
         Subject.Message($"{Mechanic.Name} turns hostile because you {Reason.Replace("refuses", "refused")}!");
-        Subject.Supplies[Commodity.Morale] -= 2;
+        Subject.Inventory[Commodity.Morale] -= 2;
 
         // Time consumption for hostility declaration
         Mechanic.ConsumeTime("DeclareHostile", 300, ExpectedDuration);

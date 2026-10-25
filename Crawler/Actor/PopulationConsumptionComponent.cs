@@ -26,7 +26,7 @@ public class PopulationConsumptionComponent : ActorComponentBase {
         ConsumeGoods(crawler, population, hours);
 
         // Update prices based on new stock levels
-        crawler.Stock?.UpdatePrices(crawler.Cargo);
+        crawler.Stock?.UpdatePrices(crawler.Inventory);
     }
 
     /// <summary>
@@ -35,18 +35,18 @@ public class PopulationConsumptionComponent : ActorComponentBase {
     void ConsumeEssentials(Crawler crawler, int population, float hours) {
         // Rations
         float rationsNeeded = population * Tuning.Settlement.RationsPerPopPerHour * hours;
-        float rationsConsumed = Math.Min(crawler.Supplies[Commodity.Rations], rationsNeeded);
-        crawler.Supplies.Remove(Commodity.Rations, rationsConsumed);
+        float rationsConsumed = Math.Min(crawler.Inventory[Commodity.Rations], rationsNeeded);
+        crawler.Inventory.Remove(Commodity.Rations, rationsConsumed);
 
         // Water
         float waterNeeded = population * Tuning.Settlement.WaterPerPopPerHour * hours;
-        float waterConsumed = Math.Min(crawler.Supplies[Commodity.Water], waterNeeded);
-        crawler.Supplies.Remove(Commodity.Water, waterConsumed);
+        float waterConsumed = Math.Min(crawler.Inventory[Commodity.Water], waterNeeded);
+        crawler.Inventory.Remove(Commodity.Water, waterConsumed);
 
         // Medicines (chronic care, preventive medicine)
         float medsNeeded = population * Tuning.Settlement.MedicinesPerPopPerHour * hours;
-        float medsConsumed = Math.Min(crawler.Supplies[Commodity.Medicines], medsNeeded);
-        crawler.Supplies.Remove(Commodity.Medicines, medsConsumed);
+        float medsConsumed = Math.Min(crawler.Inventory[Commodity.Medicines], medsNeeded);
+        crawler.Inventory.Remove(Commodity.Medicines, medsConsumed);
 
         // Track shortages for morale effects (future enhancement)
         // If rationsConsumed < rationsNeeded, population is going hungry
@@ -72,7 +72,7 @@ public class PopulationConsumptionComponent : ActorComponentBase {
         // Calculate total available
         float totalAvailable = 0;
         foreach (var commodity in consumerGoods) {
-            totalAvailable += crawler.Supplies[commodity];
+            totalAvailable += crawler.Inventory[commodity];
         }
 
         if (totalAvailable <= 0) return;
@@ -80,8 +80,8 @@ public class PopulationConsumptionComponent : ActorComponentBase {
         // Consume proportionally based on availability
         float consumeFraction = Math.Min(1.0f, totalGoodsNeeded / totalAvailable);
         foreach (var commodity in consumerGoods) {
-            float amount = crawler.Supplies[commodity] * consumeFraction;
-            crawler.Supplies.Remove(commodity, amount);
+            float amount = crawler.Inventory[commodity] * consumeFraction;
+            crawler.Inventory.Remove(commodity, amount);
         }
     }
 }

@@ -37,7 +37,7 @@ public class DemolitionComponent : ActorComponentBase {
             }
 
             // Also offer to demolish packaged segments in cargo
-            foreach (var segment in owner.Cargo.Segments.Where(s => s.IsPackaged).ToList()) {
+            foreach (var segment in owner.Inventory.SegmentsIn(Account.Trade).Where(s => s.IsPackaged).ToList()) {
                 float recyclerEff = GetRecyclerEfficiency(owner);
                 yield return new DemolishPackagedInteraction(owner, segment, recyclerEff, _optionCode);
             }
@@ -52,7 +52,7 @@ public class DemolitionComponent : ActorComponentBase {
         float serviceEfficiency = GetRecyclerEfficiency(owner);
 
         // Offer to demolish customer's packaged segments
-        foreach (var segment in customer.Cargo.Segments.Where(s => s.IsPackaged).ToList()) {
+        foreach (var segment in customer.Inventory.SegmentsIn(Account.Trade).Where(s => s.IsPackaged).ToList()) {
             yield return new DemolishServiceInteraction(
                 owner, customer, segment, serviceEfficiency, _optionCode);
         }
@@ -176,7 +176,7 @@ public class DemolitionComponent : ActorComponentBase {
 
             // Add recovered materials to cargo
             foreach (var (commodity, amount) in recovery) {
-                Owner.Cargo.Add(commodity, amount);
+                Owner.Inventory.Add(commodity, amount, Account.Supplies | Account.Trade);
             }
 
             Owner.Message($"Demolished {Target.NameSize}");
@@ -216,11 +216,11 @@ public class DemolitionComponent : ActorComponentBase {
             var recovery = CalculateRecovery(Target, RecyclerEfficiency);
 
             // Remove segment from cargo
-            Owner.Cargo.Segments.Remove(Target);
+            Owner.Inventory.Remove(Target);
 
             // Add recovered materials to cargo
             foreach (var (commodity, amount) in recovery) {
-                Owner.Cargo.Add(commodity, amount);
+                Owner.Inventory.Add(commodity, amount, Account.Supplies | Account.Trade);
             }
 
             Owner.Message($"Demolished packaged {Target.NameSize}");
@@ -257,17 +257,17 @@ public class DemolitionComponent : ActorComponentBase {
 
         public override bool Perform(string args = "") {
             // Charge fee
-            Customer.Supplies.Remove(Commodity.Scrap, ServiceFee);
-            ServiceProvider.Supplies.Add(Commodity.Scrap, ServiceFee);
+            Customer.Inventory.Remove(Commodity.Scrap, ServiceFee);
+            ServiceProvider.Inventory.Add(Commodity.Scrap, ServiceFee);
 
             var recovery = CalculateRecovery(Target, RecyclerEfficiency);
 
             // Remove segment from customer's cargo
-            Customer.Cargo.Segments.Remove(Target);
+            Customer.Inventory.Remove(Target);
 
             // Add recovered materials to customer's cargo
             foreach (var (commodity, amount) in recovery) {
-                Customer.Cargo.Add(commodity, amount);
+                Customer.Inventory.Add(commodity, amount, Account.Supplies | Account.Trade);
             }
 
             ServiceProvider.Message($"Demolished {Target.NameSize} for {Customer.Name}");
@@ -276,7 +276,7 @@ public class DemolitionComponent : ActorComponentBase {
         }
 
         public override Immediacy GetImmediacy(string args = "") {
-            if (Customer.Supplies[Commodity.Scrap] < ServiceFee) return Immediacy.Failed;
+            if (Customer.Inventory[Commodity.Scrap] < ServiceFee) return Immediacy.Failed;
             if (!Target.IsPackaged) return Immediacy.Failed;
             return Immediacy.Menu;
         }

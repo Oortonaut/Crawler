@@ -187,10 +187,10 @@ public class InventoryTradeTests : IDisposable
         var location = _fixture.GetLocation();
         var crawler = _fixture.CreateCrawler("Trader", location);
 
-        var initial = crawler.Cargo[Commodity.Metal];
-        crawler.Cargo.Add(Commodity.Metal, 50);
+        var initial = crawler.Inventory[Commodity.Metal, Account.Trade];
+        crawler.Inventory.Add(Commodity.Metal, 50, Account.Supplies | Account.Trade);
 
-        crawler.Cargo[Commodity.Metal].Should().Be(initial + 50);
+        crawler.Inventory[Commodity.Metal, Account.Trade].Should().Be(initial + 50);
     }
 
     [Fact]
@@ -199,10 +199,10 @@ public class InventoryTradeTests : IDisposable
         var location = _fixture.GetLocation();
         var crawler = _fixture.CreateCrawler("Trader", location);
 
-        crawler.Cargo.Add(Commodity.Metal, 100);
-        crawler.Cargo.Remove(Commodity.Metal, 30);
+        crawler.Inventory.Add(Commodity.Metal, 100, Account.Supplies | Account.Trade);
+        crawler.Inventory.Remove(Commodity.Metal, 30, Account.Trade);
 
-        crawler.Cargo[Commodity.Metal].Should().Be(70);
+        crawler.Inventory[Commodity.Metal, Account.Trade].Should().Be(70);
     }
 
     [Fact]
@@ -212,16 +212,16 @@ public class InventoryTradeTests : IDisposable
         var seller = _fixture.CreateCrawler("Seller", location);
         var buyer = _fixture.CreateCrawler("Buyer", location);
 
-        seller.Cargo.Add(Commodity.Metal, 100);
-        var initialBuyer = buyer.Cargo[Commodity.Metal];
+        seller.Inventory.Add(Commodity.Metal, 100, Account.Supplies | Account.Trade);
+        var initialBuyer = buyer.Inventory[Commodity.Metal, Account.Trade];
 
         // Simulate transfer
         var qty = 50f;
-        seller.Cargo.Remove(Commodity.Metal, qty);
-        buyer.Cargo.Add(Commodity.Metal, qty);
+        seller.Inventory.Remove(Commodity.Metal, qty, Account.Trade);
+        buyer.Inventory.Add(Commodity.Metal, qty, Account.Supplies | Account.Trade);
 
-        seller.Cargo[Commodity.Metal].Should().Be(50);
-        buyer.Cargo[Commodity.Metal].Should().Be(initialBuyer + 50);
+        seller.Inventory[Commodity.Metal, Account.Trade].Should().Be(50);
+        buyer.Inventory[Commodity.Metal, Account.Trade].Should().Be(initialBuyer + 50);
     }
 
     [Fact]
@@ -232,9 +232,9 @@ public class InventoryTradeTests : IDisposable
 
         var segment = new GunDef('G', 3, "Trade Gun", 3, 3, 3, 3, 3, 3, 3, 3, 3).NewSegment(12345);
 
-        crawler.Cargo.Segments.Add(segment);
+        crawler.Inventory.Add(segment, Account.Supplies | Account.Trade);
 
-        crawler.Cargo.Segments.Should().Contain(segment);
+        crawler.Inventory.SegmentsIn(Account.Trade).Should().Contain(segment);
     }
 
     [Fact]
@@ -244,10 +244,10 @@ public class InventoryTradeTests : IDisposable
         var crawler = _fixture.CreateCrawler("Trader", location);
 
         var segment = new GunDef('G', 3, "Trade Gun", 3, 3, 3, 3, 3, 3, 3, 3, 3).NewSegment(12345);
-        crawler.Cargo.Segments.Add(segment);
-        crawler.Cargo.Segments.Remove(segment);
+        crawler.Inventory.Add(segment, Account.Supplies | Account.Trade);
+        crawler.Inventory.Remove(segment);
 
-        crawler.Cargo.Segments.Should().NotContain(segment);
+        crawler.Inventory.SegmentsIn(Account.Trade).Should().NotContain(segment);
     }
 }
 
@@ -303,7 +303,7 @@ public class SettlementTradeTests : IDisposable
     {
         var location = _fixture.GetLocation();
         var seller = _fixture.CreateCrawler("Seller", location);
-        seller.Cargo.Add(Commodity.Metal, 100);
+        seller.Inventory.Add(Commodity.Metal, 100, Account.Supplies | Account.Trade);
 
         // If no settlement exists, selling should fail
         var settlement = SettlementTrade.FindSettlement(location);
@@ -334,7 +334,7 @@ public class MarketOfferTests : IDisposable
         var trader = _fixture.CreateTrader("Merchant", location);
 
         // Add some cargo
-        trader.Cargo.Add(Commodity.Metal, 50);
+        trader.Inventory.Add(Commodity.Metal, 50, Account.Supplies | Account.Trade);
 
         var offer = trader.GetAskOffer(Commodity.Metal);
 
@@ -350,7 +350,7 @@ public class MarketOfferTests : IDisposable
         var trader = _fixture.CreateTrader("Merchant", location);
 
         // Ensure trader has scrap to buy with
-        trader.Supplies.Add(Commodity.Scrap, 1000);
+        trader.Inventory.Add(Commodity.Scrap, 1000);
 
         var offer = trader.GetBidOffer(Commodity.Metal);
 

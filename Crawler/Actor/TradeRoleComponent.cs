@@ -115,7 +115,7 @@ public class TradeRoleComponent : ActorComponentBase {
 
             // Check if we can afford to buy
             float buyPrice = knowledge.GetSnapshot(buyLoc)?.Prices[commodity] ?? 0;
-            float available = crawler.Supplies[Commodity.Scrap];
+            float available = crawler.Inventory[Commodity.Scrap];
 
             if (available >= buyPrice) {
                 _targetCommodity = commodity;
@@ -135,7 +135,7 @@ public class TradeRoleComponent : ActorComponentBase {
         }
 
         // Wait and retry later - priority based on cargo value and capacity
-        float cargoValue = crawler.Cargo.ValueAt(crawler.Location);
+        float cargoValue = crawler.Inventory.ValueAt(crawler.Location, Account.Trade);
         int priority = EventPriority.ForTrade(crawler, cargoValue);
         return crawler.NewEventFor("Waiting for trade opportunity", priority,
             Tuning.Trader.IdleWaitDuration, Post: () => { });
@@ -200,9 +200,9 @@ public class TradeRoleComponent : ActorComponentBase {
         float price = commodity.MidAt(crawler.Location);
         if (price <= 0) return false;
 
-        float available = crawler.Supplies[Commodity.Scrap];
+        float available = crawler.Inventory[Commodity.Scrap];
         float maxQuantity = available / price;
-        float volumeLimit = crawler.Cargo.AvailableVolume / commodity.Volume();
+        float volumeLimit = crawler.Inventory.AvailableVolume / commodity.Volume();
         float quantity = Math.Min(maxQuantity, volumeLimit);
         quantity = Math.Min(quantity, Tuning.Trader.MaxTradeQuantity); // Cap per trade
 
@@ -213,7 +213,7 @@ public class TradeRoleComponent : ActorComponentBase {
     }
 
     bool TrySell(Crawler crawler, Commodity commodity) {
-        float quantity = crawler.Cargo[commodity];
+        float quantity = crawler.Inventory[commodity, Account.Trade];
         if (quantity <= 0) return false;
 
         // Execute trade through settlement (affects settlement inventory)

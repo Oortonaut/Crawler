@@ -126,7 +126,7 @@ public class SettlementGrowthComponent : ActorComponentBase {
         // Food availability modifier
         float rationTarget = population * 0.001f * 24; // Daily ration need
         float rationRatio = rationTarget > 0
-            ? crawler.Supplies[Commodity.Rations] / rationTarget
+            ? crawler.Inventory[Commodity.Rations] / rationTarget
             : 1.0f;
         float foodMod = Math.Clamp(rationRatio, 0.2f, 1.5f);
 
@@ -197,7 +197,7 @@ public class SettlementGrowthComponent : ActorComponentBase {
 
         foreach (var domeDef in domeDefs) {
             var recipe = SegmentRecipeEx.CreateDomeRecipe(domeDef);
-            if (recipe.HasInputs(crawler.Supplies)) {
+            if (recipe.HasInputs(crawler.Inventory)) {
                 return recipe;
             }
         }

@@ -752,7 +752,7 @@ ProposeDemand(
 ScanForContraband(target):
   if Random() > contrabandScanChance: return empty
 
-  foreach commodity in target.Supplies:
+  foreach (stack, commodity, amount) in target.Inventory.Stacks:  // every account, reserve included
     policy = FactionPolicies.GetPolicy(faction, commodity.Category())
     if policy == Prohibited and amount > 0:
       contraband.Add(commodity, amount)
@@ -843,7 +843,7 @@ Selling Fuel at Trade Settlement:
 Goods with Prohibited policy have 50% chance to be skipped in trade offers
 
 **Segments:**
-- Offered from trader's Cargo
+- Offered from the trader's Trade account
 - Procedurally generated based on location wealth
 - Local markup applied to base cost
 

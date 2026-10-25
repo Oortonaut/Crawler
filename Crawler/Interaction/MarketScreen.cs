@@ -35,11 +35,11 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
 
     public bool HasRows => _rows.Count > 0;
 
-    static float Held(IActor actor, Commodity commodity) =>
-        actor.Supplies[commodity] + (actor.Supplies.Overdraft?[commodity] ?? 0);
+    // Only stacks marked for trade are bought and sold
+    static float Held(IActor actor, Commodity commodity) => actor.Inventory[commodity, Account.Trade];
 
     float BasketNet => _rows.Sum(r => r.Net);
-    float CashAfter => player.Supplies[Commodity.Scrap] + BasketNet;
+    float CashAfter => player.Inventory[Commodity.Scrap] + BasketNet;
 
     /// <summary>Runs the screen. Returns true if a trade was made (time was consumed).</summary>
     public bool Run() {
@@ -109,7 +109,7 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
         target = Math.Clamp(target, -maxSell, maxBuy);
         if (target > 0 && row.AskLotPrice > 0) {
             // Cash available for this row once every other row in the basket settles
-            float cash = player.Supplies[Commodity.Scrap] + BasketNet - row.Net;
+            float cash = player.Inventory[Commodity.Scrap] + BasketNet - row.Net;
             int affordable = (int)(cash / row.AskLotPrice);
             if (target > affordable) {
                 target = Math.Max(0, affordable);
@@ -145,7 +145,7 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
                 idle ? Style.MenuDisabled.Format("  " + line) : "  " + line);
         }
         sb.AppendLine();
-        sb.AppendLine($"Cash {player.Supplies[Commodity.Scrap]:F1}¢¢   Basket {BasketNet:+0.0;-0.0}¢¢   After {CashAfter:F1}¢¢   " +
+        sb.AppendLine($"Cash {player.Inventory[Commodity.Scrap]:F1}¢¢   Basket {BasketNet:+0.0;-0.0}¢¢   After {CashAfter:F1}¢¢   " +
             $"({_cursor + 1}/{_rows.Count})");
         sb.AppendLine(Style.MenuDisabled.Format(
             "↑↓ select  →/+ buy  ←/- sell  Shift or ]/[ ×10  M max buy  A sell all  0 clear row  C clear  Enter confirm  Esc cancel"));
@@ -167,7 +167,7 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
             bool buying = row.Lots > 0;
             var offer = buying ? row.Ask! : row.Bid!;
             float lotPrice = buying ? row.AskLotPrice : row.BidLotPrice;
-            IOffer goods = new CommodityOffer(row.Commodity, offer.Quantity);
+            IOffer goods = new GoodsOffer(row.Commodity, offer.Quantity);
             IOffer scrap = new ScrapOffer(lotPrice);
             var (playerGives, traderGives) = buying ? (scrap, goods) : (goods, scrap);
 

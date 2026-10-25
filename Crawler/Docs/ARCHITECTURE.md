@@ -54,7 +54,7 @@ Game (Singleton)
 │   │   │           │   ├── TradeOfferComponent
 │   │   │           │   ├── EncounterMessengerComponent
 │   │   │           │   └── RelationPrunerComponent
-│   │   │           ├─2 Inventory: Supplies + Cargo (Commodities/Segments)
+│   │   │           ├─2 Inventory: Account stacks Supplies/Trade/Cargo (Commodities/Segments)
 │   │   │           │   └─< Segments (Crawler Functionality)
 │   │   │           └─< Relations (Actor-to-Actor state)
 │   │   └── Faction Control (Regional powers)

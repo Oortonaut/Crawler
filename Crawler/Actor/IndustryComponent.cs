@@ -68,7 +68,7 @@ public class IndustryComponent : ActorComponentBase {
         crawler.ResourceReservation.Release(segment);
 
         // Try to commit resources for the new recipe
-        if (!crawler.ResourceReservation.TryCommit(segment, recipe, crawler.Supplies, batchSize)) {
+        if (!crawler.ResourceReservation.TryCommit(segment, recipe, crawler.Inventory, batchSize)) {
             return false;
         }
 

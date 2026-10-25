@@ -56,7 +56,7 @@ public static class TradeEx {
 
         var allCommodities = Enum.GetValues<Commodity>().Where(s => s != Commodity.Scrap).ToList();
         // Goods the trader already carries are always offered, whatever the location produces
-        var carried = allCommodities.Where(s => Seller.Cargo[s] > 0).ToHashSet();
+        var carried = allCommodities.Where(s => Seller.Inventory[s, Account.Trade] > 0).ToHashSet();
         // Small settlements roll almost nothing, so essentials are always traded (the draw is kept for RNG stability)
         var stocked = allCommodities
             .Where(s => rng.NextSingle() < s.AvailabilityAt(Location) | s.IsEssential())
@@ -79,7 +79,7 @@ public static class TradeEx {
             // Only locally available goods are restocked; carried goods sell from what's on hand
             if (stocked.Contains(commodity)) {
                 var quantity = Inventory.QuantitySold(CFrac, commodity, Location);
-                Seller.Cargo[commodity] += quantity;
+                Seller.Inventory.Add(commodity, quantity, Account.Supplies | Account.Trade);
             }
 
             var saleQuantity = 1f;
@@ -116,7 +116,7 @@ public static class TradeEx {
         }
 
         // Offer segments from trade inventory
-        foreach (var segment in Seller.Cargo.Segments.ToList()) {
+        foreach (var segment in Seller.Inventory.SegmentsIn(Account.Trade).ToList()) {
             var policy = faction.GetPolicy(segment.SegmentKind);
 
             if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
@@ -145,8 +145,8 @@ public static class TradeEx {
                 continue;
             }
 
-            // Segments are packaged by default, so just add to cargo
-            Seller.Cargo.Segments.Add(segment);
+            // Segments are packaged by default, so just add them for use or trade
+            Seller.Inventory.Add(segment, Account.Supplies | Account.Trade);
             var price = segment.CostAt(Location, Seller, policy) * merchantMarkup;
 
             offers.Add(new TradeOffer {
@@ -182,7 +182,7 @@ public static class SettlementTrade {
         var settlement = FindSettlement(buyer.Location);
         if (settlement == null) return false;
 
-        float available = settlement.Cargo[commodity];
+        float available = settlement.Inventory[commodity, Account.Trade];
         float qty = Math.Min(maxQty, available);
         if (qty <= 0) return false;
 
@@ -191,7 +191,7 @@ public static class SettlementTrade {
         float cost = qty * price;
 
         // Adjust quantity if buyer can't afford full amount
-        float buyerScrap = buyer.Supplies[Commodity.Scrap];
+        float buyerScrap = buyer.Inventory[Commodity.Scrap];
         if (buyerScrap < cost) {
             qty = buyerScrap / price;
             cost = qty * price;
@@ -200,17 +200,17 @@ public static class SettlementTrade {
 
         // Check buyer has cargo space
         float volumeNeeded = qty * commodity.Volume();
-        if (buyer.Cargo.AvailableVolume < volumeNeeded) {
-            qty = buyer.Cargo.AvailableVolume / commodity.Volume();
+        if (buyer.Inventory.AvailableVolume < volumeNeeded) {
+            qty = buyer.Inventory.AvailableVolume / commodity.Volume();
             cost = qty * price;
         }
         if (qty <= 0) return false;
 
         // Execute transfer
-        buyer.Supplies.Remove(Commodity.Scrap, cost);
-        settlement.Supplies.Add(Commodity.Scrap, cost);
-        settlement.Cargo.Remove(commodity, qty);
-        buyer.Cargo.Add(commodity, qty);
+        buyer.Inventory.Remove(Commodity.Scrap, cost);
+        settlement.Inventory.Add(Commodity.Scrap, cost);
+        settlement.Inventory.Remove(commodity, qty, Account.Trade);
+        buyer.Inventory.Add(commodity, qty, Account.Supplies | Account.Trade);
 
         buyer.Message($"{buyer.Name} bought {qty:F1} {commodity} from {settlement.Name} for {cost:F0} scrap");
         return true;
@@ -224,10 +224,9 @@ public static class SettlementTrade {
         var settlement = FindSettlement(seller.Location);
         if (settlement == null) return false;
 
-        // Check seller has the commodity (in cargo or supplies)
-        float haveInCargo = seller.Cargo[commodity];
-        float haveInSupplies = seller.Supplies[commodity];
-        float qty = Math.Min(maxQty, haveInCargo + haveInSupplies);
+        // Check seller has the commodity (anywhere but the reserve)
+        const Account sellable = Account.Supplies | Account.Trade;
+        float qty = Math.Min(maxQty, seller.Inventory[commodity, sellable]);
         if (qty <= 0) return false;
 
         // Seller receives settlement's bid price
@@ -235,23 +234,19 @@ public static class SettlementTrade {
         float revenue = qty * price;
 
         // Check settlement can afford (settlements have limited scrap)
-        float settlementScrap = settlement.Supplies[Commodity.Scrap];
+        float settlementScrap = settlement.Inventory[Commodity.Scrap];
         if (settlementScrap < revenue) {
             qty = settlementScrap / price;
             revenue = qty * price;
         }
         if (qty <= 0) return false;
 
-        // Execute transfer - prefer taking from supplies first (for harvesters)
-        float fromSupplies = Math.Min(qty, haveInSupplies);
-        float fromCargo = qty - fromSupplies;
+        // Execute transfer - the draw order takes from supplies first (for harvesters)
+        seller.Inventory.Remove(commodity, qty, sellable);
 
-        if (fromSupplies > 0) seller.Supplies.Remove(commodity, fromSupplies);
-        if (fromCargo > 0) seller.Cargo.Remove(commodity, fromCargo);
-
-        settlement.Cargo.Add(commodity, qty);
-        settlement.Supplies.Remove(Commodity.Scrap, revenue);
-        seller.Supplies.Add(Commodity.Scrap, revenue);
+        settlement.Inventory.Add(commodity, qty, Account.Supplies | Account.Trade);
+        settlement.Inventory.Remove(Commodity.Scrap, revenue);
+        seller.Inventory.Add(Commodity.Scrap, revenue);
 
         seller.Message($"{seller.Name} sold {qty:F1} {commodity} to {settlement.Name} for {revenue:F0} scrap");
         return true;

@@ -194,13 +194,13 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
 
         var newInv = new Inventory();
         newInv.AddEssentials(crawlerSeed + 1, here, crew, supplyDays);
-        newInv.AddCargo(crawlerSeed + 2, here, goodsWealth, faction);
+        newInv.AddTradeGoods(crawlerSeed + 2, here, goodsWealth, faction, Account.Supplies | Account.Trade);
 
         var crawler = new Builder()
             .WithSeed(crawlerSeed)
             .WithFaction(faction)
             .WithLocation(here)
-            .WithSupplies(newInv)
+            .WithInventory(newInv)
             .WithSegments(workingSegments)
             .WithFlags(flags)
             .WithComponentInitialization(false)
@@ -212,7 +212,6 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     // Init-based constructor (primary constructor pattern)
     public Crawler(Init init) : base(init) {
         Flags |= ActorFlags.Mobile;
-        Supplies.Overdraft = Cargo;
         Role = init.Role;
 
         // Initialize working segments from init
@@ -231,9 +230,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
 
     // Builder-based constructor (convenience wrapper)
     private Crawler(Builder builder)
-        : base(builder.GetSeed(), builder.GetName(), builder.GetBrief(), builder.GetFaction(), builder.GetSupplies(), builder.GetCargo(), builder.GetLocation()) {
+        : base(builder.GetSeed(), builder.GetName(), builder.GetBrief(), builder.GetFaction(), builder.GetInventory(), builder.GetLocation()) {
         Flags |= ActorFlags.Mobile;
-        Supplies.Overdraft = Cargo;
         Role = builder.GetRole();
 
         // Initialize working segments from builder
@@ -670,20 +668,16 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     }
 
     /// <summary>
-    /// Install a segment from supplies or cargo into the working segments list.
+    /// Install a packaged segment from the inventory into the working segments list.
     /// Unpacks the segment and adds it to _allSegments.
     /// </summary>
     public void InstallSegment(Segment segment) {
         Debug.Assert(segment.IsPackaged, "Can only install packaged segments");
 
-        // Remove from supplies or cargo
-        if (Supplies.Segments.Contains(segment)) {
-            Supplies.Remove(segment);
-        } else if (Cargo.Segments.Contains(segment)) {
-            Cargo.Remove(segment);
-        } else {
-            throw new InvalidOperationException("Segment not found in supplies or cargo");
+        if (!Inventory.Segments.Contains(segment)) {
+            throw new InvalidOperationException("Segment not found in inventory");
         }
+        Inventory.Remove(segment);
 
         // Unpack and add to working segments
         segment.Packaged = false;
@@ -694,9 +688,9 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     }
 
     /// <summary>
-    /// Package a working segment and move it to supplies storage.
+    /// Package a working segment and move it into the inventory under the given account.
     /// </summary>
-    public void PackageToSupplies(Segment segment) {
+    public void PackageTo(Segment segment, Account into) {
         Debug.Assert(!segment.IsPackaged, "Segment is already packaged");
         Debug.Assert(_allSegments.Contains(segment), "Segment not in working segments");
 
@@ -704,27 +698,9 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         _allSegments.Remove(segment);
         _segmentListModified = true;
 
-        // Package and add to supplies
+        // Package and add to inventory
         segment.Packaged = true;
-        Supplies.Add(segment);
-        UpdateSegmentCache();
-        NotifySegmentsChanged();
-    }
-
-    /// <summary>
-    /// Package a working segment and move it to cargo storage.
-    /// </summary>
-    public void PackageToCargo(Segment segment) {
-        Debug.Assert(!segment.IsPackaged, "Segment is already packaged");
-        Debug.Assert(_allSegments.Contains(segment), "Segment not in working segments");
-
-        // Remove from working segments
-        _allSegments.Remove(segment);
-        _segmentListModified = true;
-
-        // Package and add to cargo
-        segment.Packaged = true;
-        Cargo.Add(segment);
+        Inventory.Add(segment, into);
         UpdateSegmentCache();
         NotifySegmentsChanged();
     }
@@ -753,11 +729,9 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     /// </summary>
     public void RemoveSegment(Segment segment) {
         if (segment.IsPackaged) {
-            // Packaged segments are in cargo/supplies, not working segments
-            if (Cargo.Segments.Contains(segment)) {
-                Cargo.Segments.Remove(segment);
-            } else if (Supplies.Segments.Contains(segment)) {
-                Supplies.Segments.Remove(segment);
+            // Packaged segments are in the inventory, not working segments
+            if (Inventory.Segments.Contains(segment)) {
+                Inventory.Remove(segment);
             }
         } else {
             // Working segment - must be destroyed to remove
@@ -916,7 +890,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         return new Move(bestSpeed, drain, bestMsg == "" ? null : bestMsg);
     }
 
-    public float Mass => Supplies.Mass + Cargo.Mass;
+    public float Mass => Inventory.Mass;
     public float TotalCharge => ReactorSegments.Aggregate(0.0f, (i, s) => i + s.Charge);
     public float TotalGeneration => _cachedTotalGeneration;
 
@@ -949,18 +923,18 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     string InventoryReport(Inventory inv) {
         var commodityTable = new Table(
             ("Commodity", -16),
-            ("Location", 8),
+            ("Account", 16),
             ("Amount", 10),
             ("Mass", 8),
             ("Volume", 8),
             ("Local Value", 12)
         );
 
-        foreach (var (commodity, amount) in inv.Commodities.Select((amt, idx) => ((Commodity)idx, amt)).Where(pair => pair.amt > 0)) {
+        foreach (var (account, commodity, amount) in inv.Stacks.OrderBy(stack => stack.Commodity)) {
             var value = amount * commodity.MidAt(Location);
             commodityTable.AddRow(
                 commodity.ToString(),
-                "Supplies",
+                account.Label(),
                 commodity.IsIntegral() ? $"{amount:F0}" : $"{amount:F1}",
                 $"{commodity.Mass():F3}",
                 $"{commodity.Volume():F3}",
@@ -975,10 +949,13 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         result += $" Evil: {EvilPoints}\n";
 
         result += "\nWorking Segments:\n" + _allSegments.SegmentReport(Location);
-        result += "Packaged Segments (Supplies):\n" + Supplies.Segments.SegmentReport(Location);
-        result += "Packaged Segments (Cargo):\n" + Cargo.Segments.SegmentReport(Location);
-        result += "Inventory:\n" + InventoryReport(Supplies);
-        result += "Cargo:\n" + InventoryReport(Cargo);
+        foreach (var account in AccountEx.Stacks) {
+            var packaged = Inventory.Segments.Where(s => s.Account == account).ToList();
+            if (packaged.Count > 0) {
+                result += $"Packaged Segments ({account.Label()}):\n" + packaged.SegmentReport(Location);
+            }
+        }
+        result += "Inventory:\n" + InventoryReport(Inventory);
 
         return result;
     }
@@ -1058,40 +1035,40 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
     }
 
     public float ScrapInv {
-        get => Supplies[Commodity.Scrap];
-        set => Supplies[Commodity.Scrap] = value;
+        get => Inventory[Commodity.Scrap];
+        set => Inventory[Commodity.Scrap] = value;
     }
     public float FuelInv {
-        get => Supplies[Commodity.Fuel];
-        set => Supplies[Commodity.Fuel] = value;
+        get => Inventory[Commodity.Fuel];
+        set => Inventory[Commodity.Fuel] = value;
     }
     public float RationsInv {
-        get => Supplies[Commodity.Rations];
-        set => Supplies[Commodity.Rations] = value;
+        get => Inventory[Commodity.Rations];
+        set => Inventory[Commodity.Rations] = value;
     }
     public float CrewInv {
-        get => Supplies[Commodity.Crew];
-        set => Supplies[Commodity.Crew] = value;
+        get => Inventory[Commodity.Crew];
+        set => Inventory[Commodity.Crew] = value;
     }
     public float MoraleInv {
-        get => Supplies[Commodity.Morale];
-        set => Supplies[Commodity.Morale] = value;
+        get => Inventory[Commodity.Morale];
+        set => Inventory[Commodity.Morale] = value;
     }
     public float WaterInv {
-        get => Supplies[Commodity.Water];
-        set => Supplies[Commodity.Water] = value;
+        get => Inventory[Commodity.Water];
+        set => Inventory[Commodity.Water] = value;
     }
     public float AirInv {
-        get => Supplies[Commodity.Air];
-        set => Supplies[Commodity.Air] = value;
+        get => Inventory[Commodity.Air];
+        set => Inventory[Commodity.Air] = value;
     }
     public float IsotopesInv {
-        get => Supplies[Commodity.Isotopes];
-        set => Supplies[Commodity.Isotopes] = value;
+        get => Inventory[Commodity.Isotopes];
+        set => Inventory[Commodity.Isotopes] = value;
     }
     public float NanomaterialsInv {
-        get => Supplies[Commodity.Nanomaterials];
-        set => Supplies[Commodity.Nanomaterials] = value;
+        get => Inventory[Commodity.Nanomaterials];
+        set => Inventory[Commodity.Nanomaterials] = value;
     }
     public bool IsDepowered => !PowerSegments.Any() || FuelInv <= 0;
     public bool IsImmobile => EvaluateMove(Location.Terrain).Speed == 0;
@@ -1337,7 +1314,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         // Apply first damage morale penalty only if this is the first time taking damage from this attacker
         if (!wasAlreadyDamaged && totalDamageDealt > 0) {
             float dMorale = Tuning.Crawler.MoraleTakeAttack;
-            Supplies[Commodity.Morale] += dMorale;
+            Inventory[Commodity.Morale] += dMorale;
             msg += $"{dMorale} morale for taking fire.\n";
         }
 
@@ -1345,12 +1322,12 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
         if (!wasDestroyed && IsDestroyed) {
             if (relation.Hostile) {
                 float dMorale = Tuning.Crawler.MoraleHostileDestroyed;
-                from.Supplies[Commodity.Morale] += dMorale;
+                from.Inventory[Commodity.Morale] += dMorale;
                 Message($"{dMorale} morale for destroying {Name}");
             } else {
                 float dHostileMorale = Tuning.Crawler.MoraleHostileDestroyed;
                 float dMorale = Tuning.Crawler.MoraleFriendlyDestroyed;
-                from.Supplies[Commodity.Morale] += dMorale;
+                from.Inventory[Commodity.Morale] += dMorale;
                 if (from is Crawler fromCrawler) {
                     float evilage = fromCrawler.EvilPoints / Tuning.EvilLimit;
                     evilage = Math.Clamp(evilage, 0.0f, 1.0f);
@@ -1389,8 +1366,7 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             Brief = baseData.Init.Brief,
             Faction = baseData.Init.Faction,
             Location = baseData.Init.Location,
-            Supplies = baseData.Init.Supplies,
-            Cargo = baseData.Init.Cargo,
+            Inventory = baseData.Init.Inventory,
             Role = this.Role,
             InitializeComponents = false, // Don't re-initialize on load
             WorkingSegments = new List<Segment>() // Will be restored from Data.WorkingSegments

@@ -96,7 +96,7 @@ public class ConvoyDecisionComponent : ActorComponentBase {
                              (1 - _riskAversion) * 0.3f;
 
         // Reduce threshold if we have valuable cargo
-        float cargoValue = crawler.Supplies.ValueAt(crawler.Location);
+        float cargoValue = crawler.Inventory.ValueAt(crawler.Location, Account.Supplies);
         if (cargoValue > Tuning.Trader.HighValueCargoThreshold) {
             formThreshold *= Tuning.Convoy.HighCargoFormThresholdMultiplier;
         }
@@ -261,7 +261,7 @@ public record BuyRiskIntelInteraction(
 
     public override Immediacy GetImmediacy(string args = "") {
         // Check if can afford
-        if (Mechanic.Supplies[Commodity.Scrap] < Tuning.Convoy.RiskIntelLicenseCost) {
+        if (Mechanic.Inventory[Commodity.Scrap] < Tuning.Convoy.RiskIntelLicenseCost) {
             return Immediacy.Failed;
         }
 
@@ -271,13 +271,13 @@ public record BuyRiskIntelInteraction(
     public override bool Perform(string args = "") {
         float cost = Tuning.Convoy.RiskIntelLicenseCost;
 
-        if (Mechanic.Supplies[Commodity.Scrap] < cost) {
+        if (Mechanic.Inventory[Commodity.Scrap] < cost) {
             Mechanic.Message("Not enough scrap.");
             return false;
         }
 
-        Mechanic.Supplies[Commodity.Scrap] -= cost;
-        Subject.Supplies[Commodity.Scrap] += cost;
+        Mechanic.Inventory[Commodity.Scrap] -= cost;
+        Subject.Inventory[Commodity.Scrap] += cost;
 
         // Transfer faction's risk knowledge to buyer
         var factionNetwork = FactionRiskNetworks.GetNetwork(Faction);

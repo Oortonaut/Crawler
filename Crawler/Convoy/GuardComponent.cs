@@ -64,9 +64,9 @@ public class GuardComponent : ActorComponentBase {
         // Receive remaining payment
         float remainingPayment = _totalPayment - _depositPaid;
         if (_employer != null && remainingPayment > 0) {
-            if (_employer.Supplies[Commodity.Scrap] >= remainingPayment) {
-                _employer.Supplies[Commodity.Scrap] -= remainingPayment;
-                Owner.Supplies[Commodity.Scrap] += remainingPayment;
+            if (_employer.Inventory[Commodity.Scrap] >= remainingPayment) {
+                _employer.Inventory[Commodity.Scrap] -= remainingPayment;
+                Owner.Inventory[Commodity.Scrap] += remainingPayment;
                 Owner.Message($"{Owner.Name} received {remainingPayment:F0} scrap for completing escort.");
             } else {
                 Owner.Message($"{Owner.Name}'s employer couldn't pay the remaining contract fee.");
@@ -90,8 +90,8 @@ public class GuardComponent : ActorComponentBase {
 
         if (refundDeposit && _employer != null && _depositPaid > 0) {
             // Return deposit to employer
-            Owner.Supplies[Commodity.Scrap] -= Math.Min(Owner.Supplies[Commodity.Scrap], _depositPaid);
-            _employer.Supplies[Commodity.Scrap] += _depositPaid;
+            Owner.Inventory[Commodity.Scrap] -= Math.Min(Owner.Inventory[Commodity.Scrap], _depositPaid);
+            _employer.Inventory[Commodity.Scrap] += _depositPaid;
         }
 
         _contract.RemoveMember(Owner);
