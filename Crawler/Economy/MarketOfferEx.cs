@@ -36,30 +36,25 @@ public static class MarketOfferEx {
     /// Get the mid-market price for a commodity from this actor's perspective.
     /// Applies: basePrice × LocalMarkup × Markup × PolicyMultiplier
     /// </summary>
-    public static float GetMidPrice(this IActor actor, Commodity commodity) {
-        float price = actor.GetBasePrice(commodity);
+    public static float GetMidPrice(this IActor actor, Commodity commodity) =>
+        actor.MidPrice(commodity, actor.GetTradeComponent());
 
-        // Apply location's per-commodity markup variation
-        price *= actor.Location.LocalMarkup[commodity];
+    // Prices are on hot paths (every MidAt walks every actor), so callers look the component up once and pass it
+    static float MidPrice(this IActor actor, Commodity commodity, TradeOfferComponent? trade) =>
+        actor.GetBasePrice(commodity)
+        * actor.Location.LocalMarkup[commodity]                                  // location's per-commodity variation
+        * (trade?.Markup ?? 1.0f)                                                // actor's personal markup
+        * Tuning.Trade.PolicyMultiplier(actor.Faction.GetPolicy(commodity));    // faction policy
 
-        // Apply actor's personal markup target
-        price *= actor.GetMarkup();
-
-        // Apply faction policy multiplier
-        var policy = actor.Faction.GetPolicy(commodity);
-        price *= Tuning.Trade.PolicyMultiplier(policy);
-
-        return price;
-    }
+    static float SpreadOf(TradeOfferComponent? trade) => Tuning.Trade.baseBidAskSpread * (trade?.Spread ?? 1.0f);
 
     /// <summary>
     /// Get this actor's ask price (selling price) for a commodity.
     /// Ask = MidPrice × (1 + Spread/2)
     /// </summary>
     public static float GetAskPrice(this IActor actor, Commodity commodity) {
-        float midPrice = actor.GetMidPrice(commodity);
-        float spread = Tuning.Trade.baseBidAskSpread * actor.GetSpread();
-        return Commodity.Scrap.Round(midPrice * (1 + spread / 2));
+        var trade = actor.GetTradeComponent();
+        return Tuning.Trade.AskFrom(actor.MidPrice(commodity, trade), SpreadOf(trade));
     }
 
     /// <summary>
@@ -67,9 +62,8 @@ public static class MarketOfferEx {
     /// Bid = MidPrice × (1 - Spread/2)
     /// </summary>
     public static float GetBidPrice(this IActor actor, Commodity commodity) {
-        float midPrice = actor.GetMidPrice(commodity);
-        float spread = Tuning.Trade.baseBidAskSpread * actor.GetSpread();
-        return Commodity.Scrap.Round(midPrice * (1 - spread / 2));
+        var trade = actor.GetTradeComponent();
+        return Tuning.Trade.BidFrom(actor.MidPrice(commodity, trade), SpreadOf(trade));
     }
 
     /// <summary>
@@ -102,33 +96,23 @@ public static class MarketOfferEx {
     /// Get the mid-market price for a specific segment from this actor's perspective.
     /// Applies: baseCost × EncounterMarkup × TerrainMarkup × ActorMarkup × Policy
     /// </summary>
-    public static float GetMidPrice(this IActor actor, Segment segment) {
-        float price = segment.Cost;
+    public static float GetMidPrice(this IActor actor, Segment segment) =>
+        actor.MidPrice(segment, actor.GetTradeComponent());
 
-        // Apply encounter type markup
-        price *= Tuning.Economy.EncounterSegmentKindMarkup[actor.Location.Type][segment.SegmentKind];
-
-        // Apply terrain markup
-        price *= Tuning.Economy.LocationSegmentKindMarkup[actor.Location.Terrain][segment.SegmentKind];
-
-        // Apply actor's personal markup target
-        price *= actor.GetMarkup();
-
-        // Apply faction policy multiplier
-        var policy = actor.Faction.GetPolicy(segment.SegmentKind);
-        price *= Tuning.Trade.PolicyMultiplier(policy);
-
-        return price;
-    }
+    static float MidPrice(this IActor actor, Segment segment, TradeOfferComponent? trade) =>
+        segment.Cost
+        * Tuning.Economy.EncounterSegmentKindMarkup[actor.Location.Type][segment.SegmentKind]
+        * Tuning.Economy.LocationSegmentKindMarkup[actor.Location.Terrain][segment.SegmentKind]
+        * (trade?.Markup ?? 1.0f)
+        * Tuning.Trade.PolicyMultiplier(actor.Faction.GetPolicy(segment.SegmentKind));
 
     /// <summary>
     /// Get this actor's ask price (selling price) for a segment.
     /// Ask = MidPrice × (1 + Spread/2)
     /// </summary>
     public static float GetAskPrice(this IActor actor, Segment segment) {
-        float midPrice = actor.GetMidPrice(segment);
-        float spread = Tuning.Trade.baseBidAskSpread * actor.GetSpread();
-        return Commodity.Scrap.Round(midPrice * (1 + spread / 2));
+        var trade = actor.GetTradeComponent();
+        return Tuning.Trade.AskFrom(actor.MidPrice(segment, trade), SpreadOf(trade));
     }
 
     /// <summary>
@@ -136,64 +120,8 @@ public static class MarketOfferEx {
     /// Bid = MidPrice × (1 - Spread/2)
     /// </summary>
     public static float GetBidPrice(this IActor actor, Segment segment) {
-        float midPrice = actor.GetMidPrice(segment);
-        float spread = Tuning.Trade.baseBidAskSpread * actor.GetSpread();
-        return Commodity.Scrap.Round(midPrice * (1 - spread / 2));
-    }
-
-    /// <summary>
-    /// Enumerate segment sell offers from this actor matching kind and size range.
-    /// Searches packaged segments in every account but the reserve.
-    /// </summary>
-    public static IEnumerable<SegmentMarketOffer> GetSegmentAskOffers(
-        this IActor actor,
-        SegmentKind kind,
-        float minSize,
-        float maxSize) {
-
-        var segments = actor.Inventory.SegmentsIn(Account.Supplies | Account.Trade)
-            .Where(s => s.SegmentKind == kind)
-            .Where(s => s.SegmentDef.Size.Size >= minSize && s.SegmentDef.Size.Size <= maxSize);
-
-        foreach (var segment in segments) {
-            float price = actor.GetAskPrice(segment);
-            yield return new SegmentMarketOffer(actor, price, segment);
-        }
-    }
-
-    /// <summary>
-    /// Enumerate hypothetical segment buy offers from this actor for a given kind and size range.
-    /// This represents what the actor would pay for segments in this range.
-    /// Returns offers based on actor's purchasing power.
-    /// </summary>
-    public static IEnumerable<SegmentMarketOffer> GetSegmentBidOffers(
-        this IActor actor,
-        SegmentKind kind,
-        float minSize,
-        float maxSize) {
-
-        // For bid offers on segments, we calculate the theoretical price the actor would pay
-        // Since we don't have a specific segment, we use the average size
-        float avgSize = (minSize + maxSize) / 2;
-        float theoreticalCost = Tuning.Segments.CostTiers.Value(avgSize, 0);
-
-        // Apply markups for this kind at actor's location
-        float price = theoreticalCost;
-        price *= Tuning.Economy.EncounterSegmentKindMarkup[actor.Location.Type][kind];
-        price *= Tuning.Economy.LocationSegmentKindMarkup[actor.Location.Terrain][kind];
-        price *= actor.GetMarkup();
-        price *= Tuning.Trade.PolicyMultiplier(actor.Faction.GetPolicy(kind));
-
-        // Apply bid spread
-        float spread = Tuning.Trade.baseBidAskSpread * actor.GetSpread();
-        price = Commodity.Scrap.Round(price * (1 - spread / 2));
-
-        // Check if actor can afford anything
-        float scrap = actor.Inventory[Commodity.Scrap];
-        if (price > 0 && scrap >= price) {
-            // Return a single theoretical bid offer (null segment indicates "wanting to buy")
-            yield return new SegmentMarketOffer(actor, price, null!);
-        }
+        var trade = actor.GetTradeComponent();
+        return Tuning.Trade.BidFrom(actor.MidPrice(segment, trade), SpreadOf(trade));
     }
 
     #endregion

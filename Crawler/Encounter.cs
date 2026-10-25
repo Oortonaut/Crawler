@@ -294,7 +294,8 @@ public sealed class Encounter : IComparable<Encounter> {
             UpdatePlayerStatus();
     }
     public IReadOnlyCollection<IActor> Actors => OrderedActors();
-    public IEnumerable<IActor> Settlements => Actors.Where(a => a.Flags.HasFlag(ActorFlags.Settlement));
+    // Filters the actor set directly: Actors sorts and copies on every access, and NPC trades look this up per call
+    public IEnumerable<IActor> Settlements => actors.Keys.Where(a => a.Flags.HasFlag(ActorFlags.Settlement));
 
     /// <summary>
     /// Get all ask offers (sell offers) for a commodity from actors at this location.
@@ -315,30 +316,6 @@ public sealed class Encounter : IComparable<Encounter> {
             var offer = actor.GetBidOffer(commodity);
             if (offer.IsValid)
                 yield return offer;
-        }
-    }
-
-    /// <summary>
-    /// Get all ask offers (sell offers) for segments of a given kind and size range.
-    /// </summary>
-    public IEnumerable<SegmentMarketOffer> AskOffers(SegmentKind kind, float minSize, float maxSize) {
-        foreach (var actor in Actors) {
-            foreach (var offer in actor.GetSegmentAskOffers(kind, minSize, maxSize)) {
-                if (offer.IsValid)
-                    yield return offer;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Get all bid offers (buy offers) for segments of a given kind and size range.
-    /// </summary>
-    public IEnumerable<SegmentMarketOffer> BidOffers(SegmentKind kind, float minSize, float maxSize) {
-        foreach (var actor in Actors) {
-            foreach (var offer in actor.GetSegmentBidOffers(kind, minSize, maxSize)) {
-                if (offer.IsValid)
-                    yield return offer;
-            }
         }
     }
 
@@ -516,14 +493,10 @@ public sealed class Encounter : IComparable<Encounter> {
                 settlement.Inventory.Remove(c, settlement.Inventory[c, Account.Trade], Account.Trade);
             }
         }
-        // Initialize cargo with equilibrium stock levels
-        Economy.EquilibriumStock.InitializeCargo(settlement);
-
-        // Initialize stock baseline for dynamic pricing using equilibrium
-        settlement.Stock = Economy.SettlementStock.ForEquilibrium(
-            Location.Population,
-            settlement.IndustrySegments,
-            Location);
+        // Initialize trade stock and the dynamic-pricing baseline from one equilibrium calculation
+        var equilibrium = Economy.EquilibriumStock.Calculate(Location.Population, settlement.IndustrySegments, Location);
+        Economy.EquilibriumStock.InitializeCargo(settlement, equilibrium);
+        settlement.Stock = Economy.SettlementStock.ForEquilibrium(equilibrium);
         settlement.Stock.InitializePrices();
 
         // Add base components

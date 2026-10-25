@@ -90,16 +90,13 @@ public static class EquilibriumStock {
         var production = ProductionCapacity(industrySegments, location);
         var equilibrium = new EArray<Commodity, float>();
 
-        // Hours per day in game time (10 hours per day)
-        const float hoursPerDay = 10f;
-
         foreach (var commodity in Enum.GetValues<Commodity>()) {
             float hourlyConsumption = consumption[commodity];
             float hourlyProduction = production[commodity];
 
             // Get buffer days for this category
             float bufferDays = BufferDays[commodity.Category()];
-            float bufferHours = bufferDays * hoursPerDay;
+            float bufferHours = bufferDays * TimePoint.HoursPerDay;
 
             if (hourlyConsumption <= 0 && hourlyProduction <= 0) {
                 // Not consumed or produced - skip
@@ -126,14 +123,9 @@ public static class EquilibriumStock {
     }
 
     /// <summary>
-    /// Initialize a settlement's cargo with equilibrium stock levels.
+    /// Initialize a settlement's trade stock with equilibrium stock levels from <see cref="Calculate"/>.
     /// </summary>
-    public static void InitializeCargo(Crawler settlement) {
-        var equilibrium = Calculate(
-            settlement.Location.Population,
-            settlement.IndustrySegments,
-            settlement.Location);
-
+    public static void InitializeCargo(Crawler settlement, EArray<Commodity, float> equilibrium) {
         foreach (var commodity in Enum.GetValues<Commodity>()) {
             if (commodity == Commodity.Scrap) {
                 // Scrap (cash) scales with population and wealth
@@ -147,18 +139,5 @@ public static class EquilibriumStock {
                 settlement.Inventory.Add(commodity, equilibrium[commodity], Account.Supplies | Account.Trade);
             }
         }
-    }
-
-    /// <summary>
-    /// Calculate equilibrium stock baselines for SettlementStock.
-    /// </summary>
-    public static EArray<Commodity, float> CalculateBaselines(
-        int population,
-        IEnumerable<IndustrySegment> industrySegments,
-        Location location) {
-
-        // Baselines are the equilibrium targets - price multiplier = 1.0
-        // when current stock equals baseline
-        return Calculate(population, industrySegments, location);
     }
 }

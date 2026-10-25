@@ -96,16 +96,11 @@ public class SettlementStock {
     /// Baselines are calculated from consumption rates and production capacity,
     /// so prices start at 1.0x when trade stock matches equilibrium.
     /// </summary>
-    public static SettlementStock ForEquilibrium(
-        int population,
-        IEnumerable<IndustrySegment> industrySegments,
-        Location location) {
-
+    public static SettlementStock ForEquilibrium(EArray<Commodity, float> equilibrium) {
+        // Baselines are the equilibrium targets: price multiplier is 1.0 when stock equals baseline
         var stock = new SettlementStock();
-        var baselines = EquilibriumStock.CalculateBaselines(population, industrySegments, location);
-
         foreach (var c in Enum.GetValues<Commodity>()) {
-            stock._baseline[c] = baselines[c];
+            stock._baseline[c] = equilibrium[c];
         }
 
         return stock;
