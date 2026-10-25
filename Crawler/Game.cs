@@ -699,7 +699,8 @@ public class Game {
             foreach (var interaction in interactions) {
                 var code = $"{prefix}{counter}";
                 var action = new InteractionAction(interaction, code) {
-                    IsVisible = interactions.Count <= 4 // Show directly if 4 or fewer
+                    // Show directly if 4 or fewer; demands always, or they hide in a settlement's long submenu
+                    IsVisible = interactions.Count <= 4 || interaction.IsDemand
                 };
                 actions.Add(action);
                 context.RegisterAction(code, action);

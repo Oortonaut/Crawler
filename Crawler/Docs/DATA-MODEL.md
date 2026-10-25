@@ -416,7 +416,7 @@ void OnReceivingFire(IActor from, List<HitRecord> fire);
 See [SYSTEMS.md#built-in-components](SYSTEMS.md#built-in-components) for full descriptions.
 
 **Core Components:**
-- **CustomsComponent** - Contraband scanning and seizure ultimatums
+- **CustomsComponent** - Contraband scanning; one search per faction, kept on `ActorFaction.Customs`
 - **TradeOfferComponent** - On-demand trade interaction generation
 - **LifeSupportComponent** - Resource consumption and crew survival
 - **AutoRepairComponent** - Automatic segment repair

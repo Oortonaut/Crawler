@@ -236,6 +236,8 @@ public static partial class Tuning {
         public static TimeDuration AttackTime = TimeDuration.FromSeconds(10);              // Combat attack action
         public static TimeDuration UltimatumTimeout = TimeDuration.FromSeconds(300);       // Default ultimatum timeout
         public static TimeDuration CustomsTimeout = TimeDuration.FromSeconds(3000);        // Customs inspection deadline (30 game minutes)
+        public static TimeDuration CustomsSearchCooldown = TimeDuration.FromDays(1);       // A faction won't search the same actor again for this long
+        public static int CustomsDefianceStanding = 25;                                    // Faction standing lost for refusing or missing a search
         public static float StartingScrap = 500;                                           // Extra scrap the player starts with, on top of generated goods
         public static float StartingAmmoDamage = 200;                                      // Player starts with enough ammo per weapon to deal this much damage
         public static TimeDuration FleeTime = TimeDuration.FromSeconds(25);                // Time to attempt fleeing

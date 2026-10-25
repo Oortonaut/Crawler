@@ -21,6 +21,9 @@ public abstract record Interaction(IActor Mechanic, IActor Subject, string MenuO
     /// <summary>Display message for viewer. Primarily used for customs and extortion demands.</summary>
     public virtual string? MessageFor(IActor viewer) => null;
 
+    /// <summary>A response to a pending demand (comply/refuse). Always shown at the top level, never only in a submenu.</summary>
+    public virtual bool IsDemand => false;
+
     /// <summary>Display description for menus</summary>
     public abstract string Description { get; }
 

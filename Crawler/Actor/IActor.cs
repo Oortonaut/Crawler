@@ -122,6 +122,9 @@ public interface IActor: IComparable, IComparable<IActor> {
     /// <summary>Get visit tracking for a location</summary>
     LocationActor To(Location loc);
 
+    /// <summary>Get standing, licenses and customs state with a faction</summary>
+    ActorFaction To(Factions faction);
+
     void SetHostileTo(IActor other, bool hostile);
 
     /// <summary>

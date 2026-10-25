@@ -8,8 +8,14 @@ namespace Crawler;
 
 /// <summary>
 /// Component that handles contraband scanning, enforcement, and seizure.
-/// Actors with this component scan for prohibited goods and create ultimatums to seize them or turn hostile.
-/// Can be added to Owners, customs officers, or other enforcement actors.
+/// Actors with this component scan for prohibited goods and demand a search or turn hostile.
+/// Can be added to settlements, customs officers, or other enforcement actors.
+///
+/// Each faction searches a target once: the demand lives on the target's faction standing
+/// (<see cref="ActorFaction.Customs"/>), and only the faction's best-equipped customs actor in the
+/// encounter (<see cref="DesignatedSearcher"/>) enforces it. The searcher is recomputed on demand,
+/// so when a better-equipped officer arrives or the searcher leaves, the next one takes over the
+/// same deadline.
 /// </summary>
 public class CustomsComponent : ActorComponentBase {
     public override void Enter(Encounter encounter) {
@@ -23,65 +29,79 @@ public class CustomsComponent : ActorComponentBase {
         encounter.ActorLeft -= OnActorLeft;
     }
 
+    static bool HasCustoms(IActor actor) =>
+        actor is ActorBase actorBase && actorBase.Components.OfType<CustomsComponent>().Any();
+
+    /// <summary>Total value of working segments; settlements usually win.</summary>
+    static float Equipment(IActor actor) =>
+        actor is Crawler crawler ? crawler.Segments.Where(s => !s.IsDestroyed).Sum(s => s.Cost) : 0;
+
+    /// <summary>
+    /// The faction's customs actor that enforces searches in this encounter: the best equipped,
+    /// ties broken by seed so every member agrees.
+    /// </summary>
+    public static IActor? DesignatedSearcher(Encounter encounter, Factions faction) =>
+        encounter.Actors
+            .Where(a => a.Faction == faction && a.Lives() && HasCustoms(a))
+            .OrderByDescending(Equipment)
+            .ThenBy(a => a.Seed)
+            .FirstOrDefault();
+
+    bool IsDesignatedSearcher =>
+        Owner.Location.HasEncounter && DesignatedSearcher(Owner.Location.GetEncounter(), Owner.Faction) == Owner;
+
     void OnActorArrived(IActor actor, TimePoint time) {
         LogCat.Log.LogInformation($"CustomsComponent.OnActorArrived: actor={actor.Name}, time={Game.TimeString(time)}, Owner={Owner.Name}, actor==Owner={actor == Owner}");
         if (actor == Owner) {
             var encounter = actor.Location.GetEncounter();
             // Scan all actors already present in the encounter
-            // Issue ultimatums starting from NOW (when customs officer arrived), not from their historical arrival
-            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} arrived, scanning {encounter.ActorsExcept(Owner).Count()} existing actors");
+            // Issue demands starting from NOW (when customs officer arrived), not from their historical arrival
             foreach (var other in encounter.ActorsExcept(Owner)) {
-                LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} issuing ultimatum to {other.Name} at time {Game.TimeString(time)}");
-                SetupContrabandUltimatum(other, time);
+                DemandSearch(other, time);
             }
         } else {
-            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} issuing ultimatum to arriving {actor.Name} at time {Game.TimeString(time)}");
-            SetupContrabandUltimatum(actor, time);
+            DemandSearch(actor, time);
         }
     }
 
     void OnActorLeft(IActor actor, TimePoint time) {
         if (actor == Owner) {
-            // TODO: clear all ultimatums we have offered
-            foreach (var target in Targets) {
-                Owner.To(target).Ultimatum = null;
+            // Pending demands stay with the faction; drop them only if no officer is left to enforce them
+            if (!Owner.Location.HasEncounter) return;
+            var encounter = Owner.Location.GetEncounter();
+            if (DesignatedSearcher(encounter, Owner.Faction) is null) {
+                foreach (var target in encounter.Actors) {
+                    target.To(Owner.Faction).Customs.Deadline = TimePoint.Zero;
+                }
             }
-            Targets.Clear();
         } else {
-            // Clear ultimatum when target leaves
-            Owner.To(actor).Ultimatum = null;
+            // Clear the demand when the target leaves
+            actor.To(Owner.Faction).Customs.Deadline = TimePoint.Zero;
         }
     }
 
-    List<IActor> Targets = new();
-    void SetupContrabandUltimatum(IActor target, TimePoint time) {
-        LogCat.Log.LogInformation($"CustomsComponent.SetupContrabandUltimatum: target={target.Name}, time={Game.TimeString(time)}, isPlayer={target.IsPlayer()}, fighting={Owner.Fighting(target)}");
-        if (!target.IsPlayer()) {
-            LogCat.Log.LogInformation($"CustomsComponent: {target.Name} is not player, skipping");
+    /// <summary>Opens a faction-wide search demand on target unless one is pending or it was searched recently.</summary>
+    void DemandSearch(IActor target, TimePoint time) {
+        if (!target.IsPlayer() || Owner.Fighting(target)) {
             return;
         }
-
-        if (!Owner.Fighting(target)) {
-            // CRITICAL: Event handlers receive historical time but owner may have advanced
-            // Use owner's current time for ultimatum expiration
-            var effectiveTime = time > Owner.Time ? time : Owner.Time;
-            var expirationTime = effectiveTime + Tuning.Crawler.CustomsTimeout;
-
-            var timeDelta = Owner.Time - time;
-            if (timeDelta.TotalSeconds > 60) {
-                LogCat.Log.LogWarning($"CustomsComponent: WARNING! Event fired {timeDelta} after arrival. event time={Game.TimeString(time)}, owner time={Game.TimeString(Owner.Time)}");
-            }
-
-            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} setting ultimatum on {target.Name}, event time={Game.TimeString(time)}, effective time={Game.TimeString(effectiveTime)}, expires at {Game.TimeString(expirationTime)} (owner time: {Game.TimeString(Owner.Time)})");
-            // Set ultimatum with timeout
-            Targets.Add(target);
-            Owner.To(target).Ultimatum = new ActorToActor.UltimatumState {
-                ExpirationTime = expirationTime,
-                Type = "ContrabandSeizure",
-            };
-        } else {
-            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} is fighting {target.Name}, skipping ultimatum");
+        var customs = target.To(Owner.Faction).Customs;
+        // Event handlers receive historical time but owner may have advanced
+        var effectiveTime = time > Owner.Time ? time : Owner.Time;
+        if (customs.IsPending || customs.SearchedRecently(effectiveTime)) {
+            LogCat.Log.LogInformation($"CustomsComponent: {Owner.Faction} already has {target.Name} covered (pending={customs.IsPending})");
+            return;
         }
+        customs.Deadline = effectiveTime + Tuning.Crawler.CustomsTimeout;
+        LogCat.Log.LogInformation($"CustomsComponent: {Owner.Name} opened {Owner.Faction} search of {target.Name}, deadline {Game.TimeString(customs.Deadline)}");
+    }
+
+    /// <summary>Defying customs (refusing or letting the deadline pass) turns the searcher hostile and costs faction standing.</summary>
+    static void Defied(IActor searcher, IActor target) {
+        var standing = target.To(searcher.Faction);
+        standing.Customs.Deadline = TimePoint.Zero;
+        standing.FactionStanding -= Tuning.Crawler.CustomsDefianceStanding;
+        searcher.SetHostileTo(target, true);
     }
 
     /// <summary>
@@ -128,13 +148,13 @@ public class CustomsComponent : ActorComponentBase {
     }
 
     public override IEnumerable<Interaction> EnumerateInteractions(IActor subject) {
-        var relation = Owner.To(subject);
-        if (relation.Ultimatum?.Type != "ContrabandSeizure") yield break;
+        var customs = subject.To(Owner.Faction).Customs;
+        if (!customs.IsPending || !IsDesignatedSearcher) yield break;
 
         // Rescan to update the interaction text
         var contraband = Scan(subject);
-        var expirationTime = relation.Ultimatum.ExpirationTime;
-        bool expired = expirationTime.IsValid && Owner.Time > expirationTime;
+        var expirationTime = customs.Deadline;
+        bool expired = Owner.Time > expirationTime;
 
         LogCat.Log.LogInformation($"CustomsComponent.EnumerateInteractions: Owner={Owner.Name}, subject={subject.Name}, expirationTime={Game.TimeString(expirationTime)}, currentTime={Game.TimeString(Owner.Time)}, expired={expired}");
 
@@ -159,13 +179,14 @@ public class CustomsComponent : ActorComponentBase {
     ) : Interaction(Owner, Target, MenuOption) {
 
         public override string Description => $"Allow search: surrender {Contraband}";
+        public override bool IsDemand => true;
 
         public override string? MessageFor(IActor viewer) {
             if (viewer != Target) return null;
-            var ultimatum = Owner.To(Target).Ultimatum;
-            if (ultimatum == null || !ultimatum.ExpirationTime.IsValid) return null;
+            var customs = Target.To(Owner.Faction).Customs;
+            if (!customs.IsPending) return null;
 
-            return $"{Owner.Name} demands customs inspection. You have until {Game.TimeString(ultimatum.ExpirationTime)} to comply.";
+            return $"{Owner.Name} demands a {Owner.Faction} customs inspection. You have until {Game.TimeString(customs.Deadline)} to comply.";
         }
 
         public override bool Perform(string args = "") {
@@ -179,8 +200,10 @@ public class CustomsComponent : ActorComponentBase {
             // TODO: Move to evidence inventory
             Owner.Cargo.Add(Contraband);
 
-            // Clear ultimatum
-            Owner.To(Target).Ultimatum = null;
+            // One search satisfies the whole faction
+            var customs = Target.To(Owner.Faction).Customs;
+            customs.Deadline = TimePoint.Zero;
+            customs.LastSearched = Owner.Time;
 
             // Contraband search takes time: 1 hour if clean, 3 hours if contraband found
             Owner.ConsumeTime("Searching", 300, ExpectedDuration);
@@ -210,6 +233,7 @@ public class CustomsComponent : ActorComponentBase {
     ) : Interaction(Owner, Target, MenuOption) {
 
         public override string Description => $"Refuse search from {Owner.Name}";
+        public override bool IsDemand => true;
 
         public override string? MessageFor(IActor viewer) => null;
 
@@ -217,8 +241,7 @@ public class CustomsComponent : ActorComponentBase {
             Owner.Message($"{Target.Name} refuses search!");
             Target.Message($"You refuse {Owner.Name}'s search - now hostile!");
 
-            Owner.To(Target).Ultimatum = null;
-            Owner.SetHostileTo(Target, true);
+            Defied(Owner, Target);
 
             // Time consumption for refusing contraband search
             Owner.ConsumeTime("RefusedBy", 300, ExpectedDuration);
@@ -242,10 +265,9 @@ public class CustomsComponent : ActorComponentBase {
 
         public override bool Perform(string args = "") {
             Owner.Message($"{Target.Name} has passed the deadline!");
-            Target.Message($"You wait out {Owner.Name}'s search.");
+            Target.Message($"You missed {Owner.Name}'s customs deadline - now hostile!");
 
-            Owner.To(Target).Ultimatum = null;
-            Owner.SetHostileTo(Target, true);
+            Defied(Owner, Target);
 
             return false;
         }

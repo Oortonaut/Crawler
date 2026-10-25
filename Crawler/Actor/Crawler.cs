@@ -169,6 +169,17 @@ public class ActorFaction {
     // 1000 = everything
     public int ActorStanding { get; set; } // How the actor feels about the faction
     public int FactionStanding { get; set; } // How the faction feels about the actor
+
+    /// <summary>This faction's customs search of the actor, shared by every officer of the faction.</summary>
+    public CustomsSearch Customs { get; } = new();
+    public class CustomsSearch {
+        /// <summary>When the pending search demand lapses; Zero when none is pending.</summary>
+        public TimePoint Deadline { get; set; } = TimePoint.Zero;
+        public TimePoint LastSearched { get; set; } = TimePoint.Zero;
+        public bool IsPending => Deadline != TimePoint.Zero;
+        public bool SearchedRecently(TimePoint now) =>
+            LastSearched != TimePoint.Zero && now - LastSearched < Tuning.Crawler.CustomsSearchCooldown;
+    }
     GameTier weaponTier(SegmentDef segdef) => (GameTier)Math.Clamp((int)Math.Round(segdef.Size.Size * 0.667), 0, 3);
 }
 public partial class Crawler: ActorScheduled, IComparable<Crawler> {

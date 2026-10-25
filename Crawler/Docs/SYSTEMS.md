@@ -411,8 +411,27 @@ public interface IActorComponent : IEncounterEventHandler {
 
 **CustomsComponent (CrawlerComponentBase):**
 - Subscribes to: ActorArrived, ActorLeft
-- Behavior: Scans for contraband, creates seizure ultimatums via ActorToActor.Ultimatum
+- Behavior: Scans for contraband and demands a search, once per faction (see Customs Searches below)
 - Used by: Settlements and Customs officers (CrawlerRole.Settlement, CrawlerRole.Customs)
+
+### Customs Searches
+
+A faction searches an actor once, however many of its customs actors are present:
+- **State** lives on the target's faction standing, `target.To(faction).Customs` (`ActorFaction.CustomsSearch`):
+  a `Deadline` (Zero when nothing is pending) and `LastSearched`. Not on `ActorToActor.Ultimatum`, which
+  repair/upgrade/manufacturing jobs also use and would overwrite.
+- **Searcher:** `CustomsComponent.DesignatedSearcher(encounter, faction)` picks the faction's customs actor with
+  the most valuable working segments (ties by seed). Only it offers the search interactions. It's recomputed on
+  demand, so a better-equipped arrival or the searcher leaving hands the same deadline to the next officer.
+  Settlements nearly always win; patrol crawlers search where there's no settlement.
+- **Opening a demand:** any customs actor opens one on arrival unless one is pending or the faction searched the
+  target within `Tuning.Crawler.CustomsSearchCooldown` (1 day). Deadline is `CustomsTimeout` (30 minutes).
+- **Complying** clears the demand for the whole faction and starts the cooldown.
+- **Refusing or missing the deadline** turns the searcher hostile and costs `CustomsDefianceStanding` faction standing.
+  Other members don't turn hostile on their own.
+- Comply/refuse are `Interaction.IsDemand`, so they always show at the top level instead of only in a
+  settlement's long submenu.
+- The demand is dropped when the target leaves, or when no customs actor of the faction remains.
 
 **TradeOfferComponent (CrawlerComponentBase):**
 - Priority: 500 (default)
@@ -580,8 +599,8 @@ public class UltimatumState {
 
 ### Use Cases
 
-**1. Time-Limited Demands** (BanditExtortion, ContrabandSeizure)
-- Bandit/Settlement sets Ultimatum with Type and expiration
+**1. Time-Limited Demands** (BanditExtortion)
+- Bandit sets Ultimatum with Type and expiration (customs searches use faction state instead; see Customs Searches)
 - Component enumerates accept/refuse interactions based on Ultimatum presence
 - Cleared when resolved or actor leaves encounter
 
