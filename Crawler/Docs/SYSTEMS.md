@@ -832,26 +832,28 @@ Selling Fuel at Trade Settlement:
   BidPrice = 18 - 1.44 = 16.56¢¢ (player receives)
 ```
 
-### Trade Proposal Generation
+### Trade Offer Generation
 
-**Process:** `TradeEx.MakeTradeProposals(IActor Seller, float wealthFraction)`
-1. Uses seller's faction for policy determination
-2. Determine available commodities based on location/faction
-3. Filter by faction trade policy (prohibited goods have 50% chance to appear)
-4. Calculate prices with spreads
-5. Add transaction fees for controlled goods
-6. Generate ProposeSellBuy and ProposeBuySell for each
+`TradeOfferComponent.GetOrCreateOffers` refreshes every `PriceRecalcInterval` (2 hours) in two steps, each with a
+fresh seed from the component's RNG:
 
-**Prohibited Goods:**
-Goods with Prohibited policy have 50% chance to be skipped in trade offers
+1. **`TradeEx.Restock(seller, seed, wealthFraction, forSale)`** - the only step that changes inventory.
+   - Each trade good rolls against `AvailabilityAt(location)` (scales with population); essentials are always
+     restocked so small settlements still have a market.
+   - Restocking **tops up** the Trade stock to a wealth-based target (`Inventory.QuantitySold`); it never adds on
+     top of stock already there.
+   - The segments generated for sale by the previous restock are removed if unsold and replaced by a new batch
+     (Poisson count from location wealth; prohibited kinds skipped half the time).
+2. **`TradeEx.MakeTradeOffers(seller, seed)`** - lists what is on hand and changes nothing.
+   - An ask for every good and segment in a Trade stack, priced with `GetAskPrice` (mid price plus spread).
+   - A bid on every legal good, so goods hauled in from elsewhere can be sold.
+   - Prohibited goods on hand are offered half the time; prohibited goods not on hand get no bid.
 
-**Segments:**
-- Offered from the trader's Trade account
-- Procedurally generated based on location wealth
-- Local markup applied to base cost
+**Trade goods:** `Commodity.IsTradeGood()` - everything but Scrap (the currency), Crew, and Morale (people, not stock).
 
-**Availability:** Commodities roll against `AvailabilityAt(location)` (scales with population), but essentials (fuel, crew, air, water, rations...) are always traded so small settlements still have a market.
-Goods a trader already carries are always offered for sale (without restocking), and traders post a bid on every non-prohibited commodity they don't list, so goods hauled from elsewhere can be sold. The market screen hides bid-only rows unless the player holds that good.
+The market screen hides bid-only rows unless the player holds that good, and caps sells at what the trader can pay.
+Both the market screen and `TradeInteraction` exchange lots through `OfferEx.Exchange`, which reports which side
+stopped short and why.
 
 ### Market Screen
 

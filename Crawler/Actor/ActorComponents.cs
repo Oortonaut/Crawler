@@ -276,7 +276,8 @@ public class CustomsComponent : ActorComponentBase {
 /// </summary>
 public class TradeOfferComponent : ActorComponentBase {
     float _wealthFraction;
-    ulong _seed;
+    XorShift _rng;
+    readonly List<Segment> _forSale = [];
     List<TradeOffer>? _offers;
     TimePoint _lastOfferGeneration;
 
@@ -287,7 +288,7 @@ public class TradeOfferComponent : ActorComponentBase {
     public float Spread { get; set; } = 1.0f;
 
     public TradeOfferComponent(ulong seed, float wealthFraction = 0.25f, float? markup = null, float? spread = null) {
-        _seed = seed;
+        _rng = new XorShift(seed);
         _wealthFraction = wealthFraction;
         if (markup.HasValue) Markup = markup.Value;
         if (spread.HasValue) Spread = spread.Value;
@@ -304,7 +305,9 @@ public class TradeOfferComponent : ActorComponentBase {
                            Owner.Time - _lastOfferGeneration >= PriceRecalcInterval;
 
         if (_offers == null || needsRecalc) {
-            _offers = Owner.MakeTradeOffers(_seed, _wealthFraction);
+            // Restock (the only step that changes inventory), then list what is on hand
+            Owner.Restock(_rng.Seed(), _wealthFraction, _forSale);
+            _offers = Owner.MakeTradeOffers(_rng.Seed());
             _lastOfferGeneration = Owner.Time;
             Owner.Stock?.MarkPriceUpdate(Owner.Time);
         }
@@ -387,18 +390,11 @@ public class TradeOfferComponent : ActorComponentBase {
                 count = Math.Max(1, parsed);
             }
 
-            Mechanic.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{count})");
-            Subject.Message($"You gave {Mechanic.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{count})");
-
-            int performed = 0;
-            for (int i = 0; i < count; i++) {
-                if (AgentOffer.DisabledFor(Mechanic, Subject) != null || SubjectOffer.DisabledFor(Subject, Mechanic) != null) {
-                    break;
-                }
-                AgentOffer.PerformOn(Mechanic, Subject);
-                SubjectOffer.PerformOn(Subject, Mechanic);
-                performed++;
-            }
+            int performed = OfferEx.Exchange(Mechanic, AgentOffer, Subject, SubjectOffer, count, out var stopReason);
+            // Report what actually changed hands, not what was asked for
+            var cutShort = stopReason == null ? "" : $" Stopped at {performed}/{count}: {stopReason}.";
+            Mechanic.Message($"You gave {Subject.Name} {AgentOffer.Description} and got {SubjectOffer.Description} in return. (x{performed}){cutShort}");
+            Subject.Message($"You gave {Mechanic.Name} {SubjectOffer.Description} and got {AgentOffer.Description} in return. (x{performed})");
 
             // Time consumption for trading
             var tradeDuration = ExpectedDuration * performed;

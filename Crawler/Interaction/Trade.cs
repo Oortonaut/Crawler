@@ -1,4 +1,6 @@
 ﻿using Crawler.Economy;
+using Crawler.Logging;
+using Microsoft.Extensions.Logging;
 
 namespace Crawler;
 
@@ -42,117 +44,89 @@ public record Policy(
 
 public static class TradeEx {
     /// <summary>
-    /// Generate trade offer listings for a merchant
+    /// Top up a merchant's stock for sale: each good the location makes available is restocked to a
+    /// wealth-based target, and the segments generated for sale last time are replaced by a new batch.
+    /// The only step of trading that changes inventory; <see cref="MakeTradeOffers"/> lists what is on hand.
     /// </summary>
-    public static List<TradeOffer> MakeTradeOffers(this IActor Seller, ulong seed, float wealthFraction) {
-        var offers = new List<TradeOffer>();
+    /// <param name="forSale">Segments generated for sale by the previous restock; unsold ones are removed and the list refilled.</param>
+    public static void Restock(this IActor Seller, ulong seed, float wealthFraction, List<Segment> forSale) {
         var rng = new XorShift(seed);
         var faction = Seller.Faction;
         var Location = Seller.Location;
         var wealth = Location.Wealth * wealthFraction;
 
-        var tradeComponent = (Seller as ActorBase)?.Components.OfType<TradeOfferComponent>().FirstOrDefault();
-        float merchantMarkup = tradeComponent?.Markup ?? 1.0f;
-
-        var allCommodities = Enum.GetValues<Commodity>().Where(s => s != Commodity.Scrap).ToList();
-        // Goods the trader already carries are always offered, whatever the location produces
-        var carried = allCommodities.Where(s => Seller.Inventory[s, Account.Trade] > 0).ToHashSet();
-        // Small settlements roll almost nothing, so essentials are always traded (the draw is kept for RNG stability)
-        var stocked = allCommodities
-            .Where(s => rng.NextSingle() < s.AvailabilityAt(Location) | s.IsEssential())
-            .ToHashSet();
-        var commodities = allCommodities.Where(s => stocked.Contains(s) || carried.Contains(s)).ToList();
-
-        float CFrac = wealth;
-
-        foreach (var commodity in commodities) {
-            var policy = faction.GetPolicy(commodity);
-
-            if (policy == TradePolicy.Prohibited && rng.NextSingle() > 0.5f) {
+        foreach (var commodity in Enum.GetValues<Commodity>().Where(c => c.IsTradeGood())) {
+            // Small settlements roll almost nothing, so essentials are always restocked (the draw is kept for RNG stability)
+            if (!(rng.NextSingle() < commodity.AvailabilityAt(Location) | commodity.IsEssential())) {
                 continue;
             }
-
-            // Use actor's market pricing (includes Markup and Spread)
-            float askPrice = Seller.GetAskPrice(commodity);
-            float bidPrice = Seller.GetBidPrice(commodity);
-
-            // Only locally available goods are restocked; carried goods sell from what's on hand
-            if (stocked.Contains(commodity)) {
-                var quantity = Inventory.QuantitySold(CFrac, commodity, Location);
-                Seller.Inventory.Add(commodity, quantity, Account.Supplies | Account.Trade);
+            // Top up to the target rather than adding it, so stock doesn't grow with every restock
+            var shortfall = Inventory.QuantitySold(wealth, commodity, Location) - Seller.Inventory[commodity, Account.Trade];
+            if (shortfall > 0) {
+                Seller.Inventory.Add(commodity, shortfall, Account.Supplies | Account.Trade);
             }
-
-            var saleQuantity = 1f;
-
-            // Trader sells (player buys)
-            offers.Add(new TradeOffer {
-                Commodity = commodity,
-                Direction = TradeDirection.Sell,
-                PricePerUnit = askPrice,
-                Quantity = (float)Math.Floor(saleQuantity)
-            });
-
-            // Trader buys (player sells)
-            offers.Add(new TradeOffer {
-                Commodity = commodity,
-                Direction = TradeDirection.Buy,
-                PricePerUnit = bidPrice,
-                Quantity = (float)Math.Ceiling(saleQuantity)
-            });
         }
 
-        // Traders buy goods they neither stock nor carry, so goods hauled in from elsewhere can be sold.
-        // No RNG draws here, which keeps the segment rolls below stable.
-        foreach (var commodity in allCommodities.Except(commodities)) {
-            if (faction.GetPolicy(commodity) == TradePolicy.Prohibited) {
+        // Replace last restock's unsold segments instead of piling up copies
+        foreach (var segment in forSale.Where(s => Seller.Inventory.Segments.Contains(s))) {
+            Seller.Inventory.Remove(segment);
+        }
+        forSale.Clear();
+        int saleSegments = CrawlerEx.PoissonQuantile((float)Math.Log(wealth / 300 + 1), ref rng);
+        while (saleSegments-- > 0) {
+            var segment = rng.ChooseRandom(SegmentEx.AllDefs)!.NewSegment(rng.Seed());
+            if (faction.GetPolicy(segment.SegmentKind) == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
+                continue;
+            }
+            // Segments are packaged by default, so just add them for use or trade
+            Seller.Inventory.Add(segment, Account.Supplies | Account.Trade);
+            forSale.Add(segment);
+        }
+    }
+
+    /// <summary>
+    /// List a merchant's offers from what it holds for trade: an ask for every good and segment on hand,
+    /// and a bid on every legal good, so goods hauled in from elsewhere can be sold. Changes nothing.
+    /// </summary>
+    public static List<TradeOffer> MakeTradeOffers(this IActor Seller, ulong seed) {
+        var offers = new List<TradeOffer>();
+        var rng = new XorShift(seed);
+        var faction = Seller.Faction;
+
+        foreach (var commodity in Enum.GetValues<Commodity>().Where(c => c.IsTradeGood())) {
+            var policy = faction.GetPolicy(commodity);
+            // Ask only with at least one whole lot on hand; equilibrium stock leaves slivers no one can buy
+            if (Seller.Inventory[commodity, Account.Trade] >= 1) {
+                // Prohibited goods on hand are dealt half the time
+                if (policy == TradePolicy.Prohibited && rng.NextSingle() > 0.5f) {
+                    continue;
+                }
+                offers.Add(new TradeOffer {
+                    Commodity = commodity,
+                    Direction = TradeDirection.Sell, // Trader sells (player buys)
+                    PricePerUnit = Seller.GetAskPrice(commodity),
+                    Quantity = 1
+                });
+            } else if (policy == TradePolicy.Prohibited) {
                 continue;
             }
             offers.Add(new TradeOffer {
                 Commodity = commodity,
-                Direction = TradeDirection.Buy,
+                Direction = TradeDirection.Buy, // Trader buys (player sells)
                 PricePerUnit = Seller.GetBidPrice(commodity),
                 Quantity = 1
             });
         }
 
-        // Offer segments from trade inventory
-        foreach (var segment in Seller.Inventory.SegmentsIn(Account.Trade).ToList()) {
-            var policy = faction.GetPolicy(segment.SegmentKind);
-
-            if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
+        foreach (var segment in Seller.Inventory.SegmentsIn(Account.Trade)) {
+            if (faction.GetPolicy(segment.SegmentKind) == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
                 continue;
             }
-
-            var price = segment.CostAt(Location, Seller, policy) * merchantMarkup;
-
+            // Same ask as commodities: mid price (markups, policy) plus this trader's spread
             offers.Add(new TradeOffer {
                 Segment = segment,
                 Direction = TradeDirection.Sell,
-                PricePerUnit = price,
-                Quantity = 1
-            });
-        }
-
-        // Generate segments for sale
-        int SaleSegments = CrawlerEx.PoissonQuantile((float)Math.Log(Location.Wealth * wealthFraction / 300 + 1), ref rng);
-        while (SaleSegments-- > 0) {
-            var segmentDef = rng.ChooseRandom(SegmentEx.AllDefs)!;
-            var segment = segmentDef.NewSegment(rng.Seed());
-
-            var policy = faction.GetPolicy(segment.SegmentKind);
-
-            if (policy == TradePolicy.Prohibited && rng.NextSingle() < 0.5f) {
-                continue;
-            }
-
-            // Segments are packaged by default, so just add them for use or trade
-            Seller.Inventory.Add(segment, Account.Supplies | Account.Trade);
-            var price = segment.CostAt(Location, Seller, policy) * merchantMarkup;
-
-            offers.Add(new TradeOffer {
-                Segment = segment,
-                Direction = TradeDirection.Sell,
-                PricePerUnit = price,
+                PricePerUnit = Seller.GetAskPrice(segment),
                 Quantity = 1
             });
         }
@@ -170,8 +144,7 @@ public static class SettlementTrade {
     /// </summary>
     public static Crawler? FindSettlement(Location location) {
         if (!location.HasEncounter) return null;
-        return location.GetEncounter().Actors.OfType<Crawler>()
-            .FirstOrDefault(c => c.Role == Roles.Settlement);
+        return location.GetEncounter().Settlements.OfType<Crawler>().FirstOrDefault();
     }
 
     /// <summary>
@@ -212,7 +185,9 @@ public static class SettlementTrade {
         settlement.Inventory.Remove(commodity, qty, Account.Trade);
         buyer.Inventory.Add(commodity, qty, Account.Supplies | Account.Trade);
 
-        buyer.Message($"{buyer.Name} bought {qty:F1} {commodity} from {settlement.Name} for {cost:F0} scrap");
+        // NPC trades drive the simulated economy; Message() is dropped for anyone but the player
+        LogCat.Log.LogTrace("SettlementTrade buy {Buyer} {Commodity} {Qty} from {Settlement} cost {Cost}",
+            buyer.Name, commodity, qty, settlement.Name, cost);
         return true;
     }
 
@@ -248,7 +223,8 @@ public static class SettlementTrade {
         settlement.Inventory.Remove(Commodity.Scrap, revenue);
         seller.Inventory.Add(Commodity.Scrap, revenue);
 
-        seller.Message($"{seller.Name} sold {qty:F1} {commodity} to {settlement.Name} for {revenue:F0} scrap");
+        LogCat.Log.LogTrace("SettlementTrade sell {Seller} {Commodity} {Qty} to {Settlement} revenue {Revenue}",
+            seller.Name, commodity, qty, settlement.Name, revenue);
         return true;
     }
 }

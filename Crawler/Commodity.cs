@@ -168,6 +168,8 @@ public static class CommodityEx {
     public static bool IsPerishable(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Perishable);
     public static bool IsBulky(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Bulky);
     public static bool IsEssential(this Commodity commodity) => commodity.Category() == CommodityCategory.Essential;
+    /// <summary>Goods that change hands in markets. Scrap is the currency; crew and morale are people, not stock.</summary>
+    public static bool IsTradeGood(this Commodity commodity) => commodity is not (Commodity.Scrap or Commodity.Crew or Commodity.Morale);
     public static bool IsIntegral(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Integral);
     public static bool IsAmmunition(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Ammunition);
     public static bool IsIndustrial(this Commodity commodity) => commodity.Flags().HasFlag(CommodityFlag.Industrial);

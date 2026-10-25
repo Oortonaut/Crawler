@@ -22,6 +22,26 @@ public interface IOffer {
     string Description { get; }
 }
 
+public static partial class OfferEx {
+    /// <summary>
+    /// Swap offers lot by lot - agent gives agentGives, subject gives subjectGives - until lots are done or a side
+    /// can't fulfil its offer. Returns the lots exchanged; stopReason names the side and why it stopped short.
+    /// The one exchange loop shared by trade interactions and the market screen.
+    /// </summary>
+    public static int Exchange(IActor agent, IOffer agentGives, IActor subject, IOffer subjectGives, int lots, out string? stopReason) {
+        stopReason = null;
+        int done = 0;
+        for (; done < lots; done++) {
+            stopReason = agentGives.DisabledFor(agent, subject) is { } mine ? $"{agent.Name}: {mine}" :
+                subjectGives.DisabledFor(subject, agent) is { } theirs ? $"{subject.Name}: {theirs}" : null;
+            if (stopReason != null) break;
+            agentGives.PerformOn(agent, subject);
+            subjectGives.PerformOn(subject, agent);
+        }
+        return done;
+    }
+}
+
 public record CompoundOffer(params IOffer[] subs): IOffer {
     public virtual string Description => string.Join(", ", subs.Select(s => s.Description));
     public override string ToString() => Description;

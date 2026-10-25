@@ -151,7 +151,7 @@ public class TradeOfferTests : IDisposable
         var location = _fixture.GetLocation();
         var trader = _fixture.CreateTrader("Merchant", location);
 
-        var offers = trader.MakeTradeOffers(12345, 1.0f);
+        var offers = trader.MakeTradeOffers(12345);
 
         offers.Should().HaveCountGreaterThan(0);
     }
@@ -162,7 +162,7 @@ public class TradeOfferTests : IDisposable
         var location = _fixture.GetLocation();
         var trader = _fixture.CreateTrader("Merchant", location);
 
-        var offers = trader.MakeTradeOffers(12345, 1.0f);
+        var offers = trader.MakeTradeOffers(12345);
 
         offers.Should().Contain(o => o.Direction == TradeDirection.Sell);
         offers.Should().Contain(o => o.Direction == TradeDirection.Buy);

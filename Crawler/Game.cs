@@ -1803,7 +1803,8 @@ public class Game {
             // Gather statistics from any crawler's trade offers
             foreach (var crawler in encounter.Actors.OfType<Crawler>()) {
                 crawlersProcessed++;
-                var tradeOffers = crawler.MakeTradeOffers(Rng.Seed(), 1.0f);
+                // Listing offers changes nothing, and the crawler's own seed leaves the game RNG alone
+                var tradeOffers = crawler.MakeTradeOffers(crawler.Seed);
 
                 // Track which commodities this trader offers
                 var offeredCommodities = new HashSet<Commodity>();

@@ -25,12 +25,25 @@ Price formulas and trade mechanics live in [SYSTEMS.md](SYSTEMS.md#trading-syste
   (the in-game `RCP` report shows the same figures at local prices).
 - **Traders sell what they carry and buy what they don't.** Offers include carried cargo and bids on goods
   the trader doesn't stock, so hauling goods between markets can pay.
+- **Restocking tops up, it doesn't add.** Each 2-hour refresh restocks a merchant to a target; unsold generated
+  segments are replaced, not duplicated. Listing offers never changes inventory.
 - **Every settlement trades essentials.** Population-based availability can leave small settlements with
-  nothing to trade; essentials (fuel, crew, morale, air, water, rations) are always offered.
+  nothing to trade; essential goods (fuel, air, water, rations) are always offered. Crew and morale are never traded.
 
 ## Balance Log
 
 Record balance changes here: date, what changed, and why. Newest first.
+
+### 2026-10-25 — Restocking and trade goods
+
+- **Restock tops up to a target.** `MakeTradeOffers` used to add a full restock and a fresh batch of segments on
+  every 2-hour refresh, with the same seed: one settlement went from 0 to 12 identical segments in 3 refreshes,
+  and goods piled up until prices hit the stock-pressure floor. Restocking is now its own step that fills the
+  Trade stock up to the old per-refresh amount and replaces the previous unsold segments.
+- **Crew and morale left the market.** As essentials they were always listed, so selling all morale ended the
+  game in a revolt and buying a settlement's crew drained its population. `Commodity.IsTradeGood` excludes them.
+- **Segments are listed at the trader's ask** (mid price plus its spread), like commodities; they used to be
+  listed at the mid price. Segment asks rise by the trader's half-spread: about 8% at traders, 10% at settlements.
 
 ### 2026-10-25 — Price variation fixes
 

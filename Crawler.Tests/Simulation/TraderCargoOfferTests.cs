@@ -14,7 +14,7 @@ public class TraderCargoOfferTests
         var trader = location.GetEncounter().GeneratePlayerActor(7);
         trader.Inventory[Commodity.Relics, Account.Trade] += 3;
 
-        var offers = trader.MakeTradeOffers(11, 1.0f);
+        var offers = trader.MakeTradeOffers(11);
 
         offers.Should().Contain(o => o.Commodity == Commodity.Relics && o.Direction == TradeDirection.Sell,
             "goods a trader carries are for sale wherever it is");

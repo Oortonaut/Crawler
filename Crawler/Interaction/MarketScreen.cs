@@ -1,3 +1,6 @@
+using Crawler.Logging;
+using Microsoft.Extensions.Logging;
+
 namespace Crawler;
 
 /// <summary>
@@ -101,19 +104,27 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
         }
     }
 
-    // Move the row's basket quantity by delta lots, clamped to stock, holdings and cash.
+    // Move the row's basket quantity by delta lots, clamped to stock, holdings, and both sides' cash.
     void Adjust(Row row, int delta) {
         int target = row.Lots + delta;
         int maxBuy = row.Ask == null ? 0 : (int)(Held(trader, row.Commodity) / row.Ask.Quantity);
         int maxSell = row.Bid == null ? 0 : (int)(Held(player, row.Commodity) / row.Bid.Quantity);
         target = Math.Clamp(target, -maxSell, maxBuy);
+        // Cash each side has for this row once every other row in the basket settles
+        float otherRows = BasketNet - row.Net;
         if (target > 0 && row.AskLotPrice > 0) {
-            // Cash available for this row once every other row in the basket settles
-            float cash = player.Inventory[Commodity.Scrap] + BasketNet - row.Net;
+            float cash = player.Inventory[Commodity.Scrap] + otherRows;
             int affordable = (int)(cash / row.AskLotPrice);
             if (target > affordable) {
                 target = Math.Max(0, affordable);
                 _status = $"Limited by cash: {cash:F1}¢¢";
+            }
+        } else if (target < 0 && row.BidLotPrice > 0) {
+            float cash = trader.Inventory[Commodity.Scrap] - otherRows;
+            int affordable = (int)(cash / row.BidLotPrice);
+            if (-target > affordable) {
+                target = -Math.Max(0, affordable);
+                _status = $"Limited by {trader.Name}'s cash: {cash:F1}¢¢";
             }
         }
         row.Lots = target;
@@ -154,12 +165,9 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
     }
 
     bool Execute() {
-        // Sync both actors like other interactions do before moving goods
-        var common = player.Time > trader.Time ? player.Time : trader.Time;
-        if (player.Time < common) player.SimulateTo(common);
-        if (trader.Time < common) trader.SimulateTo(common);
+        Interaction.Synchronize(player, trader);
 
-        List<string> bought = [], sold = [];
+        List<string> bought = [], sold = [], cutShort = [];
         float net = 0;
         int deals = 0;
         // Sells first so their proceeds can fund the buys
@@ -171,12 +179,13 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
             IOffer scrap = new ScrapOffer(lotPrice);
             var (playerGives, traderGives) = buying ? (scrap, goods) : (goods, scrap);
 
-            int done = 0;
-            for (int i = 0; i < Math.Abs(row.Lots); i++) {
-                if (playerGives.DisabledFor(player, trader) != null || traderGives.DisabledFor(trader, player) != null) break;
-                playerGives.PerformOn(player, trader);
-                traderGives.PerformOn(trader, player);
-                done++;
+            int lots = Math.Abs(row.Lots);
+            int done = OfferEx.Exchange(player, playerGives, trader, traderGives, lots, out var reason);
+            if (reason != null) {
+                // Tell the player what cut the row short
+                cutShort.Add($"{row.Commodity} {done}/{lots} lots ({reason})");
+                LogCat.Log.LogDebug("MarketScreen cut short {Commodity} {Done}/{Lots} with {Trader}: {Reason}",
+                    row.Commodity, done, lots, trader.Name, reason);
             }
             if (done == 0) continue;
             ++deals;
@@ -184,13 +193,14 @@ public class MarketScreen(IActor player, IActor trader, IEnumerable<TradeOffer> 
             (buying ? bought : sold).Add(row.Commodity.CommodityTextFull(amount));
             net += buying ? -done * lotPrice : done * lotPrice;
         }
+        string CutShort() => cutShort.Count == 0 ? "" : $" Cut short: {string.Join("; ", cutShort)}.";
         if (deals == 0) {
-            player.Message($"No trade with {trader.Name} went through.");
+            player.Message($"No trade with {trader.Name} went through.{CutShort()}");
             return false;
         }
 
         string Join(List<string> items) => items.Count == 0 ? "nothing" : string.Join(", ", items);
-        player.Message($"Traded with {trader.Name}: bought {Join(bought)}; sold {Join(sold)}. Net {net:+0.0;-0.0}¢¢.");
+        player.Message($"Traded with {trader.Name}: bought {Join(bought)}; sold {Join(sold)}. Net {net:+0.0;-0.0}¢¢.{CutShort()}");
         trader.Message($"Traded with {player.Name}: sold {Join(bought)}; bought {Join(sold)}.");
 
         // One trade session: time scales with the number of goods traded, not the units

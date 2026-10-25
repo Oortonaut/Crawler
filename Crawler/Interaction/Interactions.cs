@@ -34,11 +34,14 @@ public abstract record Interaction(IActor Mechanic, IActor Subject, string MenuO
     public virtual TimeDuration ExpectedDuration => TimeDuration.Zero;
 
     /// <summary>Synchronize both actors to a common time before multi-actor interaction.</summary>
-    protected void SynchronizeActors() {
-        TimePoint commonTime = Mechanic.Time > Subject.Time ? Mechanic.Time : Subject.Time;
-        if (Mechanic.Time < commonTime) Mechanic.SimulateTo(commonTime);
-        if (Subject.Time < commonTime) Subject.SimulateTo(commonTime);
-        System.Diagnostics.Debug.Assert(Mechanic.Time == Subject.Time);
+    protected void SynchronizeActors() => Synchronize(Mechanic, Subject);
+
+    /// <summary>Advance whichever actor is behind so both share a time before they interact.</summary>
+    public static void Synchronize(IActor a, IActor b) {
+        TimePoint commonTime = a.Time > b.Time ? a.Time : b.Time;
+        if (a.Time < commonTime) a.SimulateTo(commonTime);
+        if (b.Time < commonTime) b.SimulateTo(commonTime);
+        System.Diagnostics.Debug.Assert(a.Time == b.Time);
     }
 }
 
