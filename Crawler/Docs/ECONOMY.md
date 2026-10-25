@@ -32,6 +32,17 @@ Price formulas and trade mechanics live in [SYSTEMS.md](SYSTEMS.md#trading-syste
 
 Record balance changes here: date, what changed, and why. Newest first.
 
+### 2026-10-25 — Price variation fixes
+
+- **Local markups vary per commodity again.** `GaussianSampler` is a struct and the markup samplers took it by
+  value, so a copy was drawn from on every call and never advanced: every commodity at a location got the same
+  `LocalMarkup` (one location had 0.8881 for all of them), and a crawler's markup and spread came from the same
+  draw. Samplers now take it by `ref`. Expect per-commodity price differences between locations of about ±7%,
+  which is what makes hauling particular goods pay.
+- **Trader and bandit spreads restored.** `TradeSpread`/`BanditSpread` sampled the absolute spread (0.16, 0.30)
+  but prices multiply by `baseBidAskSpread` again, so traders quoted ~3% and bandits ~6%. They now sample a
+  multiplier: traders 16% ± 5%, bandits 30% ± 10%, settlements 20%. `TradePricingTests` checks the averages.
+
 ### 2026-10-24 — Ammo recipes and trade loop
 
 - **Ammo recipes** cut to match the repriced ammo (the `RCP` report showed Cells −49% and Rockets −83%):

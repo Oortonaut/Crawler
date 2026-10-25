@@ -84,7 +84,9 @@ class GaussianSampler {
 
 **Used for:**
 - Trader markup variance (mean=1.05, stdDev=0.07)
-- Trader spread variance (mean=0.2, stdDev=0.05)
+- Trader spread multiplier (mean=0.8, stdDev=0.25 → 16% ± 5% spread)
+- Per-commodity location markups (mean=1, stdDev=0.07)
+- `GaussianSampler` is a struct: pass it by `ref` to anything that draws from it, or every draw repeats
 - Trait variation in generated entities
 
 ### Seeding Pattern
@@ -796,19 +798,21 @@ MidPrice = BaseValue × LocationMarkup × StockMultiplier × PolicyMultiplier
 
 **Bid-Ask Spread:**
 ```
-Spread = MidPrice × BaseBidAskSpread × FactionMultiplier × TraderMarkup
+Spread = MidPrice × BaseBidAskSpread × ActorSpread
 
-AskPrice (player buys from NPC) = MidPrice + Spread/2
-BidPrice (player sells to NPC) = MidPrice - Spread/2
+AskPrice (player buys from NPC) = MidPrice + Spread/2   (Tuning.Trade.AskFrom)
+BidPrice (player sells to NPC) = MidPrice - Spread/2    (Tuning.Trade.BidFrom)
 ```
 
-**Faction Multipliers:**
-- Trade NPCs: 0.8 ± 0.05 → ~16% spread
-- Bandits: 1.5 ± 0.1 → ~30% spread
-- Base spread: 20%
+**Actor Spread** (`TradeOfferComponent.Spread`, a multiplier of BaseBidAskSpread sampled per crawler):
+- Trade NPCs: 0.8 ± 0.25 → 16% ± 5% spread (`Tuning.Trade.TradeSpread`)
+- Bandits: 1.5 ± 0.5 → 30% ± 10% spread (`Tuning.Trade.BanditSpread`)
+- Settlements: 1.0 → 20% (base spread)
 
 **Trader Markup:**
-Each crawler has personal markup (Gaussian: mean=1.05, sd=0.07)
+Each crawler has a personal markup (Gaussian: mean=1.05, sd=0.07) applied to the mid price, not the spread.
+Location markups (`Location.LocalMarkup`) are drawn per commodity (Gaussian: mean=1, sd=0.07).
+The samplers take `GaussianSampler` by `ref`; it is a struct, and a copy never advances.
 
 ### Example Calculation
 
@@ -821,12 +825,11 @@ Selling Fuel at Trade Settlement:
   MidPrice = 10 × 1.2 × 1.5 × 1.0 = 18¢¢
 
   BaseBidAskSpread: 0.20 (20%)
-  FactionMultiplier: 0.8 (trader)
-  TraderMarkup: 1.05 (this specific NPC)
-  Spread = 18 × 0.20 × 0.8 × 1.05 = 3.02¢¢
+  ActorSpread: 0.8 (trader)
+  Spread = 18 × 0.20 × 0.8 = 2.88¢¢
 
-  AskPrice = 18 + 1.51 = 19.51¢¢ (player pays)
-  BidPrice = 18 - 1.51 = 16.49¢¢ (player receives)
+  AskPrice = 18 + 1.44 = 19.44¢¢ (player pays)
+  BidPrice = 18 - 1.44 = 16.56¢¢ (player receives)
 ```
 
 ### Trade Proposal Generation

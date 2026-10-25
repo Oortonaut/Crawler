@@ -221,13 +221,13 @@ public record Location {
 
     static EArray<Commodity, float> InitLocalOfferRates(GaussianSampler gaussians) {
         EArray<Commodity, float> result = new();
-        result.Initialize(() => Tuning.Trade.LocalMarkup(gaussians));
+        result.Initialize(() => Tuning.Trade.LocalMarkup(ref gaussians));
         return result;
     }
 
     static EArray<SegmentKind, float> InitLocalSegmentRates(GaussianSampler gaussians) {
         EArray<SegmentKind, float> result = new();
-        result.Initialize(() => Tuning.Trade.LocalMarkup(gaussians));
+        result.Initialize(() => Tuning.Trade.LocalMarkup(ref gaussians));
         return result;
     }
 
