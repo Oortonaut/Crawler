@@ -340,8 +340,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             AddComponent(new CustomsComponent());
             var settlementGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.25f,
-                Tuning.Trade.TradeMarkup(settlementGaussian),
-                Tuning.Trade.TradeSpread(settlementGaussian)));
+                Tuning.Trade.TradeMarkup(ref settlementGaussian),
+                Tuning.Trade.TradeSpread(ref settlementGaussian)));
             AddComponent(new RepairComponent());
             AddComponent(new LicenseComponent());
             AddComponent(new Convoy.GuardHireComponent(rng.Seed()));
@@ -360,8 +360,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             AddComponent(new TradeRoleComponent(rng.Seed()));   // Trade AI
             var traderGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.35f,
-                Tuning.Trade.TradeMarkup(traderGaussian),
-                Tuning.Trade.TradeSpread(traderGaussian)));
+                Tuning.Trade.TradeMarkup(ref traderGaussian),
+                Tuning.Trade.TradeSpread(ref traderGaussian)));
             AddComponent(new Convoy.ConvoyComponent());
             AddComponent(new Convoy.ConvoyDecisionComponent(rng.Seed()));
             AddComponent(new Convoy.RouteKnowledgeComponent());
@@ -381,8 +381,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             // Bandits have higher markup/spread for goods they steal/trade
             var banditGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.20f,
-                Tuning.Trade.BanditMarkup(banditGaussian),
-                Tuning.Trade.BanditSpread(banditGaussian)));
+                Tuning.Trade.BanditMarkup(ref banditGaussian),
+                Tuning.Trade.BanditSpread(ref banditGaussian)));
             break;
 
         case Roles.Traveler:
@@ -390,8 +390,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             // TODO: Add quest-related components when quest system is implemented
             var travelerGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.15f,
-                Tuning.Trade.TradeMarkup(travelerGaussian),
-                Tuning.Trade.TradeSpread(travelerGaussian))); // Limited trading
+                Tuning.Trade.TradeMarkup(ref travelerGaussian),
+                Tuning.Trade.TradeSpread(ref travelerGaussian))); // Limited trading
             AddComponent(new Convoy.ConvoyComponent());
             AddComponent(new Convoy.ConvoyDecisionComponent(rng.Seed()));
             AddComponent(new Convoy.RouteKnowledgeComponent());
@@ -404,8 +404,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             // Can trade extracted resources
             var harvesterGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.20f,
-                Tuning.Trade.TradeMarkup(harvesterGaussian),
-                Tuning.Trade.TradeSpread(harvesterGaussian)));
+                Tuning.Trade.TradeMarkup(ref harvesterGaussian),
+                Tuning.Trade.TradeSpread(ref harvesterGaussian)));
             break;
 
         case Roles.Guard:
@@ -418,8 +418,8 @@ public partial class Crawler: ActorScheduled, IComparable<Crawler> {
             // Minimal trade capability
             var guardGaussian = new GaussianSampler(rng.Seed());
             AddComponent(new TradeOfferComponent(rng.Seed(), 0.10f,
-                Tuning.Trade.TradeMarkup(guardGaussian),
-                Tuning.Trade.TradeSpread(guardGaussian)));
+                Tuning.Trade.TradeMarkup(ref guardGaussian),
+                Tuning.Trade.TradeSpread(ref guardGaussian)));
             break;
 
         case Roles.None:

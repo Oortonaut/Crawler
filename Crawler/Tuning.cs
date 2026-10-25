@@ -93,15 +93,16 @@ public static partial class Tuning {
         // Legacy fields (kept for backward compatibility)
         public static float rate = 1.05f;
         public static float sd = 0.07f;
-        // public static float LocalMarkup() => CrawlerEx.NextGaussian(1, sd);
-        public static float LocalMarkup(GaussianSampler g) => g.NextSingle(1, sd);
-        public static float TradeMarkup(GaussianSampler gaussian) => gaussian.NextSingle(rate, sd);
+        // Samplers take GaussianSampler by ref: it is a struct, and a copy never advances, so every
+        // draw from the same sampler returned the same value
+        public static float LocalMarkup(ref GaussianSampler g) => g.NextSingle(1, sd);
+        public static float TradeMarkup(ref GaussianSampler gaussian) => gaussian.NextSingle(rate, sd);
         public static float banditRate = 1.25f;          // Higher markup for bandits
         public static float banditSd = 0.1f;
-        public static float BanditMarkup(GaussianSampler gaussian) => gaussian.NextSingle(banditRate, banditSd);
+        public static float BanditMarkup(ref GaussianSampler gaussian) => gaussian.NextSingle(banditRate, banditSd);
         public static float repairMarkup = 1.2f;
         public static float repairMarkupSd = 0.15f;
-        public static float RepairMarkup(GaussianSampler gaussian) => gaussian.NextSingle(repairMarkup, repairMarkupSd);
+        public static float RepairMarkup(ref GaussianSampler gaussian) => gaussian.NextSingle(repairMarkup, repairMarkupSd);
 
         // New bid-ask spread model
         public static float baseBidAskSpread = 0.20f;   // 20% base spread (±10% around mid)
@@ -109,8 +110,16 @@ public static partial class Tuning {
         public static float tradeSpreadSd = 0.05f;      // ±5% variance
         public static float banditSpreadMultiplier = 1.5f; // Bandit: 30% spread
         public static float banditSpreadSd = 0.10f;     // ±10% variance
-        public static float TradeSpread(GaussianSampler gaussian) => gaussian.NextSingle(baseBidAskSpread * tradeSpreadMultiplier, tradeSpreadSd);
-        public static float BanditSpread(GaussianSampler gaussian) => gaussian.NextSingle(baseBidAskSpread * banditSpreadMultiplier, banditSpreadSd);
+        // Spread samplers return a multiplier of baseBidAskSpread (prices apply baseBidAskSpread × actor spread);
+        // sampling the absolute spread here applied the base twice, leaving traders a ~3% spread
+        public static float TradeSpread(ref GaussianSampler gaussian) =>
+            Math.Max(0, gaussian.NextSingle(tradeSpreadMultiplier, tradeSpreadSd / baseBidAskSpread));
+        public static float BanditSpread(ref GaussianSampler gaussian) =>
+            Math.Max(0, gaussian.NextSingle(banditSpreadMultiplier, banditSpreadSd / baseBidAskSpread));
+        /// <summary>Selling (ask) side of a mid price for a spread fraction: mid × (1 + spread/2), rounded like scrap.</summary>
+        public static float AskFrom(float mid, float spread) => Commodity.Scrap.Round(mid * (1 + spread / 2));
+        /// <summary>Buying (bid) side of a mid price for a spread fraction: mid × (1 - spread/2), rounded like scrap.</summary>
+        public static float BidFrom(float mid, float spread) => Commodity.Scrap.Round(mid * (1 - spread / 2));
 
         // Bandit markup settings
         public static float banditHostilityThreshold = 5.0f; // Evilness threshold for hostility check
@@ -405,10 +414,7 @@ public static partial class Tuning {
     public static float AskAt(this Commodity commodity, Location location) {
         if (!location.HasEncounter) {
             // No market - use base value with default spread
-            return Commodity.Scrap.Round(
-                CommodityEx.Data[commodity].InitialValue *
-                location.LocalMarkup[commodity] *
-                (1 + Trade.baseBidAskSpread / 2));
+            return Trade.AskFrom(BaseMidAt(commodity, location), Trade.baseBidAskSpread);
         }
 
         var encounter = location.GetEncounter();
@@ -421,10 +427,7 @@ public static partial class Tuning {
             return bestAsk.Price;
 
         // No sellers - use base value with spread
-        return Commodity.Scrap.Round(
-            CommodityEx.Data[commodity].InitialValue *
-            location.LocalMarkup[commodity] *
-            (1 + Trade.baseBidAskSpread / 2));
+        return Trade.AskFrom(BaseMidAt(commodity, location), Trade.baseBidAskSpread);
     }
 
     /// <summary>
@@ -434,10 +437,7 @@ public static partial class Tuning {
     public static float BidAt(this Commodity commodity, Location location) {
         if (!location.HasEncounter) {
             // No market - use base value with default spread (discounted)
-            return Commodity.Scrap.Round(
-                CommodityEx.Data[commodity].InitialValue *
-                location.LocalMarkup[commodity] *
-                (1 - Trade.baseBidAskSpread / 2));
+            return Trade.BidFrom(BaseMidAt(commodity, location), Trade.baseBidAskSpread);
         }
 
         var encounter = location.GetEncounter();
@@ -450,11 +450,12 @@ public static partial class Tuning {
             return bestBid.Price;
 
         // No buyers - use base value with spread (discounted)
-        return Commodity.Scrap.Round(
-            CommodityEx.Data[commodity].InitialValue *
-            location.LocalMarkup[commodity] *
-            (1 - Trade.baseBidAskSpread / 2));
+        return Trade.BidFrom(BaseMidAt(commodity, location), Trade.baseBidAskSpread);
     }
+
+    // Mid price with no market: base value with the location's markup
+    static float BaseMidAt(Commodity commodity, Location location) =>
+        CommodityEx.Data[commodity].InitialValue * location.LocalMarkup[commodity];
 
     /// <summary>
     /// Get the bid-ask spread at a location (Ask - Bid).
@@ -484,83 +485,6 @@ public static partial class Tuning {
 
         return Commodity.Scrap.Round(price);
     }
-
-    /// <summary>
-    /// Calculate theoretical price for a segment kind at a given size.
-    /// Uses CostTiers with location-based markups but no actor/spread adjustments.
-    /// </summary>
-    public static float TheoreticalPrice(this SegmentKind kind, float size, Location location) {
-        float price = Segments.CostTiers.Value(size, 0);
-        price *= Economy.EncounterSegmentKindMarkup[location.Type][kind];
-        price *= Economy.LocationSegmentKindMarkup[location.Terrain][kind];
-        return Commodity.Scrap.Round(price);
-    }
-
-    /// <summary>
-    /// Get the best ask price (lowest selling price) for segments of a given kind and size range.
-    /// Returns the price a buyer would pay. Falls back to theoretical if no offers.
-    /// </summary>
-    public static float AskAt(this SegmentKind kind, Location location, float minSize, float maxSize) {
-        if (!location.HasEncounter) {
-            // No market - use theoretical price with default spread
-            float avgSize = (minSize + maxSize) / 2;
-            float theoretical = kind.TheoreticalPrice(avgSize, location);
-            return Commodity.Scrap.Round(theoretical * (1 + Trade.baseBidAskSpread / 2));
-        }
-
-        var encounter = location.GetEncounter();
-        var bestAsk = encounter.AskOffers(kind, minSize, maxSize)
-            .Where(o => o.IsValid)
-            .OrderBy(o => o.Price)
-            .FirstOrDefault();
-
-        if (bestAsk.IsValid)
-            return bestAsk.Price;
-
-        // Fallback to theoretical price
-        float fallbackSize = (minSize + maxSize) / 2;
-        float fallbackPrice = kind.TheoreticalPrice(fallbackSize, location);
-        return Commodity.Scrap.Round(fallbackPrice * (1 + Trade.baseBidAskSpread / 2));
-    }
-
-    /// <summary>
-    /// Get the best bid price (highest buying price) for segments of a given kind and size range.
-    /// Returns what a seller would receive. Falls back to theoretical if no offers.
-    /// </summary>
-    public static float BidAt(this SegmentKind kind, Location location, float minSize, float maxSize) {
-        if (!location.HasEncounter) {
-            float avgSize = (minSize + maxSize) / 2;
-            float theoretical = kind.TheoreticalPrice(avgSize, location);
-            return Commodity.Scrap.Round(theoretical * (1 - Trade.baseBidAskSpread / 2));
-        }
-
-        var encounter = location.GetEncounter();
-        var bestBid = encounter.BidOffers(kind, minSize, maxSize)
-            .Where(o => o.IsValid)
-            .OrderByDescending(o => o.Price)
-            .FirstOrDefault();
-
-        if (bestBid.IsValid)
-            return bestBid.Price;
-
-        // Fallback to theoretical price
-        float fallbackSize = (minSize + maxSize) / 2;
-        float fallbackPrice = kind.TheoreticalPrice(fallbackSize, location);
-        return Commodity.Scrap.Round(fallbackPrice * (1 - Trade.baseBidAskSpread / 2));
-    }
-
-    /// <summary>
-    /// Get the bid-ask spread for segments of a given kind and size range at a location.
-    /// </summary>
-    public static float SpreadAt(this SegmentKind kind, Location location, float minSize, float maxSize) =>
-        kind.AskAt(location, minSize, maxSize) - kind.BidAt(location, minSize, maxSize);
-
-    /// <summary>
-    /// Get the mid-market price for segments of a given kind and size range.
-    /// Use this for valuation and comparisons where direction doesn't matter.
-    /// </summary>
-    public static float MidAt(this SegmentKind kind, Location location, float minSize, float maxSize) =>
-        (kind.AskAt(location, minSize, maxSize) + kind.BidAt(location, minSize, maxSize)) / 2;
 
     public static TimePoint StartGameTime = new(3126, 0, 0, 0, 0, 0);
 

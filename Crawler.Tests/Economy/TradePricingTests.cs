@@ -56,4 +56,26 @@ public class TradePricingTests
             multiplier.Should().BeGreaterThan(0, $"policy {policy} should have positive multiplier");
         }
     }
+
+    // Prices apply baseBidAskSpread x the actor's sampled spread, so the samplers must return multipliers
+    [Theory]
+    [InlineData(false, 0.16f)] // traders: 16%
+    [InlineData(true, 0.30f)]  // bandits: 30%
+    public void SampledSpread_AveragesTheDocumentedSpread(bool bandit, float expected)
+    {
+        var gaussian = new GaussianSampler(12345);
+        var effective = Enumerable.Range(0, 2000)
+            .Select(_ => Tuning.Trade.baseBidAskSpread *
+                         (bandit ? Tuning.Trade.BanditSpread(ref gaussian) : Tuning.Trade.TradeSpread(ref gaussian)))
+            .Average();
+
+        effective.Should().BeApproximately(expected, 0.01f);
+    }
+
+    [Fact]
+    public void AskFrom_AndBidFrom_SitSymmetricallyAroundMid()
+    {
+        Tuning.Trade.AskFrom(100, 0.2f).Should().Be(110);
+        Tuning.Trade.BidFrom(100, 0.2f).Should().Be(90);
+    }
 }
