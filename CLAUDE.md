@@ -34,11 +34,8 @@ The project uses an arena test system for combat balance testing (referenced in 
 
 ### Dependencies
 - **YamlDotNet** (16.3.0) - Save/load serialization
-- **CsvHelper** (33.1.0) - Data import/export
 - **MathNet.Numerics** (5.0.0) - Mathematical operations
-- **OpenTelemetry** (1.13.1) - Activity tracing and observability
-- **Microsoft.Windows.CsWin32** (0.3.183) - Windows API interop
-- **PInvoke.Kernel32** (0.7.124) - Kernel32 API bindings
+- **OpenTelemetry** (1.20.1) - Activity tracing and observability (custom `DebugExporter`; no OTLP/console exporters)
 
 ## Architecture Overview
 
